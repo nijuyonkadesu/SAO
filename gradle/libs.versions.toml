@@ -1,0 +1,41 @@
+[versions]
+test-ext = "1.1.4"
+test-espresso = "3.5.0"
+junit = "4.13.2"
+
+gradle-plugin = "8.0.1"
+kotlin = "1.7.10"
+core = "1.9.0"
+coroutines = "1.6.4"
+
+appcompat = "1.6.1"
+constraint-layout = "2.1.4"
+m3 = "1.7.0"
+nav = "2.5.3"
+window-manager = "1.0.0"
+
+[bundles]
+nav = ["nav-fragment", "nav-ui"]
+testing = ["androidx-test-ext", "androidx-test-espresso"]
+androidx = ["androidx-appcompat", "androidx-core", "androidx-constraintlayout"]
+
+[libraries]
+nav-fragment = { module = "androidx.navigation:navigation-fragment-ktx", version.ref = "nav" }
+nav-ui = { module = "androidx.navigation:navigation-ui-ktx", version.ref = "nav" }
+safe-args = { module = "androidx.navigation:navigation-safe-args-gradle-plugin", version.ref = "nav" }
+coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# default dependancies / androidx
+android-material = { module = "com.google.android.material:material", version.ref = "m3" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
+androidx-core = { group = "androidx.core", name = "core-ktx", version.ref = "core" }
+androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraint-layout" }
+androidx-test-ext = { module = "androidx.test.ext:junit", version.ref = "test-ext" }
+androidx-test-espresso = { module = "androidx.test.espresso:espresso-core", version.ref = "test-espresso" }
+junit = { module = "junit:junit", version.ref = "junit" }
+
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "gradle-plugin" }
+android-library = { id = "com.android.library", version.ref = "gradle-plugin" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

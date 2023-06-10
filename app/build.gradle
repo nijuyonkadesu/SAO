@@ -1,0 +1,57 @@
+plugins {
+    alias libs.plugins.android.application
+    alias libs.plugins.kotlin.android
+
+    // Unable to use libs.safe.args.. dunno why...
+    id "androidx.navigation.safeargs"
+}
+
+android {
+    namespace 'one.njk.sao'
+    compileSdk 33
+
+    defaultConfig {
+        applicationId "one.njk.sao"
+        minSdk 30
+        targetSdk 33
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+    buildFeatures {
+        viewBinding true
+    }
+}
+
+dependencies {
+
+    // androidx libs, layouts, material design
+    implementation libs.bundles.androidx
+    implementation libs.android.material
+    
+    // Testing
+    testImplementation libs.junit
+    androidTestImplementation libs.bundles.testing
+
+    // Navigation graph support
+    // see classpath in build.gradle (project)
+    implementation libs.bundles.nav
+
+    // Coroutines
+    implementation libs.coroutines
+}
