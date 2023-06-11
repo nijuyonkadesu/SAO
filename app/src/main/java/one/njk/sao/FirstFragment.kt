@@ -34,12 +34,26 @@ class FirstFragment : Fragment(), MenuProvider {
         val menuHost: MenuHost = requireActivity()
         menuHost.addMenuProvider( this, viewLifecycleOwner, Lifecycle.State.RESUMED)
         _binding = FragmentFirstBinding.inflate(inflater, container, false)
+
+        _binding!!.bottomAppBar.setOnMenuItemClickListener {
+            when(it.itemId){
+                R.id.bookmark -> {
+                    // TODO: Replace with viewmodel bookmark to fav list
+                    Toast.makeText(context, "bookmark", Toast.LENGTH_SHORT).show()
+                    true
+                }
+                R.id.download -> {
+                    Toast.makeText(context, "download", Toast.LENGTH_SHORT).show()
+                    // TODO: Replace with viewmodel download with URI intent
+                    true
+                }
+                else -> false
+            }
+        }
+        _binding!!.share.setOnClickListener {
+            // TODO: Replace with viewmodel share intent
+        }
         return binding.root
-
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
 
     }
 
@@ -55,10 +69,12 @@ class FirstFragment : Fragment(), MenuProvider {
             return when(menuItem.itemId){
                 R.id.edit -> {
                     Toast.makeText(context, "edit", Toast.LENGTH_SHORT).show()
+                    // TODO: Replace with viewmodel edit favourite list
                     true
                 }
                 R.id.settings -> {
                     Toast.makeText(context, "settings", Toast.LENGTH_SHORT).show()
+                    // TODO: maybe, this has to be handled using Navigation listener
                     true
                 }
                 else -> false
