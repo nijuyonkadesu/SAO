@@ -8,6 +8,5 @@
     <fragment
         android:id="@+id/FirstFragment"
         android:name="one.njk.sao.FirstFragment"
-        android:label="@string/first_fragment_label"
         tools:layout="@layout/fragment_first"/>
 </navigation>
