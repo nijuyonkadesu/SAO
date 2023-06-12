@@ -11,19 +11,25 @@ import android.widget.Toast
 import androidx.core.view.MenuHost
 import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
-import one.njk.sao.databinding.FragmentFirstBinding
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import one.njk.sao.databinding.FragmentCarouselBinding
+import one.njk.sao.viewmodels.ArtsViewModel
+import one.njk.sao.waifu.CarouselAdapter
 
 /**
  * A simple [Fragment] subclass as the default destination in the navigation.
  */
-class FirstFragment : Fragment(), MenuProvider {
+class CarouselFragment : Fragment(), MenuProvider {
 
-    private var _binding: FragmentFirstBinding? = null
+    private var _binding: FragmentCarouselBinding? = null
 
     // This property is only valid between onCreateView and
     // onDestroyView.
     private val binding get() = _binding!!
+    private val viewModel: ArtsViewModel by activityViewModels()
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -33,7 +39,7 @@ class FirstFragment : Fragment(), MenuProvider {
         // Menu Provider method: https://stackoverflow.com/questions/71917856/sethasoptionsmenuboolean-unit-is-deprecated-deprecated-in-java
         val menuHost: MenuHost = requireActivity()
         menuHost.addMenuProvider( this, viewLifecycleOwner, Lifecycle.State.RESUMED)
-        _binding = FragmentFirstBinding.inflate(inflater, container, false)
+        _binding = FragmentCarouselBinding.inflate(inflater, container, false)
 
         _binding!!.bottomAppBar.setOnMenuItemClickListener {
             when(it.itemId){
@@ -53,8 +59,18 @@ class FirstFragment : Fragment(), MenuProvider {
         _binding!!.share.setOnClickListener {
             // TODO: Replace with viewmodel share intent
         }
+        val adapter = CarouselAdapter()
+        _binding!!.carouselRecyclerView.adapter = adapter
+        lifecycleScope.launch {
+            subscribeUi(adapter)
+        }
         return binding.root
 
+    }
+    private suspend fun subscribeUi(adapter: CarouselAdapter) {
+        viewModel.waifuList.collect {
+            adapter.submitList(it)
+        }
     }
 
     override fun onDestroyView() {
