@@ -2,11 +2,11 @@
 <androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
     <androidx.core.widget.NestedScrollView
-        xmlns:tools="http://schemas.android.com/tools"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         tools:context=".CarouselFragment">
@@ -15,7 +15,21 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:padding="16dp">
-            <!-- TODO: add Carousel-->
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/carousel_recycler_view"
+                android:layout_width="match_parent"
+                android:layout_height="196dp"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                app:layoutManager="com.google.android.material.carousel.CarouselLayoutManager"
+
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+
+                tools:itemCount="3"
+                tools:listitem="@layout/carousel_view_waifu" />
         </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.core.widget.NestedScrollView>
 

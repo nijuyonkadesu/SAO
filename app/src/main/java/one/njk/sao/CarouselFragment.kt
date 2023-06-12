@@ -11,8 +11,13 @@ import android.widget.Toast
 import androidx.core.view.MenuHost
 import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import one.njk.sao.databinding.FragmentCarouselBinding
+import one.njk.sao.viewmodels.ArtsViewModel
+import one.njk.sao.waifu.CarouselAdapter
 
 /**
  * A simple [Fragment] subclass as the default destination in the navigation.
@@ -24,6 +29,7 @@ class CarouselFragment : Fragment(), MenuProvider {
     // This property is only valid between onCreateView and
     // onDestroyView.
     private val binding get() = _binding!!
+    private val viewModel: ArtsViewModel by activityViewModels()
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -53,8 +59,18 @@ class CarouselFragment : Fragment(), MenuProvider {
         _binding!!.share.setOnClickListener {
             // TODO: Replace with viewmodel share intent
         }
+        val adapter = CarouselAdapter()
+        _binding!!.carouselRecyclerView.adapter = adapter
+        lifecycleScope.launch {
+            subscribeUi(adapter)
+        }
         return binding.root
 
+    }
+    private suspend fun subscribeUi(adapter: CarouselAdapter) {
+        viewModel.waifuList.collect {
+            adapter.submitList(it)
+        }
     }
 
     override fun onDestroyView() {
