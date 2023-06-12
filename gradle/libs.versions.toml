@@ -15,11 +15,12 @@ nav = "2.5.3"
 window-manager = "1.0.0"
 coil = "2.4.0"
 dagger = "2.46.1"
+recycler-view = "1.3.0"
 
 [bundles]
 nav = ["nav-fragment", "nav-ui"]
 testing = ["androidx-test-ext", "androidx-test-espresso"]
-androidx = ["androidx-appcompat", "androidx-core", "androidx-constraintlayout"]
+androidx = ["androidx-appcompat", "androidx-core", "androidx-constraintlayout", "recycler-view"]
 
 [libraries]
 nav-fragment = { module = "androidx.navigation:navigation-fragment-ktx", version.ref = "nav" }
@@ -30,6 +31,7 @@ dagger-android = { module = "com.google.dagger:hilt-android", version.ref = "dag
 dagger-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "dagger" }
 coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 coil = { module = "io.coil-kt:coil", version.ref = "coil" }
+recycler-view = { module = "androidx.recyclerview:recyclerview-selection", version.ref = "recycler-view"}
 
 # default dependancies / androidx
 android-material = { module = "com.google.android.material:material", version.ref = "m3" }
