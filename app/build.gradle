@@ -52,6 +52,7 @@ dependencies {
     // see classpath in build.gradle (project)
     implementation libs.bundles.nav
 
-    // Coroutines
+    // Coroutines, coil
     implementation libs.coroutines
+    implementation libs.coil
 }

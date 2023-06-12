@@ -13,6 +13,7 @@ constraint-layout = "2.1.4"
 m3 = "1.7.0"
 nav = "2.5.3"
 window-manager = "1.0.0"
+coil = "2.4.0"
 
 [bundles]
 nav = ["nav-fragment", "nav-ui"]
@@ -24,6 +25,7 @@ nav-fragment = { module = "androidx.navigation:navigation-fragment-ktx", version
 nav-ui = { module = "androidx.navigation:navigation-ui-ktx", version.ref = "nav" }
 safe-args = { module = "androidx.navigation:navigation-safe-args-gradle-plugin", version.ref = "nav" }
 coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+coil = { module = "io.coil-kt:coil", version.ref = "coil" }
 
 # default dependancies / androidx
 android-material = { module = "com.google.android.material:material", version.ref = "m3" }
