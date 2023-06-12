@@ -4,13 +4,13 @@ test-espresso = "3.5.0"
 junit = "4.13.2"
 
 gradle-plugin = "8.0.1"
-kotlin = "1.7.10"
+kotlin = "1.8.0"
 core = "1.9.0"
 coroutines = "1.6.4"
 
 appcompat = "1.6.1"
 constraint-layout = "2.1.4"
-m3 = "1.7.0"
+m3 = "1.9.0"
 nav = "2.5.3"
 window-manager = "1.0.0"
 coil = "2.4.0"
@@ -31,7 +31,8 @@ dagger-android = { module = "com.google.dagger:hilt-android", version.ref = "dag
 dagger-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "dagger" }
 coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 coil = { module = "io.coil-kt:coil", version.ref = "coil" }
-recycler-view = { module = "androidx.recyclerview:recyclerview-selection", version.ref = "recycler-view"}
+coil-gif = { module = "io.coil-kt:coil-gif", version.ref = "coil"}
+recycler-view = { module = "androidx.recyclerview:recyclerview", version.ref = "recycler-view"}
 
 # default dependancies / androidx
 android-material = { module = "com.google.android.material:material", version.ref = "m3" }
