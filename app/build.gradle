@@ -1,6 +1,8 @@
 plugins {
     alias libs.plugins.android.application
     alias libs.plugins.kotlin.android
+    alias libs.plugins.kotlin.kapt
+    alias libs.plugins.dagger.android
 
     // Unable to use libs.safe.args.. dunno why...
     id "androidx.navigation.safeargs"
@@ -52,7 +54,9 @@ dependencies {
     // see classpath in build.gradle (project)
     implementation libs.bundles.nav
 
-    // Coroutines, coil
+    // Coroutines, coil, dagger hilt
     implementation libs.coroutines
     implementation libs.coil
+    implementation libs.dagger.android
+    kapt libs.dagger.compiler
 }
