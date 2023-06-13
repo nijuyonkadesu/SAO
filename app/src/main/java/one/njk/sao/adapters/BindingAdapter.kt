@@ -1,4 +1,4 @@
-package one.njk.sao.waifu
+package one.njk.sao.adapters
 
 import android.widget.ImageView
 import androidx.core.net.toUri
