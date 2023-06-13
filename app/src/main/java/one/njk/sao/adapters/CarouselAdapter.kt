@@ -1,4 +1,4 @@
-package one.njk.sao.waifu
+package one.njk.sao.adapters
 
 import android.view.LayoutInflater
 import android.view.ViewGroup

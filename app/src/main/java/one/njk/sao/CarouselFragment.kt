@@ -17,7 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import one.njk.sao.databinding.FragmentCarouselBinding
 import one.njk.sao.viewmodels.ArtsViewModel
-import one.njk.sao.waifu.CarouselAdapter
+import one.njk.sao.adapters.CarouselAdapter
 
 /**
  * A simple [Fragment] subclass as the default destination in the navigation.
