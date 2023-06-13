@@ -19,7 +19,7 @@
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/carousel_recycler_view"
                 android:layout_width="match_parent"
-                android:layout_height="196dp"
+                android:layout_height="450dp"
                 android:clipChildren="false"
                 android:clipToPadding="false"
                 app:layoutManager="com.google.android.material.carousel.CarouselLayoutManager"
