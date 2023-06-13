@@ -55,10 +55,10 @@ dependencies {
     // see classpath in build.gradle (project)
     implementation libs.bundles.nav
 
-    // Coroutines, coil, dagger hilt
+    // Coroutines, coil, dagger hilt, retrofit
     implementation libs.coroutines
-    implementation libs.coil
-    implementation libs.coil.gif
+    implementation libs.bundles.coil
+    implementation libs.bundles.retrofit
     implementation libs.dagger.android
     kapt libs.dagger.compiler
 }
