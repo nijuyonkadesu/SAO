@@ -11,6 +11,5 @@ data class Waifu(
 
 data class Waifus(
     @Json(name = "files") val files: List<String>,
-) {
-    val id: UUID = UUID.randomUUID()
-}
+)
+// TODO: See if @FromJson of moshi is any better than kotlin map

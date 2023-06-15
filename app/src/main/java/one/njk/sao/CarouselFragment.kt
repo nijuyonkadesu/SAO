@@ -14,9 +14,13 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import one.njk.sao.adapters.CarouselAdapter
 import one.njk.sao.databinding.FragmentCarouselBinding
+import one.njk.sao.models.Waifu
 import one.njk.sao.viewmodels.ArtsViewModel
 
 /**
@@ -41,26 +45,31 @@ class CarouselFragment : Fragment(), MenuProvider {
         menuHost.addMenuProvider( this, viewLifecycleOwner, Lifecycle.State.RESUMED)
         _binding = FragmentCarouselBinding.inflate(inflater, container, false)
 
-        _binding!!.bottomAppBar.setOnMenuItemClickListener {
-            when(it.itemId){
-                R.id.bookmark -> {
-                    // TODO: Replace with viewmodel bookmark to fav list
-                    Toast.makeText(context, "bookmark", Toast.LENGTH_SHORT).show()
-                    true
-                }
-                R.id.download -> {
-                    Toast.makeText(context, "download", Toast.LENGTH_SHORT).show()
-                    // TODO: Replace with viewmodel download with URI intent
-                    true
-                }
-                else -> false
-            }
-        }
-        _binding!!.share.setOnClickListener {
-            // TODO: Replace with viewmodel share intent
-        }
         val adapter = CarouselAdapter()
-        _binding!!.carouselRecyclerView.adapter = adapter
+        _binding!!.apply {
+            bottomAppBar.setOnMenuItemClickListener {
+                when(it.itemId){
+                    R.id.bookmark -> {
+                        // TODO: Replace with viewmodel bookmark to fav list
+                        Toast.makeText(context, "bookmark", Toast.LENGTH_SHORT).show()
+                        true
+                    }
+                    R.id.download -> {
+                        Toast.makeText(context, "download", Toast.LENGTH_SHORT).show()
+                        // TODO: Replace with viewmodel download with URI intent
+                        true
+                    }
+                    else -> false
+                }
+            }
+            share.setOnClickListener {
+                // TODO: Replace with viewmodel share intent
+            }
+            carouselRecyclerView.adapter = adapter
+            carouselRecyclerView.addOnScrollListener(
+                OnScrollListener(lifecycleScope, adapter, viewModel.waifuList)
+            )
+        }
         lifecycleScope.launch {
             subscribeUi(adapter)
         }
@@ -96,4 +105,22 @@ class CarouselFragment : Fragment(), MenuProvider {
                 else -> false
             }
         }
+}
+
+// Manual paging - infinite scroll - just refresh when you reach the end
+class OnScrollListener(
+    private val lifeCycleScope: CoroutineScope,
+    private val adapter: CarouselAdapter,
+    private val waifuList: Flow<MutableList<Waifu>>
+    ): RecyclerView.OnScrollListener() {
+    // TODO: Track position using dx? -> then use it to get URL -> use it to share / save ?
+    override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+        super.onScrolled(recyclerView, dx, dy)
+
+        lifeCycleScope.launch {
+            waifuList.collect {
+                adapter.submitList(it)
+            }
+        }
+    }
 }
