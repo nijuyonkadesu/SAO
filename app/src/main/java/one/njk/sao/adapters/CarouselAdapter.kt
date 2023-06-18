@@ -1,5 +1,6 @@
 package one.njk.sao.adapters
 
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
@@ -26,6 +27,9 @@ class CarouselAdapter: ListAdapter<Waifu, CarouselAdapter.WaifuViewHolder>(DiffC
                 binding.apply {
                     this.waifu = waifu
                     executePendingBindings()
+                }
+                binding.carouselItemContainer.setOnClickListener {
+                    Log.d("url", waifu.url)
                 }
             }
     }

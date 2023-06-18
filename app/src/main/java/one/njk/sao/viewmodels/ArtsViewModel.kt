@@ -12,9 +12,9 @@ class ArtsViewModel @Inject constructor(
     private val waifuApiService: WaifuApiService
 ) : ViewModel() {
     // TODO: 0 handle network disconnect crash
-    // TODO: 1. !! HOW TO TRACK WHICH IMAGE I'M IN !!!
     // TODO: 2 Switch Sources when category and type changes
     // TODO: 3 Survive process deaths (using savedstate handle & lifecycle methods)
+    // TODO: 4 write Proguard (for type / class preservation)
     private val waifus = mutableListOf<Waifu>()
 
     val waifuList = flow {
