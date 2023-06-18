@@ -1,6 +1,7 @@
 package one.njk.sao
 
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuInflater
@@ -63,7 +64,17 @@ class CarouselFragment : Fragment(), MenuProvider {
                 }
             }
             share.setOnClickListener {
-                // TODO: Replace with viewmodel share intent
+                // Get the screen size
+                val displayMetrics = resources.displayMetrics
+                val x = displayMetrics.widthPixels / 2.3f
+                val y = displayMetrics.heightPixels / 3f
+
+                Log.d("screen", "${displayMetrics.widthPixels} -> $x")
+                // TODO: This pixel calculation might break in other DPI setting than default
+
+                // Find the child view based on x and y pixel values
+                val focusedChild = carouselRecyclerView.findChildViewUnder(x, y)
+                focusedChild?.performClick()
             }
             carouselRecyclerView.adapter = adapter
             carouselRecyclerView.addOnScrollListener(
