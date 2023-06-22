@@ -1,5 +1,6 @@
 package one.njk.sao
 
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -16,6 +17,8 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -80,12 +83,34 @@ class CarouselFragment : Fragment(), MenuProvider {
             carouselRecyclerView.addOnScrollListener(
                 OnScrollListener(lifecycleScope, adapter, viewModel.waifuList)
             )
+            addCategoryChips(categories, viewModel.sfwCategories)
         }
         lifecycleScope.launch {
             subscribeUi(adapter)
         }
         return binding.root
 
+    }
+    private fun addCategoryChips(chipGroup: ChipGroup, categories: List<String>){
+        chipGroup.apply {
+            isSelectionRequired = true
+            isSingleSelection = true
+            setOnCheckedStateChangeListener(
+                OnCheckChangeListener(context)
+            )
+        }
+        for(category in categories){
+            val chip = Chip(this.context)
+            chip.apply {
+                text = category
+                isCheckable = true
+                if(category == "waifu") isChecked = true
+                setOnClickListener {
+                    Toast.makeText(context, category, Toast.LENGTH_SHORT).show()
+                }
+            }
+            chipGroup.addView(chip)
+        }
     }
     private suspend fun subscribeUi(adapter: CarouselAdapter) {
         viewModel.waifuList.collect {
@@ -124,7 +149,6 @@ class OnScrollListener(
     private val adapter: CarouselAdapter,
     private val waifuList: Flow<MutableList<Waifu>>
     ): RecyclerView.OnScrollListener() {
-    // TODO: Track position using dx? -> then use it to get URL -> use it to share / save ?
     override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
         super.onScrolled(recyclerView, dx, dy)
 
@@ -134,4 +158,16 @@ class OnScrollListener(
             }
         }
     }
+}
+
+// Chip State Listener
+class OnCheckChangeListener(
+    val context: Context
+): ChipGroup.OnCheckedStateChangeListener {
+    override fun onCheckedChanged(group: ChipGroup, checkedIds: MutableList<Int>) {
+        // CheckedId starts with value 1
+        // TODO: ViewModel Functionality to swap sources
+        Toast.makeText(context, checkedIds.toString(), Toast.LENGTH_SHORT).show()
+    }
+
 }
