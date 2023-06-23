@@ -7,6 +7,9 @@
         <variable
             name="waifu"
             type="one.njk.sao.models.Waifu" />
+        <variable
+            name="imageLoader"
+            type="coil.ImageLoader" />
     </data>
 
     <com.google.android.material.carousel.MaskableFrameLayout
@@ -26,6 +29,7 @@
             android:layout_height="match_parent"
             android:scaleType="centerCrop"
             app:imageUrl="@{waifu.url}"
+            app:imageLoader="@{imageLoader}"
             tools:src="@tools:sample/backgrounds/scenic" />
     </com.google.android.material.carousel.MaskableFrameLayout>
 </layout>

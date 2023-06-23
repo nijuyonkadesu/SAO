@@ -19,6 +19,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import one.njk.sao.adapters.CarouselAdapter
@@ -29,6 +30,7 @@ import one.njk.sao.viewmodels.ArtsViewModel
 /**
  * A simple [Fragment] subclass as the default destination in the navigation.
  */
+@AndroidEntryPoint
 class CarouselFragment : Fragment(), MenuProvider {
 
     private var _binding: FragmentCarouselBinding? = null
@@ -48,7 +50,7 @@ class CarouselFragment : Fragment(), MenuProvider {
         menuHost.addMenuProvider( this, viewLifecycleOwner, Lifecycle.State.RESUMED)
         _binding = FragmentCarouselBinding.inflate(inflater, container, false)
 
-        val adapter = CarouselAdapter()
+        val adapter = CarouselAdapter(viewModel.imageLoader)
         _binding!!.apply {
             lifecycleOwner = viewLifecycleOwner
             artsViewModel = viewModel
