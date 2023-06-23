@@ -1,6 +1,5 @@
 package one.njk.sao
 
-import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -15,12 +14,12 @@ import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import one.njk.sao.adapters.CarouselAdapter
 import one.njk.sao.databinding.FragmentCarouselBinding
@@ -51,6 +50,9 @@ class CarouselFragment : Fragment(), MenuProvider {
 
         val adapter = CarouselAdapter()
         _binding!!.apply {
+            lifecycleOwner = viewLifecycleOwner
+            artsViewModel = viewModel
+
             bottomAppBar.setOnMenuItemClickListener {
                 when(it.itemId){
                     R.id.bookmark -> {
@@ -80,40 +82,52 @@ class CarouselFragment : Fragment(), MenuProvider {
                 focusedChild?.performClick()
             }
             carouselRecyclerView.adapter = adapter
+            subscribeUi(adapter)
             carouselRecyclerView.addOnScrollListener(
                 OnScrollListener(lifecycleScope, adapter, viewModel.waifuList)
             )
-            addCategoryChips(categories, viewModel.sfwCategories)
-        }
-        lifecycleScope.launch {
-            subscribeUi(adapter)
+            viewModel.availableCategories.observe(viewLifecycleOwner){
+                addCategoryChips(categories, it, lifecycleScope)
+            }
         }
         return binding.root
 
     }
-    private fun addCategoryChips(chipGroup: ChipGroup, categories: List<String>){
+    private fun addCategoryChips(
+        chipGroup: ChipGroup,
+        categories: List<String>,
+        lifeCycleScope: CoroutineScope,
+    ){
+        // Define ChipGroup Behaviours
         chipGroup.apply {
+            removeAllViews()
             isSelectionRequired = true
             isSingleSelection = true
-            setOnCheckedStateChangeListener(
-                OnCheckChangeListener(context)
-            )
         }
+
+        // Generate Chip based on chosen Category (SFW/NSFW)
         for(category in categories){
             val chip = Chip(this.context)
             chip.apply {
                 text = category
                 isCheckable = true
-                if(category == "waifu") isChecked = true
                 setOnClickListener {
-                    Toast.makeText(context, category, Toast.LENGTH_SHORT).show()
+                    viewModel.updateType(category)
+                    lifeCycleScope.launch {
+                        _binding?.carouselRecyclerView?.smoothScrollToPosition(0)
+                    }
                 }
             }
+
             chipGroup.addView(chip)
+            lifeCycleScope.launch {
+                // Check 1st Chip by default
+                chipGroup.getChildAt(0).performClick()
+            }
         }
     }
-    private suspend fun subscribeUi(adapter: CarouselAdapter) {
-        viewModel.waifuList.collect {
+    private fun subscribeUi(adapter: CarouselAdapter) {
+        viewModel.waifuList.observe(viewLifecycleOwner) {
             adapter.submitList(it)
         }
     }
@@ -147,27 +161,9 @@ class CarouselFragment : Fragment(), MenuProvider {
 class OnScrollListener(
     private val lifeCycleScope: CoroutineScope,
     private val adapter: CarouselAdapter,
-    private val waifuList: Flow<MutableList<Waifu>>
+    private val waifuList: LiveData<List<Waifu>>
     ): RecyclerView.OnScrollListener() {
     override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
         super.onScrolled(recyclerView, dx, dy)
-
-        lifeCycleScope.launch {
-            waifuList.collect {
-                adapter.submitList(it)
-            }
-        }
     }
-}
-
-// Chip State Listener
-class OnCheckChangeListener(
-    val context: Context
-): ChipGroup.OnCheckedStateChangeListener {
-    override fun onCheckedChanged(group: ChipGroup, checkedIds: MutableList<Int>) {
-        // CheckedId starts with value 1
-        // TODO: ViewModel Functionality to swap sources
-        Toast.makeText(context, checkedIds.toString(), Toast.LENGTH_SHORT).show()
-    }
-
 }
