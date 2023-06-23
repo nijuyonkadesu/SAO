@@ -1,54 +1,88 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <androidx.core.widget.NestedScrollView
+    <data>
+        <variable
+            name="artsViewModel"
+            type="one.njk.sao.viewmodels.ArtsViewModel" />
+    </data>
+
+    <androidx.coordinatorlayout.widget.CoordinatorLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        tools:context=".CarouselFragment">
+        android:layout_height="match_parent">
 
-        <androidx.constraintlayout.widget.ConstraintLayout
+        <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:padding="16dp">
+            tools:context=".CarouselFragment">
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/carousel_recycler_view"
+            <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
-                android:layout_height="450dp"
-                android:clipChildren="false"
-                android:clipToPadding="false"
-                app:layoutManager="com.google.android.material.carousel.CarouselLayoutManager"
+                android:layout_height="match_parent"
+                android:padding="16dp">
 
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent"
+                <TextView
+                    android:id="@+id/type"
+                    android:drawableStart="@drawable/sparkle"
+                    app:drawableTint="@color/material_dynamic_primary30"
+                    android:drawablePadding="8dp"
 
-                tools:itemCount="3"
-                tools:listitem="@layout/carousel_view_waifu" />
-        </androidx.constraintlayout.widget.ConstraintLayout>
-    </androidx.core.widget.NestedScrollView>
+                    android:text="@{@string/collection(artsViewModel.displayType)}"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clickable="true"
+                    android:onClick="@{()->artsViewModel.toggleType()}"
+                    style="@style/TextAppearance.Material3.TitleLarge"
+                    app:layout_constraintTop_toTopOf="parent"
+                    tools:text="SFW"/>
 
-    <com.google.android.material.bottomappbar.BottomAppBar
-        android:id="@+id/bottomAppBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        style="@style/Widget.Material3.BottomAppBar"
-        app:menu="@menu/bottom_app_bar"
-        app:hideOnScroll="true"
-        />
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/share"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        app:srcCompat="@drawable/share"
-        app:layout_anchor="@id/bottomAppBar"
-        />
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/carousel_recycler_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="450dp"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    app:layoutManager="com.google.android.material.carousel.CarouselLayoutManager"
 
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/type"
+                    android:layout_marginTop="8dp"
+
+                    tools:itemCount="3"
+                    tools:listitem="@layout/carousel_view_waifu" />
+
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/categories"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingTop="8dp"
+                    app:chipSpacingVertical="4dp"
+                    app:layout_constraintTop_toBottomOf="@id/carousel_recycler_view"
+                    app:layout_constraintStart_toStartOf="parent">
+
+                </com.google.android.material.chip.ChipGroup>
+            </androidx.constraintlayout.widget.ConstraintLayout>
+        </androidx.core.widget.NestedScrollView>
+
+        <com.google.android.material.bottomappbar.BottomAppBar
+            android:id="@+id/bottomAppBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            style="@style/Widget.Material3.BottomAppBar"
+            app:menu="@menu/bottom_app_bar"
+            app:hideOnScroll="true" />
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/share"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:srcCompat="@drawable/share"
+            app:layout_anchor="@id/bottomAppBar" />
+
+    </androidx.coordinatorlayout.widget.CoordinatorLayout>
+</layout>
