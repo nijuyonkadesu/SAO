@@ -50,7 +50,7 @@ class CarouselFragment : Fragment(), MenuProvider {
         menuHost.addMenuProvider( this, viewLifecycleOwner, Lifecycle.State.RESUMED)
         _binding = FragmentCarouselBinding.inflate(inflater, container, false)
 
-        val adapter = CarouselAdapter(viewModel.imageLoader)
+        val adapter = CarouselAdapter(viewModel.imageLoader, requireContext(), lifecycleScope)
         _binding!!.apply {
             lifecycleOwner = viewLifecycleOwner
             artsViewModel = viewModel
