@@ -34,6 +34,9 @@ import one.njk.sao.viewmodels.ArtsViewModel
 class CarouselFragment : Fragment(), MenuProvider {
 
     private var _binding: FragmentCarouselBinding? = null
+    enum class OperatingMode {
+        SHARE, DOWNLOAD
+    }
 
     // This property is only valid between onCreateView and
     // onDestroyView.
@@ -63,15 +66,24 @@ class CarouselFragment : Fragment(), MenuProvider {
                         true
                     }
                     R.id.download -> {
-                        Toast.makeText(context, "download", Toast.LENGTH_SHORT).show()
-                        // TODO: Replace with viewmodel download with URI intent
+                        // No API is exposed to find the current focused child in CarouselLayoutManager
+                        val displayMetrics = resources.displayMetrics
+                        val x = displayMetrics.widthPixels / 2.3f
+                        val y = displayMetrics.heightPixels / 3f
+
+                        Log.d("screen", "${displayMetrics.widthPixels} -> $x")
+
+                        val focusedChild = carouselRecyclerView.findChildViewUnder(x, y)
+                        // Since same callback is used for both download and share
+                        operatingMode = OperatingMode.DOWNLOAD
+                        focusedChild?.performClick()
                         true
                     }
                     else -> false
                 }
             }
             share.setOnClickListener {
-                // Get the screen size
+                // No API was exposed to find the current focused child with Carousel View
                 val displayMetrics = resources.displayMetrics
                 val x = displayMetrics.widthPixels / 2.3f
                 val y = displayMetrics.heightPixels / 3f
@@ -79,10 +91,12 @@ class CarouselFragment : Fragment(), MenuProvider {
                 Log.d("screen", "${displayMetrics.widthPixels} -> $x")
                 // TODO: This pixel calculation might break in other DPI setting than default
 
-                // Find the child view based on x and y pixel values
                 val focusedChild = carouselRecyclerView.findChildViewUnder(x, y)
+                // Since same callback is used for both download and share
+                operatingMode = OperatingMode.SHARE
                 focusedChild?.performClick()
             }
+
             carouselRecyclerView.adapter = adapter
             subscribeUi(adapter)
             carouselRecyclerView.addOnScrollListener(

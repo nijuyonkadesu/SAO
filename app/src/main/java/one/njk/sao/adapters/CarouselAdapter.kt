@@ -9,6 +9,8 @@ import android.provider.MediaStore
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -16,8 +18,10 @@ import coil.ImageLoader
 import coil.annotation.ExperimentalCoilApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import one.njk.sao.CarouselFragment
 import one.njk.sao.databinding.CarouselViewWaifuBinding
 import one.njk.sao.models.Waifu
+import one.njk.sao.operatingMode
 import java.io.File
 import java.io.OutputStream
 
@@ -60,18 +64,40 @@ class CarouselAdapter(
                             Log.d("url", file.length().toString())
                             it.close()
 
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "image/*"
-                                val uri = uriFromFile(file, waifu.url)
-                                putExtra(Intent.EXTRA_STREAM, uri)
+                            if(operatingMode == CarouselFragment.OperatingMode.SHARE) {
+                                val uri = uriFromCacheDir(file, waifu.url)
+                                launchShareIntent(uri)
                             }
-                            context.startActivity(Intent.createChooser(shareIntent, "Share Image"))
+                            else {
+                                saveToPicturesDir(file, waifu.url)
+                                Toast.makeText(context, "Downloaded", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 }
             }
+        fun launchShareIntent(uri: Uri){
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/*"
+                putExtra(Intent.EXTRA_STREAM, uri)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Share Image"))
+        }
 
-        fun uriFromFile(file: File, url: String): Uri {
+        fun uriFromCacheDir(file: File, url: String): Uri{
+            val filename = getFilename(url)
+            val ext = getFileExtension(url)
+            val shareDir = File(context.cacheDir, "share_cache")
+
+            val path = file.copyTo(
+                File(shareDir,
+                    "$filename.$ext"),
+                true)
+
+            return FileProvider.getUriForFile(context, "one.njk.sao.fileprovider",path)
+        }
+
+        fun saveToPicturesDir(file: File, url: String) {
             val filename = getFilename(url)
             val ext = getFileExtension(url)
 
@@ -97,14 +123,11 @@ class CarouselAdapter(
                 fos = imageUri?.let { resolver.openOutputStream(it) }
             }
 
-            // TODO: Use FileProvider and avoid saving file when sharing
             fos?.write(file.readBytes())
 
             contentValues.clear()
             contentValues.put(MediaStore.Video.Media.IS_PENDING, 0)
             context.contentResolver.update(imageUri!!, contentValues, null, null)
-
-            return imageUri!!
         }
         fun getFilename(url: String): String {
             val endpoint = url.split('.')
