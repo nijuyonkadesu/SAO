@@ -1,10 +1,14 @@
 package one.njk.sao.di
 
+import android.content.Context
+import coil.ImageLoader
+import coil.decode.ImageDecoderDecoder
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import one.njk.sao.network.WaifuApiService
 import retrofit2.Retrofit
@@ -34,5 +38,19 @@ object AppModule {
             .build()
 
         return retrofit.create(WaifuApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideImageLoader(
+        @ApplicationContext context: Context
+    ): ImageLoader {
+        // customizing add GIF Decoder
+        val imageLoader = ImageLoader.Builder(context)
+            .components {
+                add(ImageDecoderDecoder.Factory())
+            }.build()
+
+        return imageLoader
     }
 }

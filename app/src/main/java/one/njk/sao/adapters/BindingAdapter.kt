@@ -3,14 +3,11 @@ package one.njk.sao.adapters
 import android.widget.ImageView
 import androidx.core.net.toUri
 import androidx.databinding.BindingAdapter
-import coil.imageLoader
+import coil.ImageLoader
 import coil.request.ImageRequest
 
-@BindingAdapter("imageUrl")
-fun bindImage(imgView: ImageView, imgUrl: String?) {
-
-    // Custom ImageLoader with GIF support obtained from factory class
-    val imageLoader = imgView.context.imageLoader
+@BindingAdapter("imageUrl", "imageLoader")
+fun bindImage(imgView: ImageView, imgUrl: String?, imageLoader: ImageLoader) {
 
     if(!imgUrl.isNullOrEmpty()){
         val imgUri = imgUrl.toUri().buildUpon().scheme("https").build()

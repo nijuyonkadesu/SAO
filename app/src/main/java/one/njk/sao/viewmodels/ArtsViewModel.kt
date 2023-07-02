@@ -5,6 +5,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
+import coil.ImageLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -57,7 +58,8 @@ val nsfwCategories = listOf("waifu", "neko", "trap", "blowjob")
 
 @HiltViewModel
 class ArtsViewModel @Inject constructor(
-    private val waifuApiService: WaifuApiService
+    private val waifuApiService: WaifuApiService,
+    val imageLoader: ImageLoader
 ) : ViewModel() {
     // TODO: 0 handle network disconnect crash
     // TODO: 3 Survive process deaths (using savedstate handle & lifecycle methods)
