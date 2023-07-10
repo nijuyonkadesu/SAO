@@ -21,8 +21,5 @@ fun bindImage(imgView: ImageView, imgUrl: String?, imageLoader: ImageLoader) {
                 .placeholder(R.drawable.eager)
                 .build()
         )
-        // TODO: Have placeholders and optional transformers
     }
 }
-
-// TODO: Error || Loading animation

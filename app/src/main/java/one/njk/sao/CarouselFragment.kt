@@ -47,11 +47,16 @@ class CarouselFragment : Fragment(), MenuProvider {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
+        _binding = FragmentCarouselBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
 
         // Menu Provider method: https://stackoverflow.com/questions/71917856/sethasoptionsmenuboolean-unit-is-deprecated-deprecated-in-java
         val menuHost: MenuHost = requireActivity()
-        menuHost.addMenuProvider( this, viewLifecycleOwner, Lifecycle.State.RESUMED)
-        _binding = FragmentCarouselBinding.inflate(inflater, container, false)
+        menuHost.addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.RESUMED)
 
         val adapter = CarouselAdapter(viewModel.imageLoader, requireContext(), lifecycleScope)
         _binding!!.apply {
@@ -107,9 +112,8 @@ class CarouselFragment : Fragment(), MenuProvider {
                 addCategoryChips(categories, it, lifecycleScope)
             }
         }
-        return binding.root
-
     }
+
     private fun addCategoryChips(
         chipGroup: ChipGroup,
         categories: List<String>,

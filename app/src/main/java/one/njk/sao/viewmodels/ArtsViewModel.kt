@@ -62,7 +62,6 @@ class ArtsViewModel @Inject constructor(
     private val waifuRepository: WaifuApiRepository,
     val imageLoader: ImageLoader
 ) : ViewModel() {
-    // TODO: 0 handle network disconnect crash
     // TODO: 3 Survive process deaths (using savedstate handle & lifecycle methods)
     // TODO: 4 write Proguard (for type / class preservation)
     private val waifus = mutableListOf<Waifu>()
