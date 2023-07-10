@@ -10,6 +10,8 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import one.njk.sao.data.WaifuApiRepository
+import one.njk.sao.data.WaifuApiRepositoryImpl
 import one.njk.sao.network.WaifuApiService
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -52,5 +54,11 @@ object AppModule {
             }.build()
 
         return imageLoader
+    }
+
+    @Provides
+    @Singleton
+    fun provideWaifuRepository(api: WaifuApiService): WaifuApiRepository {
+        return WaifuApiRepositoryImpl(api)
     }
 }

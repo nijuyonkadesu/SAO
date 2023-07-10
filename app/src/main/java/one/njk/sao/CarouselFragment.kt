@@ -88,7 +88,8 @@ class CarouselFragment : Fragment(), MenuProvider {
                 val x = displayMetrics.widthPixels / 2.3f
                 val y = displayMetrics.heightPixels / 3f
 
-                Log.d("screen", "${displayMetrics.widthPixels} -> $x")
+                if(BuildConfig.DEBUG)
+                    Log.d("screen", "${displayMetrics.widthPixels} -> $x")
                 // TODO: This pixel calculation might break in other DPI setting than default
 
                 val focusedChild = carouselRecyclerView.findChildViewUnder(x, y)
