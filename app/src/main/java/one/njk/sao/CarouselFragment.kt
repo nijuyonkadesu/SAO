@@ -47,11 +47,16 @@ class CarouselFragment : Fragment(), MenuProvider {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
+        _binding = FragmentCarouselBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
 
         // Menu Provider method: https://stackoverflow.com/questions/71917856/sethasoptionsmenuboolean-unit-is-deprecated-deprecated-in-java
         val menuHost: MenuHost = requireActivity()
-        menuHost.addMenuProvider( this, viewLifecycleOwner, Lifecycle.State.RESUMED)
-        _binding = FragmentCarouselBinding.inflate(inflater, container, false)
+        menuHost.addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.RESUMED)
 
         val adapter = CarouselAdapter(viewModel.imageLoader, requireContext(), lifecycleScope)
         _binding!!.apply {
@@ -88,7 +93,8 @@ class CarouselFragment : Fragment(), MenuProvider {
                 val x = displayMetrics.widthPixels / 2.3f
                 val y = displayMetrics.heightPixels / 3f
 
-                Log.d("screen", "${displayMetrics.widthPixels} -> $x")
+                if(BuildConfig.DEBUG)
+                    Log.d("screen", "${displayMetrics.widthPixels} -> $x")
                 // TODO: This pixel calculation might break in other DPI setting than default
 
                 val focusedChild = carouselRecyclerView.findChildViewUnder(x, y)
@@ -106,9 +112,8 @@ class CarouselFragment : Fragment(), MenuProvider {
                 addCategoryChips(categories, it, lifecycleScope)
             }
         }
-        return binding.root
-
     }
+
     private fun addCategoryChips(
         chipGroup: ChipGroup,
         categories: List<String>,

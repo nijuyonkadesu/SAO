@@ -15,9 +15,10 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import one.njk.sao.BuildConfig
+import one.njk.sao.data.WaifuApiRepository
 import one.njk.sao.models.ConfigState
 import one.njk.sao.models.Waifu
-import one.njk.sao.network.WaifuApiService
 import javax.inject.Inject
 
 enum class CategoryType { SFW, NSFW }
@@ -58,10 +59,9 @@ val nsfwCategories = listOf("waifu", "neko", "trap", "blowjob")
 
 @HiltViewModel
 class ArtsViewModel @Inject constructor(
-    private val waifuApiService: WaifuApiService,
+    private val waifuRepository: WaifuApiRepository,
     val imageLoader: ImageLoader
 ) : ViewModel() {
-    // TODO: 0 handle network disconnect crash
     // TODO: 3 Survive process deaths (using savedstate handle & lifecycle methods)
     // TODO: 4 write Proguard (for type / class preservation)
     private val waifus = mutableListOf<Waifu>()
@@ -86,14 +86,14 @@ class ArtsViewModel @Inject constructor(
     val waifuList: LiveData<List<Waifu>> = configState.flatMapLatest { state ->
 
         cleanListIfNeeded(state)
+        if(BuildConfig.DEBUG)
+            Log.d("url", "${state.type}, ${state.category}")
 
-        Log.d("url", "${state.type}, ${state.category}")
-        val freshWaifus = waifuApiService.getWaifus(
-            type = state.type,
-            category = state.category,
-            exclude = listOf("nsfw")
-        ).files.map { Waifu(it) }
-        waifus.addAll(freshWaifus)
+        val freshWaifus = waifuRepository.getWaifus(state.type, state.category, listOf("nsfw")).data
+
+        freshWaifus?.let {
+            waifus.addAll(it)
+        }
         // technically, the files you've seen already can be send here as exclude,
         // so that you'll never see those files again... but... ah, it grows too big soon
 
