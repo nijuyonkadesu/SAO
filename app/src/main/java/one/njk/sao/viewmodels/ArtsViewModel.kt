@@ -5,20 +5,24 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
+import androidx.lifecycle.viewModelScope
 import coil.ImageLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import one.njk.sao.BuildConfig
 import one.njk.sao.data.WaifuApiRepository
 import one.njk.sao.models.ConfigState
 import one.njk.sao.models.Waifu
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
 enum class CategoryType { SFW, NSFW }
@@ -71,7 +75,7 @@ class ArtsViewModel @Inject constructor(
 
     // Type & Category state
     val configState = MutableStateFlow(
-        ConfigState(CategoryType.SFW, "waifu"))
+        ConfigState(CategoryType.SFW, "waifu", 1))
 
     // Previously chosen values
     private var _previousType = CategoryType.SFW
@@ -82,14 +86,16 @@ class ArtsViewModel @Inject constructor(
         it.type.uppercase()
     }.asLiveData()
 
+    private var broJustNowICalled = AtomicBoolean(false)
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val waifuList: LiveData<List<Waifu>> = configState.flatMapLatest { state ->
 
         cleanListIfNeeded(state)
-        if(BuildConfig.DEBUG)
-            Log.d("url", "${state.type}, ${state.category}")
 
         val freshWaifus = waifuRepository.getWaifus(state.type, state.category, listOf("nsfw")).data
+        if(BuildConfig.DEBUG)
+            Log.d("url", "${state.type}, ${state.category}, items: ${freshWaifus?.size}")
 
         freshWaifus?.let {
             waifus.addAll(it)
@@ -133,6 +139,22 @@ class ArtsViewModel @Inject constructor(
         } else if(_previousType != state.categoryType) {
             _previousType = state.categoryType
             waifus.clear()
+        }
+    }
+
+    fun getNextSetOfWaifus(){
+        if(!broJustNowICalled.get()){
+            broJustNowICalled.set(true)
+            configState.value = configState.value.copy(page = configState.value.page + 1)
+            if(BuildConfig.DEBUG)
+                Log.d("url", "Requesting New Waifus!")
+            calmDownBro()
+        }
+    }
+    private fun calmDownBro(){
+        viewModelScope.launch {
+            delay(3000)
+            broJustNowICalled.set(false)
         }
     }
 }
