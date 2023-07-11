@@ -5,6 +5,7 @@ import one.njk.sao.viewmodels.CategoryType
 data class ConfigState(
     val categoryType: CategoryType,
     val category: String,
+    val page: Int
 ){
     val type
     get() = when(categoryType){

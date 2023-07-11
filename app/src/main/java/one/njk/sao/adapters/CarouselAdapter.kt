@@ -18,21 +18,25 @@ import coil.ImageLoader
 import coil.annotation.ExperimentalCoilApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import one.njk.sao.BuildConfig
 import one.njk.sao.CarouselFragment
 import one.njk.sao.databinding.CarouselViewWaifuBinding
 import one.njk.sao.models.Waifu
 import one.njk.sao.operatingMode
 import java.io.File
 import java.io.OutputStream
+import kotlin.math.max
 
 class CarouselAdapter(
     val imageLoader: ImageLoader,
     val context: Context,
-    val lifecycleScope: CoroutineScope
+    val lifecycleScope: CoroutineScope,
+    val inHousePagination: (Int) -> Unit
 ): ListAdapter<Waifu, CarouselAdapter.WaifuViewHolder>(DiffCallback) {
 
     // List Adapter makes uses of this to choose whether to update an item in a list
     companion object DiffCallback : DiffUtil.ItemCallback<Waifu>() {
+        var maxLoadedItem = 0
         override fun areItemsTheSame(oldItem: Waifu, newItem: Waifu): Boolean {
             return oldItem.id == newItem.id
         }
@@ -56,24 +60,27 @@ class CarouselAdapter(
                     executePendingBindings()
                 }
                 binding.carouselItemContainer.setOnClickListener {
-                    lifecycleScope.launch {
-                        Log.d("url", waifu.url)
+                    if(operatingMode != CarouselFragment.OperatingMode.IGNORE)
+                        lifecycleScope.launch {
+                            if(BuildConfig.DEBUG)
+                                Log.d("url", waifu.url)
 
-                        imageLoaderHilt.diskCache!!.openSnapshot(waifu.url)?.let {
-                            val file = it.data.toFile()
-                            Log.d("url", file.length().toString())
-                            it.close()
+                            imageLoaderHilt.diskCache!!.openSnapshot(waifu.url)?.let {
+                                val file = it.data.toFile()
+                                if(BuildConfig.DEBUG)
+                                    Log.d("url", file.length().toString())
+                                it.close()
 
-                            if(operatingMode == CarouselFragment.OperatingMode.SHARE) {
-                                val uri = uriFromCacheDir(file, waifu.url)
-                                launchShareIntent(uri)
-                            }
-                            else {
-                                saveToPicturesDir(file, waifu.url)
-                                Toast.makeText(context, "Downloaded", Toast.LENGTH_SHORT).show()
+                                if(operatingMode == CarouselFragment.OperatingMode.SHARE) {
+                                    val uri = uriFromCacheDir(file, waifu.url)
+                                    launchShareIntent(uri)
+                                }
+                                else {
+                                    saveToPicturesDir(file, waifu.url)
+                                    Toast.makeText(context, "Downloaded", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }
-                    }
                 }
             }
         fun launchShareIntent(uri: Uri){
@@ -151,5 +158,14 @@ class CarouselAdapter(
     override fun onBindViewHolder(holder: WaifuViewHolder, position: Int) {
         val waifu = getItem(position)
         holder.bind(waifu)
+
+        // Reset max on changing category
+        if(position == 0) maxLoadedItem = 0
+
+        maxLoadedItem = max(position, maxLoadedItem)
+        inHousePagination(maxLoadedItem)
+
+        if(BuildConfig.DEBUG)
+            Log.d("url", "Max Loaded position: $position")
     }
 }
