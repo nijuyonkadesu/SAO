@@ -5,7 +5,7 @@ import com.google.android.material.color.DynamicColors
 import dagger.hilt.android.HiltAndroidApp
 
 @Volatile
-lateinit var operatingMode: CarouselFragment.OperatingMode
+var operatingMode = CarouselFragment.OperatingMode.IGNORE
 @HiltAndroidApp
 class SaoApplication: Application() {
     override fun onCreate() {

@@ -14,9 +14,7 @@ import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LiveData
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import dagger.hilt.android.AndroidEntryPoint
@@ -24,7 +22,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import one.njk.sao.adapters.CarouselAdapter
 import one.njk.sao.databinding.FragmentCarouselBinding
-import one.njk.sao.models.Waifu
 import one.njk.sao.viewmodels.ArtsViewModel
 
 /**
@@ -35,7 +32,8 @@ class CarouselFragment : Fragment(), MenuProvider {
 
     private var _binding: FragmentCarouselBinding? = null
     enum class OperatingMode {
-        SHARE, DOWNLOAD
+        // IGNORE is to prevent actions when pressed directly on the image
+        SHARE, DOWNLOAD, IGNORE
     }
 
     // This property is only valid between onCreateView and
@@ -58,7 +56,10 @@ class CarouselFragment : Fragment(), MenuProvider {
         val menuHost: MenuHost = requireActivity()
         menuHost.addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.RESUMED)
 
-        val adapter = CarouselAdapter(viewModel.imageLoader, requireContext(), lifecycleScope)
+        val adapter = CarouselAdapter(viewModel.imageLoader, requireContext(), lifecycleScope) { end ->
+            inHousePagination(end)
+        }
+
         _binding!!.apply {
             lifecycleOwner = viewLifecycleOwner
             artsViewModel = viewModel
@@ -76,12 +77,14 @@ class CarouselFragment : Fragment(), MenuProvider {
                         val x = displayMetrics.widthPixels / 2.3f
                         val y = displayMetrics.heightPixels / 3f
 
-                        Log.d("screen", "${displayMetrics.widthPixels} -> $x")
+                        if(BuildConfig.DEBUG)
+                            Log.d("screen", "${displayMetrics.widthPixels} -> $x")
 
                         val focusedChild = carouselRecyclerView.findChildViewUnder(x, y)
                         // Since same callback is used for both download and share
                         operatingMode = OperatingMode.DOWNLOAD
                         focusedChild?.performClick()
+                        operatingMode = OperatingMode.IGNORE
                         true
                     }
                     else -> false
@@ -101,19 +104,22 @@ class CarouselFragment : Fragment(), MenuProvider {
                 // Since same callback is used for both download and share
                 operatingMode = OperatingMode.SHARE
                 focusedChild?.performClick()
+                operatingMode = OperatingMode.IGNORE
             }
 
             carouselRecyclerView.adapter = adapter
             subscribeUi(adapter)
-            carouselRecyclerView.addOnScrollListener(
-                OnScrollListener(lifecycleScope, adapter, viewModel.waifuList)
-            )
+
             viewModel.availableCategories.observe(viewLifecycleOwner){
                 addCategoryChips(categories, it, lifecycleScope)
             }
         }
     }
-
+    private fun inHousePagination(maxLoadedItem: Int){
+        if((maxLoadedItem + 3) % 30 == 0){
+            viewModel.getNextSetOfWaifus()
+        }
+    }
     private fun addCategoryChips(
         chipGroup: ChipGroup,
         categories: List<String>,
@@ -176,15 +182,4 @@ class CarouselFragment : Fragment(), MenuProvider {
                 else -> false
             }
         }
-}
-
-// Manual paging - infinite scroll - just refresh when you reach the end
-class OnScrollListener(
-    private val lifeCycleScope: CoroutineScope,
-    private val adapter: CarouselAdapter,
-    private val waifuList: LiveData<List<Waifu>>
-    ): RecyclerView.OnScrollListener() {
-    override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-        super.onScrolled(recyclerView, dx, dy)
-    }
 }
