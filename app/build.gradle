@@ -27,6 +27,12 @@ android {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        prerelease {
+            // Testing configuration
+            debuggable true
+            minifyEnabled true // Disable minification for easier debugging
+            applicationIdSuffix ".testing" // Add a suffix to the application ID for differentiation
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
