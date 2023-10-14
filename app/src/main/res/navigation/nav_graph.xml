@@ -3,10 +3,21 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/nav_graph"
-    app:startDestination="@id/FirstFragment">
+    app:startDestination="@id/homeFragment">
 
     <fragment
-        android:id="@+id/FirstFragment"
+        android:id="@+id/homeFragment"
         android:name="one.njk.sao.CarouselFragment"
-        tools:layout="@layout/fragment_carousel"/>
+        tools:layout="@layout/fragment_carousel">
+        <action
+            android:id="@+id/action_HomeFragment_to_settingsFragment"
+            app:destination="@id/settingsFragment"
+            app:launchSingleTop="true"
+            app:popUpTo="@id/nav_graph" />
+    </fragment>
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="one.njk.sao.SettingsFragment"
+        android:label="Settings"
+        tools:layout="@layout/fragment_settings"/>
 </navigation>

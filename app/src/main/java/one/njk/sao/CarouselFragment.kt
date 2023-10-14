@@ -15,6 +15,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import dagger.hilt.android.AndroidEntryPoint
@@ -175,8 +176,8 @@ class CarouselFragment : Fragment(), MenuProvider {
                     true
                 }
                 R.id.settings -> {
-                    Toast.makeText(context, "settings", Toast.LENGTH_SHORT).show()
-                    // TODO: maybe, this has to be handled using Navigation listener
+                    Log.d("Nav", "movin ~")
+                    findNavController().navigate(CarouselFragmentDirections.actionHomeFragmentToSettingsFragment())
                     true
                 }
                 else -> false

@@ -25,7 +25,6 @@
 
                 <TextView
                     android:id="@+id/type"
-                    android:drawableStart="@drawable/sparkle"
                     app:drawableTint="@color/material_dynamic_primary30"
                     android:drawablePadding="8dp"
 
@@ -36,7 +35,8 @@
                     android:onClick="@{()->artsViewModel.toggleType()}"
                     style="@style/TextAppearance.Material3.TitleLarge"
                     app:layout_constraintTop_toTopOf="parent"
-                    tools:text="SFW"/>
+                    tools:text="SFW"
+                    app:drawableStartCompat="@drawable/sparkle" />
 
 
                 <androidx.recyclerview.widget.RecyclerView
@@ -45,6 +45,7 @@
                     android:layout_height="450dp"
                     android:clipChildren="false"
                     android:clipToPadding="false"
+                    android:orientation="horizontal"
                     app:layoutManager="com.google.android.material.carousel.CarouselLayoutManager"
 
                     app:layout_constraintEnd_toEndOf="parent"
