@@ -81,6 +81,8 @@ class ArtsViewModel @Inject constructor(
     private var _previousType = CategoryType.SFW
     private var _previousCategory = "waifu"
 
+    // Chip index offset to properly select previously chosen chip
+    var chipIndexOffset = 0
     val displayType
     get() = configState.map {
         it.type.uppercase()
@@ -106,12 +108,14 @@ class ArtsViewModel @Inject constructor(
         flowOf(waifus.toList()).flowOn(Dispatchers.Default).conflate()
     }.asLiveData()
 
-    fun updateType(category: String) {
+    fun updateType(category: String, offset: Int) {
+        chipIndexOffset = offset
         configState.value = configState.value.copy(
             category = category
         )
     }
     fun toggleType(){
+        chipIndexOffset = 0
         val categoryType = when(configState.value.categoryType){
             CategoryType.SFW -> {
                 _availableCategories.value = nsfwCategories
@@ -123,7 +127,8 @@ class ArtsViewModel @Inject constructor(
             }
         }
         configState.value = configState.value.copy(
-            categoryType = categoryType
+            categoryType = categoryType,
+            category = "waifu"
         )
     }
 

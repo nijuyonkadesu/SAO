@@ -61,7 +61,7 @@ class CarouselFragment : Fragment(), MenuProvider {
             inHousePagination(end)
         }
 
-        _binding!!.apply {
+        binding.apply {
             lifecycleOwner = viewLifecycleOwner
             artsViewModel = viewModel
 
@@ -116,6 +116,32 @@ class CarouselFragment : Fragment(), MenuProvider {
             }
         }
     }
+
+    override fun onDestroy() {
+        Log.d("crash", "killed")
+        super.onDestroy()
+    }
+
+    override fun onStop() {
+        Log.d("crash", "stopped")
+        super.onStop()
+    }
+
+    override fun onResume() {
+        Log.d("crash", "resume")
+        super.onResume()
+    }
+
+    override fun onMenuClosed(menu: Menu) {
+        Log.d("crash", "menu closed")
+        super.onMenuClosed(menu)
+    }
+
+    override fun onStart() {
+        Log.d("crash", "start?")
+        super.onStart()
+    }
+
     private fun inHousePagination(maxLoadedItem: Int){
         if((maxLoadedItem + 3) % 30 == 0){
             viewModel.getNextSetOfWaifus()
@@ -134,25 +160,21 @@ class CarouselFragment : Fragment(), MenuProvider {
         }
 
         // Generate Chip based on chosen Category (SFW/NSFW)
-        for(category in categories){
+        for((chipIndexOffset, category) in categories.withIndex()){
             val chip = Chip(this.context)
             chip.apply {
                 text = category
                 isCheckable = true
                 setOnClickListener {
-                    viewModel.updateType(category)
+                    viewModel.updateType(category, chipIndexOffset)
                     lifeCycleScope.launch {
                         _binding?.carouselRecyclerView?.smoothScrollToPosition(0)
                     }
                 }
             }
-
             chipGroup.addView(chip)
-            lifeCycleScope.launch {
-                // Check 1st Chip by default
-                chipGroup.getChildAt(0).performClick()
-            }
         }
+        chipGroup.check(chipGroup.getChildAt(0).id + viewModel.chipIndexOffset)
     }
     private fun subscribeUi(adapter: CarouselAdapter) {
         viewModel.waifuList.observe(viewLifecycleOwner) {

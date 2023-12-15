@@ -11,9 +11,7 @@
         tools:layout="@layout/fragment_carousel">
         <action
             android:id="@+id/action_HomeFragment_to_settingsFragment"
-            app:destination="@id/settingsFragment"
-            app:launchSingleTop="true"
-            app:popUpTo="@id/nav_graph" />
+            app:destination="@id/settingsFragment" />
     </fragment>
     <fragment
         android:id="@+id/settingsFragment"
