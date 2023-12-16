@@ -8,6 +8,7 @@
     <!-- Settings Page -->
     <string name="nsfw_mode">NSFW Mode</string>
     <string name="enabled">Enabled</string>
+    <string name="disabled">Disabled</string>
     <string name="export_list">Export List</string>
     <string name="nsfw_desc">Be cautious and move away if you have no idea on what this is all about</string>
     <string name="export">Export</string>

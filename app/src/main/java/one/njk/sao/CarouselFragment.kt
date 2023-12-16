@@ -117,31 +117,6 @@ class CarouselFragment : Fragment(), MenuProvider {
         }
     }
 
-    override fun onDestroy() {
-        Log.d("crash", "killed")
-        super.onDestroy()
-    }
-
-    override fun onStop() {
-        Log.d("crash", "stopped")
-        super.onStop()
-    }
-
-    override fun onResume() {
-        Log.d("crash", "resume")
-        super.onResume()
-    }
-
-    override fun onMenuClosed(menu: Menu) {
-        Log.d("crash", "menu closed")
-        super.onMenuClosed(menu)
-    }
-
-    override fun onStart() {
-        Log.d("crash", "start?")
-        super.onStart()
-    }
-
     private fun inHousePagination(maxLoadedItem: Int){
         if((maxLoadedItem + 3) % 30 == 0){
             viewModel.getNextSetOfWaifus()

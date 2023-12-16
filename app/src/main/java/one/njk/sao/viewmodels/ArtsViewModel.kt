@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import one.njk.sao.BuildConfig
 import one.njk.sao.data.WaifuApiRepository
+import one.njk.sao.database.SettingsDataStore
 import one.njk.sao.models.ConfigState
 import one.njk.sao.models.Waifu
 import java.util.concurrent.atomic.AtomicBoolean
@@ -64,7 +65,8 @@ val nsfwCategories = listOf("waifu", "neko", "trap", "blowjob")
 @HiltViewModel
 class ArtsViewModel @Inject constructor(
     private val waifuRepository: WaifuApiRepository,
-    val imageLoader: ImageLoader
+    val imageLoader: ImageLoader,
+    private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
     // TODO: 3 Survive process deaths (using savedstate handle & lifecycle methods)
     // TODO: 4 write Proguard (for type / class preservation)
@@ -115,6 +117,7 @@ class ArtsViewModel @Inject constructor(
         )
     }
     fun toggleType(){
+        if(nsfwMode.value == false) return
         chipIndexOffset = 0
         val categoryType = when(configState.value.categoryType){
             CategoryType.SFW -> {
@@ -160,6 +163,14 @@ class ArtsViewModel @Inject constructor(
         viewModelScope.launch {
             delay(3000)
             broJustNowICalled.set(false)
+        }
+    }
+
+    // ---------------- SETTINGS functions --------------------------------------
+    val nsfwMode = settingsDataStore.currentModeFlow().asLiveData()
+    fun toggleNsfwMode() {
+        viewModelScope.launch {
+            settingsDataStore.toggleMode()
         }
     }
 }

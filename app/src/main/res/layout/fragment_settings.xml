@@ -33,8 +33,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="end"
                 android:text="@string/enabled"
-                android:checkable="true"
-                tools:checked="true"/>
+                android:checkable="true"/>
 
         </FrameLayout>
 
