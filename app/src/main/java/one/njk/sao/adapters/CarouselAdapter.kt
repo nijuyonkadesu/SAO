@@ -31,7 +31,8 @@ class CarouselAdapter(
     val imageLoader: ImageLoader,
     val context: Context,
     val lifecycleScope: CoroutineScope,
-    val inHousePagination: (Int) -> Unit
+    val inHousePagination: (Int) -> Unit,
+    val bookmarkMe: (String) -> Unit
 ): ListAdapter<Waifu, CarouselAdapter.WaifuViewHolder>(DiffCallback) {
 
     // List Adapter makes uses of this to choose whether to update an item in a list
@@ -49,7 +50,8 @@ class CarouselAdapter(
         private val binding: CarouselViewWaifuBinding,
         val imageLoaderHilt: ImageLoader,
         val context: Context,
-        val lifecycleScope: CoroutineScope
+        val lifecycleScope: CoroutineScope,
+        val bookmarkMe: (String) -> Unit,
     ):
         RecyclerView.ViewHolder(binding.root) {
             @OptIn(ExperimentalCoilApi::class)
@@ -71,13 +73,19 @@ class CarouselAdapter(
                                     Log.d("url", file.length().toString())
                                 it.close()
 
-                                if(operatingMode == CarouselFragment.OperatingMode.SHARE) {
-                                    val uri = uriFromCacheDir(file, waifu.url)
-                                    launchShareIntent(uri)
-                                }
-                                else {
-                                    saveToPicturesDir(file, waifu.url)
-                                    Toast.makeText(context, "Downloaded", Toast.LENGTH_SHORT).show()
+                                when (operatingMode) {
+                                    CarouselFragment.OperatingMode.SHARE -> {
+                                        val uri = uriFromCacheDir(file, waifu.url)
+                                        launchShareIntent(uri)
+                                    }
+                                    CarouselFragment.OperatingMode.BOOKMARK -> {
+                                        Log.d("fav", "bookmarked: ${waifu.url}")
+                                        bookmarkMe(waifu.url)
+                                    }
+                                    else -> {
+                                        saveToPicturesDir(file, waifu.url)
+                                        Toast.makeText(context, "Downloaded", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             }
                         }
@@ -151,7 +159,8 @@ class CarouselAdapter(
             CarouselViewWaifuBinding.inflate(LayoutInflater.from(parent.context), parent, false),
             imageLoader,
             context,
-            lifecycleScope
+            lifecycleScope,
+            bookmarkMe,
         )
     }
 

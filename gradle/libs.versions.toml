@@ -20,6 +20,7 @@ retrofit = "2.9.0"
 moshi = "1.14.0"
 lifecycle = "2.6.2"
 datastore = "1.0.0"
+room = "2.6.1"
 
 [bundles]
 nav = ["nav-fragment", "nav-ui"]
@@ -54,6 +55,10 @@ androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayo
 androidx-test-ext = { module = "androidx.test.ext:junit", version.ref = "test-ext" }
 androidx-test-espresso = { module = "androidx.test.espresso:espresso-core", version.ref = "test-espresso" }
 junit = { module = "junit:junit", version.ref = "junit" }
+
+# ROOM
+room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 
 
 [plugins]

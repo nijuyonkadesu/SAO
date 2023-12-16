@@ -35,6 +35,7 @@ class SettingsFragment: Fragment() {
                 }
             }
             nsfwToggle.setOnClickListener { viewModel.toggleNsfwMode() }
+            exportingToggle.setOnClickListener { viewModel.exportFav() }
         }
     }
 }

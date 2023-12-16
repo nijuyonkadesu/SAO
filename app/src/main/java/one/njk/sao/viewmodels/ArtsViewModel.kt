@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import one.njk.sao.BuildConfig
 import one.njk.sao.data.WaifuApiRepository
+import one.njk.sao.database.Bookmark
+import one.njk.sao.database.BookmarksDao
 import one.njk.sao.database.SettingsDataStore
 import one.njk.sao.models.ConfigState
 import one.njk.sao.models.Waifu
@@ -66,7 +68,8 @@ val nsfwCategories = listOf("waifu", "neko", "trap", "blowjob")
 class ArtsViewModel @Inject constructor(
     private val waifuRepository: WaifuApiRepository,
     val imageLoader: ImageLoader,
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    private val bookmarksDao: BookmarksDao
 ) : ViewModel() {
     // TODO: 3 Survive process deaths (using savedstate handle & lifecycle methods)
     // TODO: 4 write Proguard (for type / class preservation)
@@ -173,4 +176,20 @@ class ArtsViewModel @Inject constructor(
             settingsDataStore.toggleMode()
         }
     }
+
+    // --------------- BOOKMARK functions ---------------------------------------
+    fun bookmark(url: String){
+        viewModelScope.launch(Dispatchers.IO) {
+            bookmarksDao.save(Bookmark(url))
+        }
+    }
+
+    fun exportFav(){
+        viewModelScope.launch(Dispatchers.IO) {
+            if(BuildConfig.DEBUG)
+                Log.d("fav", "${bookmarksDao.get()}")
+        }
+    }
+    // TODO : import & export to an external file
+    // TODO: maybe, move the download operation to viewmodel
 }

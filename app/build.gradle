@@ -68,4 +68,8 @@ dependencies {
     implementation libs.bundles.retrofit
     implementation libs.dagger.android
     kapt libs.dagger.compiler
+
+    // ROOM
+    implementation libs.room.ktx
+    kapt libs.room.compiler
 }
