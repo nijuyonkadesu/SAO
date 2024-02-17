@@ -1,6 +1,7 @@
 package one.njk.sao.di
 
 import android.content.Context
+import androidx.room.Room
 import coil.ImageLoader
 import coil.decode.ImageDecoderDecoder
 import com.squareup.moshi.Moshi
@@ -12,6 +13,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import one.njk.sao.data.WaifuApiRepository
 import one.njk.sao.data.WaifuApiRepositoryImpl
+import one.njk.sao.database.SaoDatabase
 import one.njk.sao.network.WaifuApiService
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -61,4 +63,16 @@ object AppModule {
     fun provideWaifuRepository(api: WaifuApiService): WaifuApiRepository {
         return WaifuApiRepositoryImpl(api)
     }
+
+    @Provides
+    @Singleton
+    fun provideDatabase(@ApplicationContext context: Context)
+            = Room.databaseBuilder(
+        context = context,
+        SaoDatabase::class.java, "sao"
+    ).fallbackToDestructiveMigration().build()
+
+    @Provides
+    @Singleton
+    fun provideBookmarksDao(db: SaoDatabase) = db.bookmarksDao
 }

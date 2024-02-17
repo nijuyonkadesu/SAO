@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    xmlns:tools="http://schemas.android.com/tools"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:padding="16dp">
+
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/nsfw"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <TextView
+                style="@style/TextAppearance.Material3.TitleMedium"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:text="@string/nsfw_mode"/>
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/nsfw_toggle"
+                style="@style/Widget.Material3.Chip.Filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:text="@string/enabled"
+                android:checkable="true"/>
+
+        </FrameLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/nsfw_desc" />
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/exporting"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/nsfw">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <TextView
+                style="@style/TextAppearance.Material3.TitleMedium"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:text="@string/export_list" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/exporting_toggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:text="@string/export" />
+
+        </FrameLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/exporting_desc" />
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/importing"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/exporting">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <TextView
+                style="@style/TextAppearance.Material3.TitleMedium"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:text="@string/import_list" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/importing_toggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:text="@string/importing" />
+
+        </FrameLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/importing_desc" />
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:id="@+id/language"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/importing">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <TextView
+                style="@style/TextAppearance.Material3.TitleMedium"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:text="@string/language" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/language_select"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:text="@string/english" />
+            <!--  TODO: https://stackoverflow.com/questions/67763539/how-to-make-material-chips-with-dropdown-list -->
+        </FrameLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/language_desc" />
+    </androidx.appcompat.widget.LinearLayoutCompat>
+
+    <androidx.appcompat.widget.LinearLayoutCompat
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="@id/language">
+
+        <TextView
+            style="@style/TextAppearance.Material3.TitleMedium"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:paddingVertical="8dp"
+            android:text="@string/about_sao" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/about_sao_desc" />
+    </androidx.appcompat.widget.LinearLayoutCompat>
+</androidx.constraintlayout.widget.ConstraintLayout>

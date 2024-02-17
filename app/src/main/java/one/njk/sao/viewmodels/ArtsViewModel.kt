@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import one.njk.sao.BuildConfig
 import one.njk.sao.data.WaifuApiRepository
+import one.njk.sao.database.Bookmark
+import one.njk.sao.database.BookmarksDao
+import one.njk.sao.database.SettingsDataStore
 import one.njk.sao.models.ConfigState
 import one.njk.sao.models.Waifu
 import java.util.concurrent.atomic.AtomicBoolean
@@ -64,7 +67,9 @@ val nsfwCategories = listOf("waifu", "neko", "trap", "blowjob")
 @HiltViewModel
 class ArtsViewModel @Inject constructor(
     private val waifuRepository: WaifuApiRepository,
-    val imageLoader: ImageLoader
+    val imageLoader: ImageLoader,
+    private val settingsDataStore: SettingsDataStore,
+    private val bookmarksDao: BookmarksDao
 ) : ViewModel() {
     // TODO: 3 Survive process deaths (using savedstate handle & lifecycle methods)
     // TODO: 4 write Proguard (for type / class preservation)
@@ -81,6 +86,8 @@ class ArtsViewModel @Inject constructor(
     private var _previousType = CategoryType.SFW
     private var _previousCategory = "waifu"
 
+    // Chip index offset to properly select previously chosen chip
+    var chipIndexOffset = 0
     val displayType
     get() = configState.map {
         it.type.uppercase()
@@ -106,12 +113,15 @@ class ArtsViewModel @Inject constructor(
         flowOf(waifus.toList()).flowOn(Dispatchers.Default).conflate()
     }.asLiveData()
 
-    fun updateType(category: String) {
+    fun updateType(category: String, offset: Int) {
+        chipIndexOffset = offset
         configState.value = configState.value.copy(
             category = category
         )
     }
     fun toggleType(){
+        if(nsfwMode.value == false) return
+        chipIndexOffset = 0
         val categoryType = when(configState.value.categoryType){
             CategoryType.SFW -> {
                 _availableCategories.value = nsfwCategories
@@ -123,7 +133,8 @@ class ArtsViewModel @Inject constructor(
             }
         }
         configState.value = configState.value.copy(
-            categoryType = categoryType
+            categoryType = categoryType,
+            category = "waifu"
         )
     }
 
@@ -157,4 +168,28 @@ class ArtsViewModel @Inject constructor(
             broJustNowICalled.set(false)
         }
     }
+
+    // ---------------- SETTINGS functions --------------------------------------
+    val nsfwMode = settingsDataStore.currentModeFlow().asLiveData()
+    fun toggleNsfwMode() {
+        viewModelScope.launch {
+            settingsDataStore.toggleMode()
+        }
+    }
+
+    // --------------- BOOKMARK functions ---------------------------------------
+    fun bookmark(url: String){
+        viewModelScope.launch(Dispatchers.IO) {
+            bookmarksDao.save(Bookmark(url))
+        }
+    }
+
+    fun exportFav(){
+        viewModelScope.launch(Dispatchers.IO) {
+            if(BuildConfig.DEBUG)
+                Log.d("fav", "${bookmarksDao.get()}")
+        }
+    }
+    // TODO : import & export to an external file
+    // TODO: maybe, move the download operation to viewmodel
 }

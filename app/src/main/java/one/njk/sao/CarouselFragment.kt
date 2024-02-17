@@ -15,6 +15,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import dagger.hilt.android.AndroidEntryPoint
@@ -33,7 +34,7 @@ class CarouselFragment : Fragment(), MenuProvider {
     private var _binding: FragmentCarouselBinding? = null
     enum class OperatingMode {
         // IGNORE is to prevent actions when pressed directly on the image
-        SHARE, DOWNLOAD, IGNORE
+        SHARE, DOWNLOAD, BOOKMARK, IGNORE
     }
 
     // This property is only valid between onCreateView and
@@ -56,30 +57,37 @@ class CarouselFragment : Fragment(), MenuProvider {
         val menuHost: MenuHost = requireActivity()
         menuHost.addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.RESUMED)
 
-        val adapter = CarouselAdapter(viewModel.imageLoader, requireContext(), lifecycleScope) { end ->
-            inHousePagination(end)
-        }
+        val adapter = CarouselAdapter(
+            viewModel.imageLoader,
+            requireContext(),
+            lifecycleScope,
+            { end -> inHousePagination(end) },
+            { url -> viewModel.bookmark(url) },
+        )
 
-        _binding!!.apply {
+        binding.apply {
             lifecycleOwner = viewLifecycleOwner
             artsViewModel = viewModel
+
+            // No API is exposed to find the current focused child in CarouselLayoutManager
+            // TODO: This pixel calculation might break in other DPI setting than default
+            val displayMetrics = resources.displayMetrics
+            val x = displayMetrics.widthPixels / 2.3f
+            val y = displayMetrics.heightPixels / 3f
+            if(BuildConfig.DEBUG)
+                Log.d("screen", "${displayMetrics.widthPixels} -> $x")
 
             bottomAppBar.setOnMenuItemClickListener {
                 when(it.itemId){
                     R.id.bookmark -> {
-                        // TODO: Replace with viewmodel bookmark to fav list
-                        Toast.makeText(context, "bookmark", Toast.LENGTH_SHORT).show()
+                        val focusedChild = carouselRecyclerView.findChildViewUnder(x, y)
+                        // Since same callback is used for both download and share
+                        operatingMode = OperatingMode.BOOKMARK
+                        focusedChild?.performClick()
+                        operatingMode = OperatingMode.IGNORE
                         true
                     }
                     R.id.download -> {
-                        // No API is exposed to find the current focused child in CarouselLayoutManager
-                        val displayMetrics = resources.displayMetrics
-                        val x = displayMetrics.widthPixels / 2.3f
-                        val y = displayMetrics.heightPixels / 3f
-
-                        if(BuildConfig.DEBUG)
-                            Log.d("screen", "${displayMetrics.widthPixels} -> $x")
-
                         val focusedChild = carouselRecyclerView.findChildViewUnder(x, y)
                         // Since same callback is used for both download and share
                         operatingMode = OperatingMode.DOWNLOAD
@@ -91,15 +99,6 @@ class CarouselFragment : Fragment(), MenuProvider {
                 }
             }
             share.setOnClickListener {
-                // No API was exposed to find the current focused child with Carousel View
-                val displayMetrics = resources.displayMetrics
-                val x = displayMetrics.widthPixels / 2.3f
-                val y = displayMetrics.heightPixels / 3f
-
-                if(BuildConfig.DEBUG)
-                    Log.d("screen", "${displayMetrics.widthPixels} -> $x")
-                // TODO: This pixel calculation might break in other DPI setting than default
-
                 val focusedChild = carouselRecyclerView.findChildViewUnder(x, y)
                 // Since same callback is used for both download and share
                 operatingMode = OperatingMode.SHARE
@@ -115,6 +114,7 @@ class CarouselFragment : Fragment(), MenuProvider {
             }
         }
     }
+
     private fun inHousePagination(maxLoadedItem: Int){
         if((maxLoadedItem + 3) % 30 == 0){
             viewModel.getNextSetOfWaifus()
@@ -133,25 +133,21 @@ class CarouselFragment : Fragment(), MenuProvider {
         }
 
         // Generate Chip based on chosen Category (SFW/NSFW)
-        for(category in categories){
+        for((chipIndexOffset, category) in categories.withIndex()){
             val chip = Chip(this.context)
             chip.apply {
                 text = category
                 isCheckable = true
                 setOnClickListener {
-                    viewModel.updateType(category)
+                    viewModel.updateType(category, chipIndexOffset)
                     lifeCycleScope.launch {
                         _binding?.carouselRecyclerView?.smoothScrollToPosition(0)
                     }
                 }
             }
-
             chipGroup.addView(chip)
-            lifeCycleScope.launch {
-                // Check 1st Chip by default
-                chipGroup.getChildAt(0).performClick()
-            }
         }
+        chipGroup.check(chipGroup.getChildAt(0).id + viewModel.chipIndexOffset)
     }
     private fun subscribeUi(adapter: CarouselAdapter) {
         viewModel.waifuList.observe(viewLifecycleOwner) {
@@ -175,8 +171,7 @@ class CarouselFragment : Fragment(), MenuProvider {
                     true
                 }
                 R.id.settings -> {
-                    Toast.makeText(context, "settings", Toast.LENGTH_SHORT).show()
-                    // TODO: maybe, this has to be handled using Navigation listener
+                    findNavController().navigate(CarouselFragmentDirections.actionHomeFragmentToSettingsFragment())
                     true
                 }
                 else -> false
