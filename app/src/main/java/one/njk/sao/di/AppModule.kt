@@ -2,8 +2,8 @@ package one.njk.sao.di
 
 import android.content.Context
 import androidx.room.Room
-import coil.ImageLoader
-import coil.decode.ImageDecoderDecoder
+import coil3.ImageLoader
+import coil3.gif.AnimatedImageDecoder
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Module
@@ -52,7 +52,7 @@ object AppModule {
         // customizing add GIF Decoder
         val imageLoader = ImageLoader.Builder(context)
             .components {
-                add(ImageDecoderDecoder.Factory())
+                add(AnimatedImageDecoder.Factory())
             }.build()
 
         return imageLoader

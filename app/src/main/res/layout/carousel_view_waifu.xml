@@ -9,7 +9,7 @@
             type="one.njk.sao.models.Waifu" />
         <variable
             name="imageLoader"
-            type="coil.ImageLoader" />
+            type="coil3.ImageLoader" />
     </data>
 
     <com.google.android.material.carousel.MaskableFrameLayout

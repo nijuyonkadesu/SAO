@@ -3,8 +3,10 @@ package one.njk.sao.adapters
 import android.widget.ImageView
 import androidx.core.net.toUri
 import androidx.databinding.BindingAdapter
-import coil.ImageLoader
-import coil.request.ImageRequest
+import coil3.ImageLoader
+import coil3.request.ImageRequest
+import coil3.request.placeholder
+import coil3.request.target
 import one.njk.sao.R
 
 @BindingAdapter("imageUrl", "imageLoader")

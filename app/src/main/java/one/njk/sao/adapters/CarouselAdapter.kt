@@ -14,8 +14,7 @@ import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import coil.ImageLoader
-import coil.annotation.ExperimentalCoilApi
+import coil3.ImageLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import one.njk.sao.BuildConfig
@@ -54,7 +53,6 @@ class CarouselAdapter(
         val bookmarkMe: (String) -> Unit,
     ):
         RecyclerView.ViewHolder(binding.root) {
-            @OptIn(ExperimentalCoilApi::class)
             fun bind(waifu: Waifu){
                 binding.apply {
                     this.waifu = waifu
