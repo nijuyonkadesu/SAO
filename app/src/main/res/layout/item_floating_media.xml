@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.carousel.MaskableFrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    app:shapeAppearance="@style/ShapeAppearance.Material3.Corner.ExtraLarge" android:layout_width="260dp" android:layout_height="match_parent" android:layout_marginHorizontal="4dp" android:clickable="true" android:focusable="true">
+    <com.google.android.material.card.MaterialCardView android:id="@+id/card" android:layout_width="match_parent" android:layout_height="match_parent"
+        app:cardBackgroundColor="?attr/colorSurfaceContainerHigh" app:cardCornerRadius="24dp" app:cardElevation="0dp" app:strokeWidth="0dp">
+        <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent">
+            <ImageView android:id="@+id/preview" android:layout_width="match_parent" android:layout_height="match_parent" android:padding="16dp" android:scaleType="fitCenter" android:importantForAccessibility="no" />
+            <androidx.media3.ui.PlayerView android:id="@+id/video_preview" android:layout_width="match_parent" android:layout_height="match_parent"
+                android:layout_margin="16dp" android:visibility="gone" android:importantForAccessibility="no" android:focusable="false" android:clickable="false"
+                app:use_controller="false" app:surface_type="texture_view" app:resize_mode="fit" app:shutter_background_color="@android:color/transparent" />
+            <TextView android:id="@+id/title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="bottom|center_horizontal" android:padding="4dp" android:maxLines="1" android:textAppearance="?attr/textAppearanceLabelLarge" android:visibility="gone" />
+            <TextView android:id="@+id/check" android:layout_width="32dp" android:layout_height="32dp" android:layout_gravity="top|end" android:layout_margin="8dp" android:gravity="center" android:background="@drawable/bg_picker_selected" android:text="@string/picker_check" android:textSize="20sp" android:textColor="?attr/colorOnPrimary" android:visibility="gone" android:importantForAccessibility="no" />
+            <TextView android:id="@+id/gif_badge" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="bottom|start" android:layout_margin="12dp" android:padding="4dp" android:text="@string/picker_gif" android:textAppearance="?attr/textAppearanceLabelSmall" android:visibility="gone" />
+        </FrameLayout>
+    </com.google.android.material.card.MaterialCardView>
+</com.google.android.material.carousel.MaskableFrameLayout>

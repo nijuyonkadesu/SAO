@@ -1,0 +1,166 @@
+package one.njk.sao.floating
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.google.android.material.chip.Chip
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import one.njk.sao.R
+import one.njk.sao.databinding.FragmentFloatingSettingsBinding
+import one.njk.sao.floating.nativebridge.NativeBridgeRegistry
+import javax.inject.Inject
+
+/** Shared inline controls; collectors and bindings follow the view lifecycle. */
+@AndroidEntryPoint
+class FloatingSettingsFragment : Fragment() {
+    @Inject lateinit var preferences: FloatingPreferences
+    @Inject lateinit var dispatchers: FloatingDispatchers
+    @Inject lateinit var detector: ForegroundAppDetector
+    private var _binding: FragmentFloatingSettingsBinding? = null
+    private val binding get() = requireNotNull(_binding)
+    private var pendingStart = false
+    private var updating = false
+    private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { startFloating() }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        pendingStart = savedInstanceState?.getBoolean("pending_start") ?: false
+    }
+
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        _binding = FragmentFloatingSettingsBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        binding.apply {
+            startStop.setOnClickListener {
+                if (!Settings.canDrawOverlays(requireContext())) {
+                    pendingStart = true; openSettings(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, true)
+                } else startWithNotificationPermission()
+            }
+            stopFloating.setOnClickListener { requireContext().stopService(Intent(requireContext(), FloatingService::class.java)) }
+            telegramApps.setOnClickListener { startActivity(Intent(requireContext(), TelegramAppsActivity::class.java)) }
+            immichSettings.setOnClickListener { startActivity(Intent(requireContext(), SourceSettingsActivity::class.java)) }
+            autoHide.setOnCheckedChangeListener { _, checked -> if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.autoHide(checked) } }
+            hideDelay.setOnCheckedStateChangeListener { _, ids -> if (!updating) viewLifecycleOwner.lifecycleScope.launch {
+                preferences.idleSeconds(when (ids.firstOrNull()) { R.id.delay_five -> 5; R.id.delay_ten -> 10; else -> 3 })
+            } }
+            addSamplePack.setOnClickListener {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val context = requireContext()
+                    val pkg = withContext(dispatchers.io) {
+                        listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull {
+                            try { context.packageManager.getPackageInfo(it, 0); true } catch (_: PackageManager.NameNotFoundException) { false }
+                        }
+                    }
+                    try {
+                        if (pkg == null) throw android.content.ActivityNotFoundException()
+                        startActivity(Intent("com.whatsapp.intent.action.ENABLE_STICKER_PACK").setPackage(pkg)
+                            .putExtra("sticker_pack_id", SampleStickerProvider.PACK)
+                            .putExtra("sticker_pack_authority", "${context.packageName}.stickers")
+                            .putExtra("sticker_pack_name", getString(R.string.floating_pack_title)))
+                    } catch (_: android.content.ActivityNotFoundException) { Toast.makeText(context, R.string.floating_app_unavailable, Toast.LENGTH_SHORT).show() }
+                }
+            }
+            preview.setOnClickListener { startActivity(PickerActivity.intent(requireContext(), null, null)) }
+            overlayPermission.setOnClickListener { openSettings(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, true) }
+            usagePermission.setOnClickListener { openSettings(Settings.ACTION_USAGE_ACCESS_SETTINGS) }
+            accessibilityPermission.setOnClickListener { openSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS) }
+            preferStickers.setOnCheckedChangeListener { _, checked ->
+                if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.preferStickers(checked) }
+            }
+            pasteAssistance.setOnCheckedChangeListener { _, checked ->
+                if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.pasteAssistance(checked) }
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch { preferences.options.collect { options ->
+                    updating = true
+                    renderToggle(binding.preferStickers, options.preferStickers, R.string.floating_prefer_stickers)
+                    renderToggle(binding.pasteAssistance, options.pasteAssistance, R.string.floating_paste_assistance)
+                    renderToggle(binding.autoHide, options.autoHide, R.string.floating_auto_hide)
+                    binding.hideDelay.check(when (options.idleSeconds) { 5 -> R.id.delay_five; 10 -> R.id.delay_ten; else -> R.id.delay_three })
+                    for (i in 0 until binding.hideDelay.childCount) binding.hideDelay.getChildAt(i).isEnabled = options.autoHide
+                    updating = false
+                } }
+                launch { FloatingSession.iconState.collect { state ->
+                    binding.sessionStatus.setText(when (state) {
+                        FloatingSession.IconState.STOPPED -> R.string.floating_stopped
+                        FloatingSession.IconState.HIDDEN -> R.string.floating_icon_unavailable
+                        FloatingSession.IconState.TUCKED -> R.string.floating_idle_hidden
+                        FloatingSession.IconState.PICKER -> R.string.floating_picker_open
+                        FloatingSession.IconState.VISIBLE -> R.string.floating_running
+                    })
+                    binding.stopFloating.isEnabled = state != FloatingSession.IconState.STOPPED
+                } }
+                launch { NativeBridgeRegistry.connected.collect { connected ->
+                    binding.nativeStatus.setText(if (connected) R.string.floating_native_ready else R.string.floating_native_unavailable)
+                } }
+            }
+        }
+    }
+
+    private fun renderToggle(chip: Chip, enabled: Boolean, title: Int) {
+        chip.isChecked = enabled
+        val label = getString(if (enabled) R.string.enabled else R.string.disabled)
+        if (chip.text.toString() != label) chip.text = label
+        chip.contentDescription = "${getString(title)}: $label"
+    }
+
+    override fun onDestroyView() {
+        _binding = null
+        super.onDestroyView()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (_binding == null) return
+        renderPermission(binding.overlayPermission, Settings.canDrawOverlays(requireContext()), R.string.floating_overlay_permission)
+        renderPermission(binding.usagePermission, detector.hasAccess(), R.string.floating_usage_permission)
+        renderPermission(binding.accessibilityPermission, PasteAssistService.connected(), R.string.floating_settings_accessibility)
+        if (pendingStart) {
+            pendingStart = false
+            if (Settings.canDrawOverlays(requireContext())) startWithNotificationPermission()
+        }
+    }
+
+    private fun renderPermission(chip: Chip, granted: Boolean, title: Int) {
+        val label = getString(if (granted) R.string.floating_permission_granted else R.string.floating_permission_not_granted)
+        if (chip.text.toString() != label) chip.text = label
+        chip.contentDescription = "${getString(title)}: $label"
+    }
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("pending_start", pendingStart); super.onSaveInstanceState(outState)
+    }
+    private fun startWithNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+            notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        else startFloating()
+    }
+    private fun startFloating() {
+        if (Settings.canDrawOverlays(requireContext())) ContextCompat.startForegroundService(requireContext(), Intent(requireContext(), FloatingService::class.java).setAction(FloatingService.ACTION_SHOW))
+    }
+    private fun openSettings(action: String, packageData: Boolean = false) {
+        try { startActivity(Intent(action).apply { if (packageData) data = "package:${requireContext().packageName}".toUri() }) }
+        catch (_: android.content.ActivityNotFoundException) { Toast.makeText(requireContext(), R.string.floating_app_unavailable, Toast.LENGTH_SHORT).show() }
+    }
+}

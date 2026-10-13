@@ -1,0 +1,5 @@
+<resources>
+    <item name="floating_dismiss_target" type="id" />
+    <string name="floating_drag_dismiss">Drag here to dismiss</string>
+    <string name="floating_release_dismiss">Release to dismiss</string>
+</resources>

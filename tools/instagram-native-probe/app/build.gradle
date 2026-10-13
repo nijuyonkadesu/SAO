@@ -1,0 +1,24 @@
+plugins { id 'com.android.application' version '9.3.3' }
+android {
+    namespace 'one.njk.sao.instagramprobe'
+    compileSdk 37
+    defaultConfig {
+        applicationId 'one.njk.sao.instagramprobe'
+        minSdk 30
+        targetSdk 36
+        versionCode 1
+        versionName '1'
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+    sourceSets.main.java.srcDir 'build/generated/production-adapter'
+}
+// Generate only the three production adapter sources, avoiding javac's implicit compilation
+// of the rest of SAO's package. Sync runs on every source change before compilation.
+def adapterSources = tasks.register('syncProductionAdapter', Sync) {
+    from '../../../app/src/main/java'
+    include 'one/njk/sao/floating/nativebridge/ComposerPolicy.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramComposerPolicy.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramThreadBinding.java'
+    into layout.buildDirectory.dir('generated/production-adapter')
+}
+tasks.named('preBuild').configure { dependsOn adapterSources }

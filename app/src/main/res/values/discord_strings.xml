@@ -1,0 +1,6 @@
+<resources>
+    <string name="picker_attach">Attach</string>
+    <string name="picker_discord_hint">Paste uses the open chat. Attach opens Discord’s attachment flow.</string>
+    <string name="picker_discord_motion_hint">Use Attach for videos. The original file is kept.</string>
+    <string name="picker_discord_attach_description">Attach this media in Discord</string>
+</resources>

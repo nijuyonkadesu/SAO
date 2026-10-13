@@ -1,0 +1,61 @@
+package one.njk.sao.floating.nativebridge;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+final class WhatsappComposerPolicy implements ComposerPolicy {
+    static final String STICKER_MIME = "image/webp.wasticker";
+    private final Map<Class<?>, List<Field>> conversationFields = new HashMap<>();
+
+    @Override public boolean isComposer(EditText view) {
+        try { return "entry".equals(view.getResources().getResourceEntryName(view.getId())); }
+        catch (android.content.res.Resources.NotFoundException error) { return false; }
+    }
+    @Override public String[] mimeTypes(EditorInfo info) {
+        // Broad image/* does not prove that the host implements native stickers.
+        if (info.contentMimeTypes != null)
+            for (String type : info.contentMimeTypes)
+                if (STICKER_MIME.equals(type)) return new String[]{STICKER_MIME};
+        return new String[0];
+    }
+    @Override public String identity(Activity current, EditText view) {
+        String intentJid = current.getIntent().getStringExtra("jid");
+        if (intentJid == null || intentJid.isEmpty()) return null;
+        try {
+            List<Field> fields = conversationFields.get(view.getClass());
+            if (fields == null) {
+                fields = new ArrayList<>();
+                for (Class<?> type = view.getClass(); type != null && !type.getName().startsWith("android."); type = type.getSuperclass()) {
+                    for (Field field : type.getDeclaredFields()) {
+                        if (field.getType() == Bundle.class && !Modifier.isStatic(field.getModifiers())) {
+                            field.setAccessible(true); fields.add(field);
+                        }
+                    }
+                }
+                conversationFields.put(view.getClass(), fields);
+            }
+            String composerJid = null;
+            for (Field field : fields) {
+                Bundle metadata = (Bundle) field.get(view);
+                String candidate = metadata == null ? null : metadata.getString("ARG_JID");
+                if (candidate == null || candidate.isEmpty()) continue;
+                if (composerJid != null && !composerJid.equals(candidate)) return null;
+                composerJid = candidate;
+            }
+            if (composerJid == null) return null;
+            byte[] bytes = (intentJid + "\u0000" + composerJid).getBytes(StandardCharsets.UTF_8);
+            return Arrays.toString(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (Exception error) { return null; }
+    }
+}

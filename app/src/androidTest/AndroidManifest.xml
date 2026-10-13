@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name="one.njk.sao.floating.RotationHostActivity" android:exported="true" android:process=":rotation_host"
+            android:taskAffinity="one.njk.sao.test.rotation" android:excludeFromRecents="true" />
+        <activity android:name="one.njk.sao.floating.MediaReceiverProbeActivity"
+            android:exported="true" android:process=":media_probe" />
+        <activity android:name="one.njk.sao.floating.TelegramForkProbeActivity" android:exported="true" android:process=":fork_probe">
+            <intent-filter><action android:name="android.intent.action.SEND" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="application/octet-stream" /></intent-filter>
+        </activity>
+    </application>
+</manifest>

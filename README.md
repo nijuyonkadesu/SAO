@@ -27,3 +27,5 @@ Go to the [Releases](https://github.com/nijuyonkadesu/SAO/releases/tag/Release) 
 - Favorites List Management
 - Dunno, maybe add many more APIs into this single app? I wonder...
 - A profile system? fufu-fu (ˉ▽￣～)
+
+The optional [floating media picker](docs/floating-picker.md) supports bundled samples, named Immich sources, text/emoji search, GIF/video previews and chat delivery. It leaves the finalized home carousel unchanged. [Instagram delivery and modern LSPosed setup](docs/instagram-dm-delivery.md) describe the optional native Send photo action.
