@@ -287,8 +287,24 @@ class PickerActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent); setIntent(intent); readContext(); refreshCapability(); renderHeader(); renderDock()
     }
-    override fun onStart() { super.onStart(); refreshCapability(); FloatingSession.pickerVisible = true; FloatingService.notifyVisibility(this); adapter.playing = !compactEditing && !binding.targetList.isVisible && !binding.sourcePanel.isVisible && !searchController.visible }
-    override fun onStop() { cancelPickerGesture(); recordFocus(); model.rememberBrowsing(); adapter.playing = false; FloatingSession.pickerVisible = false; FloatingService.notifyVisibility(this); super.onStop() }
+    override fun onStart() {
+        super.onStart()
+        model.pickerVisible(!isFinishing)
+        refreshCapability()
+        adapter.playing = !compactEditing && !binding.targetList.isVisible && !binding.sourcePanel.isVisible && !searchController.visible
+    }
+    override fun finish() {
+        super.finish()
+        // Restore on the dismissal request, before exit animation / preview cleanup / onStop.
+        if (isFinishing) model.pickerVisible(false)
+    }
+    override fun onStop() {
+        // The retained ViewModel keeps one owner during recreation, so the icon never flashes.
+        // Backgrounding/covering a picker still releases it through the ordinary lifecycle.
+        if (!isChangingConfigurations) model.pickerVisible(false)
+        cancelPickerGesture(); recordFocus(); model.rememberBrowsing(); adapter.playing = false
+        super.onStop()
+    }
     override fun onSaveInstanceState(outState: Bundle) {
         recordFocus(); model.rememberBrowsing()
         super.onSaveInstanceState(outState)

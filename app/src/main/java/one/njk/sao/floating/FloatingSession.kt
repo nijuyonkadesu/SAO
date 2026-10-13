@@ -12,5 +12,14 @@ object FloatingSession {
     val iconState = icon.asStateFlow()
     internal fun icon(value: IconState) { icon.value = value }
     internal fun active(value: Boolean) { state.value = value; if (!value) icon.value = IconState.STOPPED }
-    internal var pickerVisible = false
+    private val pickerOwners = mutableSetOf<Any>()
+    private val picker = MutableStateFlow(false)
+    internal val pickerVisibility = picker.asStateFlow()
+    val pickerVisible get() = picker.value
+
+    /** Opaque ViewModel-owned tokens survive recreation without retaining an Activity. */
+    @Synchronized internal fun pickerVisible(owner: Any, visible: Boolean) {
+        if (visible) pickerOwners.add(owner) else pickerOwners.remove(owner)
+        picker.value = pickerOwners.isNotEmpty()
+    }
 }

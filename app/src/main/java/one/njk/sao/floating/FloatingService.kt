@@ -136,9 +136,6 @@ class FloatingService : Service() {
             }
         }
     }
-    private val visibilityReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) { syncBubble() }
-    }
 
     override fun onCreate() {
         super.onCreate()
@@ -186,10 +183,10 @@ class FloatingService : Service() {
         ContextCompat.registerReceiver(this, screenReceiver,
             IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT) },
             ContextCompat.RECEIVER_EXPORTED)
-        // App-owned visibility messages remain private; the exported filter contains only protected system actions.
-        ContextCompat.registerReceiver(this, visibilityReceiver, IntentFilter(ACTION_VISIBILITY), ContextCompat.RECEIVER_NOT_EXPORTED)
         getSystemService(AppOpsManager::class.java).startWatchingMode(
             AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW, packageName, overlayPermissionChanged)
+        // Picker and overlay share this process. Main.immediate restores without a broadcast hop.
+        scope.launch { FloatingSession.pickerVisibility.collect { syncBubble() } }
         scope.launch {
             preferences.options.collect {
                 val timingChanged = options.autoHide != it.autoHide || options.idleSeconds != it.idleSeconds
@@ -425,7 +422,7 @@ class FloatingService : Service() {
         if (Build.VERSION.SDK_INT >= 31) windowContext.unregisterComponentCallbacks(windowConfiguration)
         Choreographer.getInstance().removeFrameCallback(geometryFrame); geometryPosted = false
         scope.cancel(); cancelIdle(restore = false); cancelDrag(); removeBubble()
-        unregisterReceiver(screenReceiver); unregisterReceiver(visibilityReceiver); FloatingSession.active(false)
+        unregisterReceiver(screenReceiver); FloatingSession.active(false)
         super.onDestroy()
     }
     override fun onBind(intent: Intent?): IBinder? = null
@@ -436,7 +433,5 @@ class FloatingService : Service() {
         private const val CHANNEL = "floating_picker"
         const val ACTION_SHOW = "one.njk.sao.floating.SHOW"
         const val ACTION_STOP = "one.njk.sao.floating.STOP"
-        const val ACTION_VISIBILITY = "one.njk.sao.floating.VISIBILITY"
-        fun notifyVisibility(context: Context) { context.sendBroadcast(Intent(ACTION_VISIBILITY).setPackage(context.packageName)) }
     }
 }

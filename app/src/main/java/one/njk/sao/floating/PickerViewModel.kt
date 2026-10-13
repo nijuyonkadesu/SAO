@@ -38,6 +38,8 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
     private val session: PickerBrowseSession = PickerBrowseSession(),
     private val savedState: SavedStateHandle = SavedStateHandle(),
     private val dispatchers: FloatingDispatchers = FloatingDispatchers()) : ViewModel() {
+    private val visibilityOwner = Any()
+    internal fun pickerVisible(visible: Boolean) = FloatingSession.pickerVisible(visibilityOwner, visible)
     private val initial = if (savedState.contains(QUERY_TEXT)) PickerBrowseState(
         MediaQuery(savedState[QUERY_TEXT] ?: "", savedState[QUERY_FILTER],
             SearchMode.entries.firstOrNull { it.name == savedState.get<String>(QUERY_MODE) } ?: SearchMode.CONTEXT,
@@ -102,7 +104,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         val media = exports.prepare(item, choice.rendition)
         return source.identity.first() == (item.remote?.sourceId ?: "local") && clipboard.publish(item, media, request, version)
     }
-    override fun onCleared() { request.next() }
+    override fun onCleared() { request.next(); pickerVisible(false) }
 
     val options = preferences.options.onEach { if (preferredOverride == it.preferStickers) preferredOverride = null }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), FloatingOptions())
     private val pageRequests = Channel<Unit>(Channel.CONFLATED)

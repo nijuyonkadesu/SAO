@@ -360,8 +360,7 @@ checkmarks, recreation and an unchanged clipboard.
 
 The icon hides while locked and returns automatically on unlock in its prior
 tucked state. System screen/unlock broadcasts have a dedicated receiver that
-accepts protected system events, including SystemUI delivery; app-owned picker
-visibility broadcasts remain in a separate private receiver. Wake-up uses a
+accepts protected system events, including SystemUI delivery; picker visibility is delivered in process through StateFlow. Wake-up uses a
 bounded asynchronous check for the final interactive/unlocked state, since the
 broadcast can precede the keyguard state transition. The emulator test sleeps,
 wakes and dismisses its actual keyguard, then verifies restoration without Show
@@ -490,3 +489,14 @@ the carousel. Actual Discord upload/rendering remains a logged-in client check.
 
 
 Generated device logs, screenshots and build outputs are developer-local artifacts and are excluded from Git. The source tests and isolated Instagram adapter probe are versioned.
+
+
+### Prompt picker dismissal
+
+The picker releases its in-memory visibility owner when `finish()` accepts dismissal,
+before exit animation and preview cleanup reach `onStop()`. The overlay service observes
+that state on `Main.immediate`, without a system broadcast round trip or close timer.
+The retained picker ViewModel owns an opaque token across recreation; it holds no Activity
+or View reference. Normal backgrounding and ViewModel clearing also release ownership.
+Rotation keeps the icon hidden while rebuilding the picker, and existing lock/permission
+checks continue to gate restoration. No browsing state is written to preferences.
