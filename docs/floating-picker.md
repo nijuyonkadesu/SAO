@@ -161,7 +161,7 @@ See [gesture verification and screenshots](../diagnostics/picker-hold-drag/READM
 | Copy | Re-copies the selection: JPEG for ordinary static media, original GIF/video for animation, transparent 512 × 512 PNG for WhatsApp or WebP for Telegram with Sticker preference. Actual copy status is inline. |
 | Paste | Explicitly copies, closes, and requests `ACTION_PASTE` once in the verified original editor. Requires optional assistance. Discord accepts image URIs, including GIFs; video Paste is disabled. Instagram Paste is disabled because its keyboard insertion callback is not reached by clipboard Paste. Never presses Send. |
 | Sticker | Telegram/fork: static 512 × 512 WebP of at most 100 KB sent through the client's document route to the exact originating/configured package. Provider MIME remains image/webp. WhatsApp: optional verified native LSPosed handler. Disabled for GIF/video or absent capability. |
-| Instagram Send photo | Optional API-102 LSPosed bridge; enabled only for a verified original-DM editor lease and still image. Sends directly through the native keyboard handler on explicit press. GIF/video stay on DM attachments. |
+| Instagram Paste | Optional API-102 LSPosed bridge; enabled only for a verified original-DM editor lease and still image. Sends directly through the native keyboard handler on explicit press. GIF/video stay on DM attachments. |
 | Media / Attach / DM | Ordinary media handoff to the exact supported app, or Android sharesheet when the target is unknown. Discord labels this action Attach and receives original GIF/video bytes with their MIME and a URI read grant. Instagram uses only its exported DM receiver, labeled DM; no Feed/Stories fallback. See [Instagram delivery](instagram-dm-delivery.md) for APK evidence and authenticated-client limits. |
 
 The compact **Sticker/Media** chip marks both active modes with a checkmark and persists the delivery preference and explicitly
@@ -216,7 +216,7 @@ Only those applications' main processes install hooks. Native bridge status is
 visible in Floating picker settings; a connected bridge alone does not mean a
 chat editor is available.
 
-Instagram's optional **Send photo** action uses its native keyboard-image handler, which
+Instagram's optional **Paste** action uses its native keyboard-image handler, which
 sends directly after the explicit button press. It is available only for a validated
 still-photo editor lease, independently of accessibility Paste assistance. GIF/video
 retain the DM attachment flow. See [Instagram adapter and verification](instagram-dm-delivery.md).

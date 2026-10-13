@@ -79,7 +79,7 @@ object DeliveryPolicy {
     fun supportsPaste(item: MediaItem, target: MessagingTarget) = when (target) {
         MessagingTarget.DISCORD -> item.mimeType.startsWith("image/")
         // Instagram exposes keyboard commitContent, which does not establish clipboard
-        // support. Its separate LSPosed Send photo capability is checked by the native bridge.
+        // support. Its LSPosed photo Paste capability is checked by the native bridge.
         MessagingTarget.INSTAGRAM -> false
         else -> true
     }

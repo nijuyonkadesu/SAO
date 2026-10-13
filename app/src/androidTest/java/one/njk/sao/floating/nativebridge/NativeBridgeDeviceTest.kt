@@ -156,14 +156,14 @@ class NativeBridgeDeviceTest {
                 assertTrue(selected)
                 scenario.onActivity {
                     val send = it.findViewById<android.widget.TextView>(R.id.paste_action)
-                    assertEquals("Send photo", send.text.toString()); assertEquals(!item.hasMotion, send.isEnabled)
+                    assertEquals("Paste", send.text.toString()); assertEquals(!item.hasMotion, send.isEnabled)
                     assertFalse(it.findViewById<android.view.View>(R.id.sticker_action).isEnabled)
                 }
             }
             assertEquals("Highlight/copy must not call the native send handler", 0, calls.get())
             scenario.onActivity { assertTrue(it.findViewById<android.view.View>(R.id.paste_action).performClick()) }
             withTimeout(5_000) { while (calls.get() == 0) delay(20) }
-            assertEquals("Explicit Send photo dispatches once", 1, calls.get())
+            assertEquals("Explicit Instagram Paste dispatches once", 1, calls.get())
         }
     }
     private fun withHost(block: (Activity, EditText) -> Unit) {

@@ -392,8 +392,6 @@ class PickerActivity : AppCompatActivity() {
         binding.pasteAction.isEnabled = !busy && (nativePhoto || item != null &&
             DeliveryPolicy.supportsPaste(item, target) && target != MessagingTarget.OTHER &&
             options.pasteAssistance && pasteAnchor != null && PasteAssistService.connected())
-        val pasteLabel = getString(if (target == MessagingTarget.INSTAGRAM) R.string.picker_instagram_send_photo else R.string.picker_paste)
-        if (binding.pasteAction.text.toString() != pasteLabel) binding.pasteAction.text = pasteLabel
         val native = NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")
         binding.stickerAction.isEnabled = item != null && !item.hasMotion && !busy &&
             (target == MessagingTarget.TELEGRAM && canShareSticker || target.isWhatsapp && native)
@@ -425,7 +423,7 @@ class PickerActivity : AppCompatActivity() {
     private fun updateActionAccessibility() {
         val destination = targetName?.let { ": $it" }.orEmpty()
         binding.pasteAction.contentDescription = getString(if (target == MessagingTarget.INSTAGRAM)
-            R.string.picker_instagram_send_photo_description else R.string.picker_paste_description) + destination
+            R.string.picker_instagram_paste_description else R.string.picker_paste_description) + destination
         binding.stickerAction.contentDescription = getString(R.string.picker_send_sticker_description) + destination
         binding.mediaAction.contentDescription = getString(when (target) {
             MessagingTarget.DISCORD -> R.string.picker_discord_attach_description

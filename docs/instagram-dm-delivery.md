@@ -27,7 +27,7 @@ grant. There is no fallback to Feed, Stories or a generic Instagram share choose
 Missing receivers leave Copy available and display an initialization hint. The
 recipient and final Send decision remain with the user in this attachment flow.
 
-## Optional LSPosed Send photo
+## Optional LSPosed Paste
 
 The modern module targets **libxposed API 102.0.0**. The maintained JingMatrix
 LSPosed fork's latest verified release is [Vector 2.2](https://github.com/JingMatrix/Vector/releases/tag/v2.2),
@@ -35,19 +35,19 @@ which supports API 102. There is no legacy Xposed dependency. Install SAO, enabl
 its module, scope it to **Instagram**, and force-stop/reopen Instagram after updating.
 Open a DM, focus its text composer, and then open the floating picker.
 
-With a verified native session, a still selection enables **Send photo**. Pressing
+With a verified native session, a still selection enables **Paste**. Pressing
 this button explicitly invokes Instagram's own keyboard-image handler in the
 original DM. That handler enters Instagram's sending pipeline directly; there is
-no separate attachment preview or second Send press. The button label, accessibility
-description and inline hint state this behavior. Selecting/copying alone never
+no separate attachment preview or second Send press. The accessibility description and inline hint state this behavior. The visible
+button uses the same Paste label as other apps. Selecting/copying alone never
 invokes it, and it works without SAO's accessibility Paste assistance or changing
 keyboards. Instagram decides whether the request actually uploads/delivers.
 
 The inspected keyboard callback accepts PNG/JPEG and explicitly rejects GIFs. SAO
 advertises only the supported static-image capabilities and exports JPEG for this
-route. **Send photo** stays disabled for GIF/video; **DM** remains their attachment
+route. **Paste** stays disabled for GIF/video; **DM** remains their attachment
 path. Instagram Sticker remains disabled. A connected module without a validated
-editor lease also leaves Send photo disabled.
+editor lease also leaves Paste disabled.
 
 ### Adapter and session validation
 
@@ -82,7 +82,7 @@ refreshes; UI rendering does not wait on Binder or network calls.
 These internal Instagram contracts can change between builds. Unsupported editor or
 controller shapes disable the native action while preserving non-root DM attachments.
 
-## Why ordinary Paste stays unavailable
+## Why non-root Paste stays unavailable
 
 The inspected composer delegates context-menu Paste to its superclass and a text-paste
 listener. Its separate keyboard path wraps InputConnection for rich content. The
@@ -108,7 +108,7 @@ The probe never invokes Instagram's actual sending listener.
 Device instrumentation covers one-use leases, wrong authority/MIME, paused windows,
 chat swaps, expiry, detached editors, IME reconnects, ambiguous controllers, empty keys,
 UID enforcement, exact-MIME dispatch and no retry after rejection. Picker tests check
-that verified native still-photo sessions enable Send photo independently of accessibility,
+that verified native still-photo sessions enable Paste independently of accessibility,
 while highlight/copy and motion selections do not send. Existing receiver tests verify
 JPEG/GIF/MP4/WebM routing and actual byte hashes under another receiving UID.
 
