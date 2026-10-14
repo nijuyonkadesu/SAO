@@ -9,7 +9,7 @@ import android.os.IBinder
 class NativeBridgeService : Service() {
     private val bridge = object : INativeBridge.Stub() {
         override fun registerClient(packageName: String, client: INativeStickerClient) {
-            if (packageName !in setOf("com.whatsapp", "com.whatsapp.w4b", "com.instagram.android"))
+            if (packageName !in setOf("com.whatsapp", "com.whatsapp.w4b", "com.instagram.android", "com.discord"))
                 throw SecurityException("Unscoped bridge package")
             val callers = packageManager.getPackagesForUid(Binder.getCallingUid()).orEmpty()
             if (packageName !in callers) throw SecurityException("Unexpected bridge caller")

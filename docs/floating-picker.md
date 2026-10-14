@@ -211,7 +211,7 @@ minified builds. The API is `compileOnly`, so ordinary SAO runs without LSPosed.
 
 Use an API-102-capable maintained LSPosed framework, such as
 [Vector 2.2](https://github.com/JingMatrix/Vector/releases/tag/v2.2). Enable SAO
-and scope it to **WhatsApp**, **WhatsApp Business** and/or **Instagram**, then restart that app.
+and scope it to **WhatsApp**, **WhatsApp Business**, **Instagram** and/or **Discord**, then restart that app.
 Only those applications' main processes install hooks. Native bridge status is
 visible in Floating picker settings; a connected bridge alone does not mean a
 chat editor is available.
@@ -220,6 +220,37 @@ Instagram's optional **Paste** action uses its native keyboard-image handler, wh
 sends directly after the explicit button press. It is available only for a validated
 still-photo editor lease, independently of accessibility Paste assistance. GIF/video
 retain the DM attachment flow. See [Instagram adapter and verification](instagram-dm-delivery.md).
+
+**Paste prefers a verified native handler** over accessibility assistance. In WhatsApp
+Sticker mode it uses `image/webp.wasticker`; Media mode uses the advertised image MIME.
+GIFs retain their real MIME and videos keep the attachment fallback. Selection still
+highlights/copies immediately; neither selecting nor toggling delivery mode invokes a
+native handler. A rejected native request is never retried through clipboard assistance.
+
+The floating service bootstraps Android 11+ package visibility by granting each installed
+scoped host read access to one isolated **zero-byte** FileProvider file. The hosts' manifests
+cannot declare SAO in `<queries>`; a no-query API 35 probe reproduced a failed explicit
+service bind without this grant. The grant exposes no exported media or configuration.
+Android makes the granting package visible to URI-grant recipients; see
+[automatic package visibility](https://developer.android.com/training/package-visibility/automatic).
+The bridge's package/UID checks in both directions remain mandatory. Binding allows at
+most three attempts per resume with backoff to accommodate a first-start visibility race.
+Media insertion is still dispatched once.
+
+Lifecycle hooks are installed independently of host adapter initialization. The picker
+shows a per-app disabled reason and host version for unsupported hooks, missing editor,
+unsupported MIME or pending chat metadata. A naturally created editor connection can
+wait for initial metadata; an established direct-send conversation change revokes it.
+Late hook/listener discovery asks Android to restart input, rather than constructing
+an input connection or invoking the host's sending code speculatively.
+
+Discord's native **Paste** stages PNG/JPEG/GIF through its existing receive-content
+handler, without an accessibility anchor and without invoking Send. Its exact native
+root/editor/listener and opaque draft revision identify a selection; foreground typing
+can mint a fresh token, but a changed revision while the picker is open invalidates the
+original token. Discord exposes no current-channel ID in this native composer, so this
+is a draft-editor lease rather than a verified channel-ID lease. Videos use Attach.
+See [the isolated client probe](../tools/discord-native-probe/README.md).
 
 The WhatsApp host observes the naturally created final `onCreateInputConnection(EditorInfo)` wrapper of
 the conversation composer with resource name `entry`. It requires explicitly
@@ -230,7 +261,7 @@ intent. Missing or ambiguous metadata disables native insertion. No extra input 
 immutable cached state without waiting for the host UI thread. The selected URI is explicitly
 granted to the scoped package. When the original chat resumes, the module calls
 the wrapper's own `commitContent` with a transparent 512 × 512 WebP and the
-WhatsApp sticker MIME type. It does not rely on PNG classification. There is no guessed
+WhatsApp sticker MIME type in Sticker mode, or a native JPEG/GIF in Media mode. It does not rely on PNG classification. There is no guessed
 obfuscated sender signature, fabricated IME permission token, or automatic retry.
 
 The current official WhatsApp APK **2.26.40.70** was inspected during development:
@@ -500,3 +531,20 @@ The retained picker ViewModel owns an opaque token across recreation; it holds n
 or View reference. Normal backgrounding and ViewModel clearing also release ownership.
 Rotation keeps the icon hidden while rebuilding the picker, and existing lock/permission
 checks continue to gate restoration. No browsing state is written to preferences.
+
+### Native Paste priority verification (2026-10-14)
+
+The API 35 device suite covers native WhatsApp Sticker/Media Paste without accessibility,
+Discord native GIF draft dispatch, Instagram still-photo-only explicit dispatch, delayed
+initial metadata, established conversation revocation, noisy controller discovery,
+foreground draft renewal versus paused changes, exact sticker MIME declarations, one-use
+requests, URI/MIME/grant checks, attachment fallback and prompt picker dismissal.
+
+The separate no-query Discord probe reproduced failed package lookup/binding before the
+bootstrap. With SAO granting only the isolated empty URI, lookup and binding succeed;
+that URI reads zero bytes while an unrelated media URI remains blocked. Its real native
+PNG/GIF keyboard callbacks fire, with zero Send callbacks. The existing Instagram
+real-class probe still passes. Debug/release/prerelease build, JVM and lint checks pass.
+These local recording probes do not establish Vector injection or authenticated host
+upload/delivery on the user's rooted phone. Per-app inline diagnostics support that
+remaining device verification.

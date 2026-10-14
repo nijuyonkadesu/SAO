@@ -52,8 +52,11 @@ class PasteAssistService : AccessibilityService() {
                     val pkg = root?.packageName?.toString()
                     val editor = if (pkg in supported) root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) else null
                     if (version != discoveryVersion.get() || FloatingSession.pickerVisible) return@withLock
-                    cached = if (pkg != null && editor != null && editor.isEditable && editor.isFocused &&
-                        editor.actionList.contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_PASTE)) Anchor(editor, pkg) else null
+                    // A client may not advertise Paste until the clipboard contains media.
+                    // Lease the focused editable node now; dispatch is still explicit and
+                    // revalidates that exact node after the selected payload is copied.
+                    cached = if (pkg != null && editor != null && editor.isEditable && editor.isFocused)
+                        Anchor(editor, pkg) else null
                 } catch (_: IllegalStateException) { cached = null }
                 catch (_: SecurityException) { cached = null }
             }

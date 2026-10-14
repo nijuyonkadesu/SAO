@@ -23,6 +23,10 @@ object NativeBridgeRegistry {
     private val clients = ConcurrentHashMap<String, Client>()
     private val connection = MutableStateFlow(false)
     val connected = connection.asStateFlow()
+    data class HostStatus(val stage: String, val version: String)
+    private val statusState = MutableStateFlow<Map<String, HostStatus>>(emptyMap())
+    val statuses = statusState.asStateFlow()
+    fun status(packageName: String?) = statusState.value[packageName]
     private val sessionState = MutableStateFlow<Map<String, Selection>>(emptyMap())
     val sessions = sessionState.asStateFlow()
 
@@ -33,21 +37,27 @@ object NativeBridgeRegistry {
             if (clients.remove(packageName, client)) {
                 cached.remove(packageName)
                 sessionState.value = sessionState.value - packageName
+                statusState.value = statusState.value - packageName
                 connection.value = clients.isNotEmpty()
             }
         }, 0)
         clients[packageName] = client
         cached.remove(packageName)
         sessionState.value = sessionState.value - packageName
+        statusState.value = statusState.value + (packageName to HostStatus("waiting_editor", ""))
         connection.value = true
         if (polling?.isActive != true) polling = scope.launch {
             while (isActive && clients.isNotEmpty()) {
                 operations.withLock {
                     val validated = mutableMapOf<String, Selection>()
+                    val diagnostics = mutableMapOf<String, HostStatus>()
                     clients.forEach { (name, current) ->
                         try {
                             val state = current.remote.snapshot(true)
                             if (clients[name] !== current) return@forEach
+                            diagnostics[name] = HostStatus(state.getString("status").orEmpty().takeIf {
+                                it in setOf("waiting_editor", "unsupported_mime", "pending_metadata", "editor_changed", "unfocused", "ready", "hooks_unavailable")
+                            } ?: "waiting_editor", state.getString("host_version").orEmpty().take(40))
                             val selection = selection(name, state)
                             if (selection != null) {
                                 validated[name] = selection
@@ -58,6 +68,7 @@ object NativeBridgeRegistry {
                         catch (_: SecurityException) { cached.remove(name) }
                     }
                     sessionState.value = validated.filterKeys { clients.containsKey(it) }
+                    statusState.value = diagnostics.filterKeys { clients.containsKey(it) }
                 }
                 delay(400)
             }
@@ -73,7 +84,7 @@ object NativeBridgeRegistry {
     }
     @Synchronized internal fun clear() {
         clients.clear(); cached.clear(); polling?.cancel(); polling = null
-        sessionState.value = emptyMap(); connection.value = false
+        sessionState.value = emptyMap(); statusState.value = emptyMap(); connection.value = false
     }
     fun available(packageName: String?) = packageName != null && clients[packageName]?.binder?.isBinderAlive == true
     fun supports(packageName: String?, session: String?, mimeType: String): Boolean =

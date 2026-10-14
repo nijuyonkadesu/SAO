@@ -48,6 +48,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import one.njk.sao.R
 import one.njk.sao.floating.nativebridge.NativeBridgeRegistry
+import one.njk.sao.floating.nativebridge.NativeBridgeVisibility
 import kotlin.math.abs
 import javax.inject.Inject
 
@@ -140,6 +141,7 @@ class FloatingService : Service() {
     override fun onCreate() {
         super.onCreate()
         scope = CoroutineScope(SupervisorJob() + dispatchers.main)
+        scope.launch { NativeBridgeVisibility.prepare(applicationContext) }
         displayManager = getSystemService(DisplayManager::class.java)
         val display = displayManager.getDisplay(Display.DEFAULT_DISPLAY)
         displayGeometry = Triple(display.rotation, display.mode.physicalWidth, display.mode.physicalHeight)

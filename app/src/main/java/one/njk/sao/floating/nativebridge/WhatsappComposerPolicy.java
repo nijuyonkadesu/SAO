@@ -1,6 +1,7 @@
 package one.njk.sao.floating.nativebridge;
 
 import android.app.Activity;
+import android.content.ClipDescription;
 import android.os.Bundle;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
@@ -23,11 +24,15 @@ final class WhatsappComposerPolicy implements ComposerPolicy {
         catch (android.content.res.Resources.NotFoundException error) { return false; }
     }
     @Override public String[] mimeTypes(EditorInfo info) {
-        // Broad image/* does not prove that the host implements native stickers.
-        if (info.contentMimeTypes != null)
-            for (String type : info.contentMimeTypes)
-                if (STICKER_MIME.equals(type)) return new String[]{STICKER_MIME};
-        return new String[0];
+        List<String> accepted = new ArrayList<>();
+        if (info.contentMimeTypes != null) {
+            // Only the exact WhatsApp declaration proves native sticker capability.
+            for (String declared : info.contentMimeTypes) if (STICKER_MIME.equals(declared)) { accepted.add(STICKER_MIME); break; }
+            for (String mime : new String[]{"image/jpeg", "image/png", "image/gif"})
+                for (String declared : info.contentMimeTypes)
+                    if (ClipDescription.compareMimeTypes(mime, declared)) { accepted.add(mime); break; }
+        }
+        return accepted.toArray(new String[0]);
     }
     @Override public String identity(Activity current, EditText view) {
         String intentJid = current.getIntent().getStringExtra("jid");

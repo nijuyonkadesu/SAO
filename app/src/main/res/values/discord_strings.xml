@@ -3,4 +3,6 @@
     <string name="picker_discord_hint">Paste uses the open chat. Attach opens Discord’s attachment flow.</string>
     <string name="picker_discord_motion_hint">Use Attach for videos. The original file is kept.</string>
     <string name="picker_discord_attach_description">Attach this media in Discord</string>
+    <string name="picker_discord_native_accepted">Discord accepted the attachment into its draft.</string>
+    <string name="picker_discord_paste_inactive">For Paste, focus Discord’s chat field before opening SAO. Enable Discord under SAO in Vector, or enable Paste assistance.</string>
 </resources>

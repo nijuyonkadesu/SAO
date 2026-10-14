@@ -195,7 +195,7 @@ class DiscordDeviceTest {
                 val uri = it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).uri
                 assertArrayEquals(app.assets.open(gif.asset).use { stream -> stream.readBytes() },
                     it.contentResolver.openInputStream(uri)!!.use { stream -> stream.readBytes() })
-                assertEquals(it.getString(R.string.picker_discord_hint), it.findViewById<TextView>(R.id.capability_hint).text.toString())
+                assertEquals(it.getString(R.string.picker_discord_paste_inactive), it.findViewById<TextView>(R.id.capability_hint).text.toString())
                 assertFalse(it.findViewById<View>(R.id.sticker_action).isEnabled)
                 assertTrue(it.findViewById<View>(R.id.media_action).isEnabled)
                 // Launching without an editor lease must not silently paste into another chat.

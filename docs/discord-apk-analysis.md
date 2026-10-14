@@ -88,10 +88,30 @@ Discord also includes a native document picker with a URI result handler. A SAO 
 could expose media to that picker, preserving the chat that started the attachment request, with
 additional user actions. A Discord-specific LSPosed integration could investigate that attachment
 result path or reliable current-channel capture plus the targeted share route. Neither video route
-has been implemented or validated in an authenticated client. The existing SAO LSPosed bridge
-continues to scope only WhatsApp.
+has been implemented or validated in an authenticated client. The API-102 SAO bridge now also scopes Discord for native PNG/JPEG/GIF
+draft insertion. Native video insertion remains unimplemented.
 
 References: [Google Play](https://play.google.com/store/apps/details?id=com.discord),
 [Android receive-content API](https://developer.android.com/develop/ui/views/receive-rich-content),
 [Android image-keyboard API](https://developer.android.com/develop/ui/views/touch-and-input/image-keyboard),
 [Discord's attachment flow](https://support.discord.com/hc/en-us/articles/25444343291031-File-Attachments-FAQ).
+
+## Native bridge update (2026-10-14)
+
+Paste now prefers the verified Vector/LSPosed lease over accessibility. The production
+adapter checks the named `DCDChatInput` and `ChatInputRootView`, exact owned editor,
+current listener and `lastEditId` opaque draft revision. It does not read draft text,
+messages, collections or channel IDs. A changed revision invalidates an outstanding
+picker selection; a newly focused foreground draft can receive a fresh lease.
+
+The [reproducible isolated probe](../tools/discord-native-probe/README.md) compiles the
+production adapter against Discord's real classes. The unmodified keyboard connection
+advertised `image/*`; the policy narrowed it to JPEG/PNG/GIF. PNG and GIF `commitContent`
+calls each reached the recording image-insertion callback, and no Send callback fired.
+Removing the native listener disabled the policy; modifying synthetic draft text changed
+its revision. Unsupported MP4/WebM continue through Attach. These results remain limited
+to native editor dispatch in the probe UID, not authenticated React upload/server delivery.
+
+The native composer has no reliable current-channel identifier. The adapter leases that
+exact draft/editor, with replacement/revision/focus checks, rather than claiming a verified
+channel-ID lease. It stages attachments and never presses Send.

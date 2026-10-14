@@ -1,0 +1,26 @@
+plugins { id 'com.android.application' version '9.3.3' }
+android {
+    namespace 'one.njk.sao.discordprobe'
+    compileSdk 37
+    defaultConfig { applicationId 'one.njk.sao.discordprobe'; minSdk 30; targetSdk 36; versionCode 1; versionName '1' }
+    sourceSets.main.java.srcDir 'build/generated/production-adapter'
+    sourceSets.main.assets.srcDir 'build/generated/fixtures'
+    compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}
+
+def adapter = tasks.register('syncProductionAdapter', Sync) {
+    from '../../../app/src/main/java'
+    include 'one/njk/sao/floating/nativebridge/ComposerPolicy.java'
+    include 'one/njk/sao/floating/nativebridge/DiscordComposerPolicy.java'
+    into layout.buildDirectory.dir('generated/production-adapter')
+}
+def fixtures = tasks.register('syncFixtures', Sync) {
+    from('../../../app/src/main/assets/floating') { include 'happy.png'; rename 'happy.png', 'still.png' }
+    from('../../../app/src/main/assets/floating') { include 'hello.gif'; rename 'hello.gif', 'motion.gif' }
+    from('../../../app/src/androidTest/assets') {
+        include 'preview-video.mp4', 'preview-video.webm'
+        rename 'preview-video', 'motion'
+    }
+    into layout.buildDirectory.dir('generated/fixtures')
+}
+tasks.named('preBuild').configure { dependsOn adapter, fixtures }

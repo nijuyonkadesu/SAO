@@ -28,6 +28,7 @@ final class NativeEditorSession {
     private String[] mimeTypes = new String[0];
     private long created;
     private long lastRequest;
+    private String status = "waiting_editor";
 
     NativeEditorSession(ComposerPolicy policy, String modulePackage) {
         this(policy, modulePackage, SystemClock::elapsedRealtime);
@@ -38,21 +39,38 @@ final class NativeEditorSession {
     boolean owns(EditText view) { return editor.get() == view; }
     void clear() {
         input = null; session = null; identity = null; mimeTypes = new String[0];
-        editor.clear(); activity.clear();
+        editor.clear(); activity.clear(); status = "waiting_editor";
     }
     void capture(Activity current, EditText view, InputConnection connection, EditorInfo info) {
         String nextIdentity = policy.isComposer(view) ? policy.identity(current, view) : null;
         String[] types = policy.mimeTypes(info);
-        if (connection == null || nextIdentity == null || types.length == 0) { clear(); return; }
-        if (activity.get() != current || editor.get() != view || !nextIdentity.equals(identity) || !Arrays.equals(types, mimeTypes)) session = null;
+        if (connection == null || !policy.isComposer(view) || types.length == 0) { clear(); status = "unsupported_mime"; return; }
+        // Retain the naturally created wrapper while the host finishes loading its metadata.
+        // No lease exists until that metadata is verified. A changed established identity
+        // still clears the wrapper and cannot reuse an old conversation selection.
+        if (activity.get() != current || editor.get() != view || nextIdentity == null || !nextIdentity.equals(identity) || !Arrays.equals(types, mimeTypes)) session = null;
         activity = new WeakReference<>(current); editor = new WeakReference<>(view);
         input = connection; identity = nextIdentity; mimeTypes = types.clone();
     }
     Bundle snapshot(Activity current, boolean resumed) {
         Bundle state = new Bundle();
         EditText view = editor.get();
-        if (!validEditor(current, view)) { clear(); return state; }
+        if (input == null) { state.putString("status", status); return state; }
+        if (!sameEditor(current, view)) { clear(); state.putString("status", status); return state; }
+        String actual = policy.identity(current, view);
         boolean ready = resumed && view.hasFocus() && current.hasWindowFocus();
+        if (identity == null) {
+            if (actual == null) { status = "pending_metadata"; state.putString("status", status); return state; }
+            identity = actual;
+        } else if (actual == null || !actual.equals(identity)) {
+            if (actual != null && ready && policy.renewFocusedDraft()) {
+                identity = actual; session = null; // Fresh foreground selection; the old token is revoked.
+            } else {
+                clear(); status = "editor_changed"; state.putString("status", status); return state;
+            }
+        }
+        status = ready ? "ready" : "unfocused";
+        state.putString("status", status);
         if (session != null && clock.getAsLong() - created > MAX_AGE_MS) session = null;
         if (ready && session == null) { session = UUID.randomUUID().toString(); created = clock.getAsLong(); }
         if (session != null) {
@@ -61,9 +79,12 @@ final class NativeEditorSession {
         }
         return state;
     }
+    private boolean sameEditor(Activity current, EditText view) {
+        return current != null && activity.get() == current && view != null && view.isAttachedToWindow() && input != null &&
+            view.getRootView() == current.getWindow().getDecorView().getRootView() && policy.isComposer(view);
+    }
     private boolean validEditor(Activity current, EditText view) {
-        if (current == null || activity.get() != current || view == null || !view.isAttachedToWindow() || input == null ||
-            view.getRootView() != current.getWindow().getDecorView().getRootView() || !policy.isComposer(view)) return false;
+        if (!sameEditor(current, view) || identity == null) return false;
         String actual = policy.identity(current, view);
         return actual != null && actual.equals(identity);
     }

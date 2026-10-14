@@ -737,7 +737,7 @@ class FloatingDeviceTest {
         assertTrue(app.bindService(Intent(app, NativeBridgeService::class.java), connection, Context.BIND_AUTO_CREATE))
         try {
             assertTrue(connected.await(10, TimeUnit.SECONDS))
-            for (scoped in listOf("com.whatsapp", "com.whatsapp.w4b", "com.instagram.android")) try {
+            for (scoped in listOf("com.whatsapp", "com.whatsapp.w4b", "com.instagram.android", "com.discord")) try {
                 bridge!!.registerClient(scoped, object : INativeStickerClient.Stub() {
                     override fun snapshot(beginSelection: Boolean): Bundle = Bundle.EMPTY
                     override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long) = false

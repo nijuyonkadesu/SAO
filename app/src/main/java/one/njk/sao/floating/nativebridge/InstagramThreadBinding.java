@@ -34,10 +34,10 @@ final class InstagramThreadBinding {
         this.owner = new WeakReference<>(owner); this.keyReader = reader;
         this.containerField = container; this.editorFields = editors; this.keyType = keyType;
     }
-    private record Node(Object value, int depth) {}
+    private record Node(Object value, int depth, boolean fromReference) {}
 
     static InstagramThreadBinding discover(Object listener, EditText view, Class<?> keyType) {
-        ArrayDeque<Node> queue = new ArrayDeque<>(); queue.add(new Node(listener, 0));
+        ArrayDeque<Node> queue = new ArrayDeque<>(); queue.add(new Node(listener, 0, false));
         Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         InstagramThreadBinding found = null;
         int visited = 0;
@@ -45,7 +45,7 @@ final class InstagramThreadBinding {
             Node node = queue.removeFirst(); Object value = node.value();
             if (value == null || !seen.add(value)) continue;
             if (++visited > 128) return null; // Incomplete inspection cannot establish uniqueness.
-            if (value instanceof Reference<?>) { queue.addFirst(new Node(((Reference<?>) value).get(), node.depth())); continue; }
+            if (value instanceof Reference<?>) { queue.addFirst(new Node(((Reference<?>) value).get(), node.depth(), true)); continue; }
             if (!value.getClass().getName().startsWith("X.")) continue;
             try {
                 Method reader = keyReader(value.getClass(), keyType);
@@ -58,15 +58,35 @@ final class InstagramThreadBinding {
                     continue; // Do not walk controller models or conversation contents.
                 }
                 if (node.depth() >= 5) continue;
-                for (Field field : fields(value.getClass())) {
-                    if (!Modifier.isFinal(field.getModifiers())) continue; // Captured closure links only.
+                List<Field> captures = fields(value.getClass());
+                boolean references = captures.stream().anyMatch(f -> Reference.class.isAssignableFrom(f.getType()));
+                boolean functions = captures.stream().anyMatch(f -> f.getType().getName().startsWith("kotlin.jvm.functions."));
+                for (Field field : captures) {
+                    if (!Modifier.isFinal(field.getModifiers())) continue;
+                    // Listener helpers hold weak references; their controller's delegate holds
+                    // Kotlin closures. Follow those relationships, not media stores or models.
+                    if (references && !Reference.class.isAssignableFrom(field.getType())) continue;
+                    if (functions && !field.getType().getName().startsWith("kotlin.jvm.functions.")) continue;
                     Object child = field.get(value);
-                    if (child != null && (child instanceof Reference<?> || child.getClass().getName().startsWith("X.")))
-                        queue.addLast(new Node(child, node.depth() + 1));
+                    if (child == null) continue;
+                    if (child instanceof Reference<?>) {
+                        queue.addLast(new Node(child, node.depth() + 1, false));
+                    } else if (child.getClass().getName().startsWith("X.")) {
+                        if (node.fromReference() && captures.size() > 3 && !hasFunctionCaptures(child.getClass()) &&
+                            keyReader(child.getClass(), keyType) == null) continue;
+                        queue.addLast(new Node(child, node.depth() + 1, false));
+                    }
                 }
             } catch (ReflectiveOperationException | RuntimeException | LinkageError error) { return null; }
         }
         return found;
+    }
+    private static boolean hasFunctionCaptures(Class<?> type) {
+        for (Field field : fields(type))
+            if (field.getType().getName().startsWith("kotlin.jvm.functions.")) return true;
+        for (Class<?> contract : type.getInterfaces())
+            if (contract.getName().startsWith("kotlin.jvm.functions.")) return true;
+        return false;
     }
     private static Method keyReader(Class<?> ownerType, Class<?> keyType) {
         Method found = null;

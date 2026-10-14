@@ -59,9 +59,19 @@
     <string name="floating_pack_title">SAO Reactions</string>
     <string name="floating_native_ready">LSPosed bridge is connected</string>
     <string name="floating_native_unavailable">LSPosed bridge is inactive</string>
-    <string name="floating_native_description">Optional: enable SAO for WhatsApp or Instagram in an API-102 LSPosed framework, restart that app, then focus a chat. Compatible editors offer native insertion.</string>
+    <string name="floating_native_description">Optional: enable SAO for WhatsApp, Instagram or Discord in an API-102 LSPosed framework, restart that app, then focus a chat. Compatible editors offer native insertion.</string>
     <string name="floating_native_rejected">The chat or media handler changed or rejected the request. Nothing was retried.</string>
     <string name="floating_native_accepted">WhatsApp accepted the sticker insertion.</string>
     <string name="floating_media_title">%1$s %2$s</string>
     <string name="floating_animated_description">%1$s, animated</string>
+    <string name="picker_whatsapp_native_paste_hint">Paste inserts through WhatsApp’s native sticker handler.</string>
+    <string name="picker_native_inactive">Native bridge is inactive for this app. Check its scope under SAO in Vector, then restart the app.</string>
+    <string name="picker_native_metadata_pending">The editor’s chat metadata is not ready.</string>
+    <string name="picker_native_mime_unsupported">This editor does not advertise a supported media format.</string>
+    <string name="picker_native_reopen">Focus the chat’s text field, then reopen the floating picker.</string>
+    <string name="picker_native_focus">No supported chat editor has been captured. Focus its text field and reopen the picker.</string>
+    <string name="picker_native_diagnostic">Native bridge connected (app %1$s). %2$s</string>
+    <string name="picker_native_hooks_unavailable">This app version’s composer hooks could not be loaded.</string>
+    <string name="picker_native_media_accepted">The app accepted the native media insertion.</string>
+    <string name="picker_native_image_hint">Paste uses this app’s native image handler.</string>
 </resources>

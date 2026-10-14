@@ -35,6 +35,8 @@ class NativeBridgeDeviceTest {
     }
     private class Policy : ComposerPolicy {
         var identity: String? = "synthetic-thread-a"
+        var draft = false
+        override fun renewFocusedDraft() = draft
         override fun isComposer(view: EditText) = view.id == R.id.search
         override fun identity(activity: Activity, view: EditText) = identity
         override fun mimeTypes(info: EditorInfo) = info.contentMimeTypes.orEmpty()
@@ -93,6 +95,126 @@ class NativeBridgeDeviceTest {
             assertFalse(session.insert(activity, true, uri, "image/jpeg", fresh, 3))
             assertEquals(0, recorder.calls)
         }
+    }
+    @Test fun delayedMetadataRecoversNaturalConnectionButChangedEstablishedChatRevokesIt() {
+        withHost { activity, editor ->
+            val recorder = Recorder(editor); val policy = Policy().apply { identity = null }
+            val session = NativeEditorSession(policy, app.packageName)
+            session.capture(activity, editor, recorder, EditorInfo().apply { contentMimeTypes = arrayOf("image/jpeg") })
+            val pending = session.snapshot(activity, true)
+            assertEquals("pending_metadata", pending.getString("status")); assertNull(pending.getString("session"))
+            policy.identity = "synthetic-thread-a"
+            assertNotNull("Delayed metadata should recover the original natural connection", session.snapshot(activity, true).getString("session"))
+            policy.identity = null
+            assertEquals("editor_changed", session.snapshot(activity, true).getString("status"))
+            policy.identity = "synthetic-thread-b"
+            assertNull("A changed established chat needs a new connection", session.snapshot(activity, true).getString("session"))
+            assertEquals(0, recorder.calls)
+        }
+    }
+    @Test fun instagramDiscoveryFollowsDelegateRatherThanMediaStoreGraphs() {
+        withHost { _, editor ->
+            val owner = NativeBridgeFixtures.Owner(editor, "synthetic-noisy-thread")
+            val binding = InstagramThreadBinding.discover(NativeBridgeFixtures.noisyListener(owner), editor, NativeBridgeFixtures.Key::class.java)
+            assertNotNull("Realistic media-store branches must not exhaust controller discovery", binding)
+            assertNotNull(binding!!.identity(editor))
+        }
+    }
+    @Test fun draftTypingRenewsForegroundSelectionButCannotRetargetPausedSelection() {
+        withHost { activity, editor ->
+            val recorder = Recorder(editor); val policy = Policy().apply { draft = true }
+            val session = NativeEditorSession(policy, app.packageName)
+            session.capture(activity, editor, recorder, EditorInfo().apply { contentMimeTypes = arrayOf("image/gif") })
+            val original = session.snapshot(activity, true).getString("session")!!
+            policy.identity = "revision-after-typing"
+            val fresh = session.snapshot(activity, true).getString("session")!!
+            assertNotEquals(original, fresh)
+            val uri = Uri.parse("content://${app.packageName}.fileprovider/floating_exports/v1/fixture.gif")
+            assertFalse(session.insert(activity, true, uri, "image/gif", original, 1))
+            policy.identity = "revision-while-picker-open"
+            assertNull(session.snapshot(activity, false).getString("session"))
+            assertFalse(session.insert(activity, true, uri, "image/gif", fresh, 2))
+            assertEquals(0, recorder.calls)
+        }
+    }
+    @Test fun visibilityBootstrapMakesServiceVisibleWithoutGrantingMedia() = runBlocking {
+        val probe = "one.njk.sao.discordprobe"
+        org.junit.Assume.assumeTrue("Install the isolated Discord probe with its launcher entry",
+            runCatching { app.packageManager.getApplicationInfo(probe, 0) }.isSuccess)
+        NativeBridgeVisibility.prepare(app)
+        val file = java.io.File(app.filesDir, "native_bridge/ready")
+        assertEquals(0, file.length())
+        val uri = androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", file)
+        // The isolated probe intentionally has no SAO <queries> declaration. Give it exactly
+        // the same empty-file grant as a scoped host, then run its no-query binding check.
+        try { app.grantUriPermission(probe, uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        catch (error: IllegalArgumentException) { org.junit.Assume.assumeNoException("Install the isolated Discord probe", error) }
+        // Android force-stops the instrumented app on completion, revoking transient URI
+        // grants. The external probe can optionally run while this test keeps SAO alive.
+        val hold = InstrumentationRegistry.getArguments().getString("visibility_probe_hold_ms")?.toLongOrNull()?.coerceIn(0, 30_000) ?: 0
+        if (hold > 0) delay(hold)
+    }
+    @Test fun whatsappRequiresExactStickerDeclarationAndPreservesNativeImageMimeTypes() {
+        val policy = WhatsappComposerPolicy()
+        assertEquals(listOf("image/jpeg", "image/png", "image/gif"), policy.mimeTypes(EditorInfo().apply {
+            contentMimeTypes = arrayOf("image/*", "video/*")
+        }).toList())
+        assertEquals(listOf("image/webp.wasticker", "image/jpeg", "image/png"), policy.mimeTypes(EditorInfo().apply {
+            contentMimeTypes = arrayOf("image/webp.wasticker", "image/jpeg", "image/png")
+        }).toList())
+    }
+    @Test fun whatsappPastePrioritizesNativeStickerThenMediaWithoutAccessibility() = runBlocking {
+        val preferences = FloatingPreferences(app); val before = preferences.current()
+        try {
+            preferences.pasteAssistance(false)
+            for (sticker in listOf(true, false)) {
+                preferences.preferStickers(sticker)
+                assertNativePaste("com.whatsapp", LocalMediaSource(app).all().first { !it.hasMotion },
+                    if (sticker) "image/webp.wasticker" else "image/jpeg", arrayOf("image/webp.wasticker", "image/jpeg"))
+            }
+        } finally { preferences.preferStickers(before.preferStickers); preferences.pasteAssistance(before.pasteAssistance) }
+    }
+    @Test fun discordNativeGifStagesDraftOnceWithoutAccessibility() = runBlocking {
+        val preferences = FloatingPreferences(app); val before = preferences.current()
+        try {
+            preferences.pasteAssistance(false)
+            assertNativePaste("com.discord", LocalMediaSource(app).all().first { it.animated }, "image/gif", arrayOf("image/jpeg", "image/png", "image/gif"))
+        } finally { preferences.pasteAssistance(before.pasteAssistance) }
+    }
+    private suspend fun assertNativePaste(pkg: String, item: MediaItem, expectedMime: String, types: Array<String>) {
+        val calls = AtomicInteger(); var delivered: String? = null
+        NativeBridgeRegistry.register(pkg, object : INativeStickerClient.Stub() {
+            override fun snapshot(beginSelection: Boolean) = Bundle().apply {
+                putString("session", "priority-session"); putLong("created", SystemClock.elapsedRealtime())
+                putStringArray("mime_types", types); putBoolean("resumed", true)
+                putString("status", "ready"); putString("host_version", "fixture-version")
+            }
+            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long): Boolean {
+                delivered = mimeType; calls.incrementAndGet(); return true
+            }
+        })
+        withTimeout(5_000) { while (!NativeBridgeRegistry.supports(pkg, "priority-session", expectedMime)) delay(20) }
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, pkg, null, "priority-session")).use { scenario ->
+            val deadline = SystemClock.elapsedRealtime() + 10_000; var selected = false
+            while (!selected && SystemClock.elapsedRealtime() < deadline) {
+                scenario.onActivity {
+                    val grid = it.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.media_grid)
+                    val adapter = grid.adapter as MediaCarouselAdapter
+                    val position = adapter.currentList.indexOfFirst { media -> media.id == item.id }
+                    if (position >= 0) { grid.scrollToPosition(position); selected = grid.findViewHolderForAdapterPosition(position)?.itemView?.performClick() == true }
+                }; delay(40)
+            }
+            assertTrue(selected)
+            assertEquals("Selecting/copying must not insert", 0, calls.get())
+            scenario.onActivity {
+                val paste = it.findViewById<android.view.View>(R.id.paste_action)
+                assertTrue("Verified native Paste must work without an accessibility anchor", paste.isEnabled)
+                assertTrue(paste.performClick())
+            }
+            withTimeout(5_000) { while (calls.get() == 0) delay(20) }
+            assertEquals(expectedMime, delivered); assertEquals(1, calls.get())
+        }
+        NativeBridgeRegistry.clear()
     }
     @Test fun instagramBindingTracksMutableThreadKeyAndRejectsAmbiguousOrReplacedEditors() {
         withHost { _, editor ->

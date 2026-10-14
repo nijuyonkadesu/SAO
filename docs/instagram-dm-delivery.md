@@ -58,7 +58,7 @@ DM resource role `row_thread_composer_edittext`. It observes the editor's native
 references to the DM controller. The controller must own this exact editor and expose
 Instagram's named `DirectThreadKey` through a unique getter shape. Unknown, ambiguous,
 empty or replaced metadata fails closed. This avoids hardcoding obfuscated class,
-field and sender-method names in the module. Discovery never walks message collections,
+field and sender-method names in the module. Discovery follows weak sender references and Kotlin controller delegates, skipping media-store branches. It never walks message collections,
 databases or account sessions. Only a hash of the key's verified parcel representation
 is retained in process memory; conversation IDs and contents are never logged or stored.
 
@@ -121,3 +121,21 @@ References: [Android rich content](https://developer.android.com/develop/ui/view
 [Android image keyboard API](https://developer.android.com/develop/ui/views/touch-and-input/image-keyboard),
 [modern module API](https://github.com/LSPosed/LSPosed/wiki/Develop-Xposed-Modules-Using-Modern-Xposed-API),
 [Chromium's Instagram DM target](https://chromium.googlesource.com/chromium/src/+/HEAD/chrome/browser/share/default_ranking_android.cc).
+
+## Availability fixes (2026-10-14)
+
+The floating service now grants scoped clients access to an isolated empty bootstrap
+URI so Android package visibility permits binding to SAO. Caller UID enforcement and
+separate per-media grants remain unchanged. Lifecycle hooks and diagnostics are installed
+before per-version composer initialization; missing classes do not silently hide bridge
+activation. The picker can distinguish inactive scope/binding, unsupported composer,
+missing editor, unsupported MIME and pending DM metadata, and includes host app version.
+
+Listener discovery is bounded to closure/controller relationships, skipping unrelated
+media-store graphs. Initial discovery retries at most twice after 250/1000 ms; an
+already resolved binding is not rescanned. A late-installed listener requests a natural
+Android input reconnection, and a listener configured before capture can be recovered
+from its exact native field. The existing natural connection may await initial metadata;
+changed established conversation identity still revokes it. JPEG/PNG remain the only
+supported native formats. The isolated real-class probe still passes; authenticated
+Instagram send and framework injection require physical-device verification.

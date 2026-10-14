@@ -36,6 +36,31 @@ public final class NativeBridgeFixtures {
         public final Object second;
         public Pair(Object first, Object second) { this.first = first; this.second = second; }
     }
+    public static final class Closure implements kotlin.jvm.functions.Function0<Object> {
+        public final Object captured;
+        Closure(Object owner) { captured = owner; }
+        public Object invoke() { return captured; }
+    }
+    public static final class Delegate {
+        public final kotlin.jvm.functions.Function0<Object> callback;
+        Delegate(Object owner) { callback = new Closure(owner); }
+    }
+    public static final class Noise {
+        public final Object a, b, c, d, e, f, g, h;
+        Noise(int depth) {
+            a = leaf(depth); b = leaf(depth); c = leaf(depth); d = leaf(depth);
+            e = leaf(depth); f = leaf(depth); g = leaf(depth); h = leaf(depth);
+        }
+        private static Object leaf(int depth) { return depth == 0 ? new Link(new Object()) : new Noise(depth - 1); }
+    }
+    public static final class Controller {
+        public final Delegate delegate;
+        public final Noise mediaA = new Noise(1), mediaB = new Noise(1), mediaC = new Noise(1), mediaD = new Noise(1);
+        Controller(Object owner) { delegate = new Delegate(owner); }
+    }
+    public static Object noisyListener(Object owner) {
+        return new Link(new Link(new WeakReference<>(new Controller(owner))));
+    }
     public static Object listener(Object owner) {
         return new Link(new Link(new WeakReference<>(new Link(new Link(new Link(owner))))));
     }

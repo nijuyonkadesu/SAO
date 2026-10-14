@@ -165,8 +165,9 @@ class PickerActivity : AppCompatActivity() {
         }
         binding.copyAction.setOnClickListener { collapseSearch(); model.copy(target) }
         binding.pasteAction.setOnClickListener { collapseSearch(); dispatch {
-            if (target == MessagingTarget.INSTAGRAM) {
-                model.selection.value?.let { nativeInsert(it, Rendition.MEDIA) }
+            val rendition = nativePasteRendition(model.selection.value)
+            if (rendition != null) {
+                model.selection.value?.let { nativeInsert(it, rendition) }
             } else if (model.prepareClipboard(target) && PasteAssistService.requestPaste(pasteAnchor, targetPackage)) finish()
             else inlineFailure(R.string.floating_paste_unavailable)
         } }
@@ -259,6 +260,7 @@ class PickerActivity : AppCompatActivity() {
                     binding.message.isVisible = binding.message.isVisible && !binding.sourcePanel.isVisible && !binding.targetList.isVisible && !searchController.visible
                 } }
                 launch { NativeBridgeRegistry.sessions.collect { renderDock() } }
+                launch { NativeBridgeRegistry.statuses.collect { renderDock() } }
                 launch { model.selection.collect {
                     adapter.selectedId = it?.id
                     if (target == MessagingTarget.INSTAGRAM) refreshCapability()
@@ -315,7 +317,8 @@ class PickerActivity : AppCompatActivity() {
         super.onConfigurationChanged(newConfig); metrics = windowManager.maximumWindowMetrics; resize(0)
     }
     private fun recordFocus() {
-        if (placingPosition || appliedQuery != model.query.value) return
+        if (placingPosition || appliedQuery != model.query.value || binding.mediaGrid.isLayoutRequested ||
+            !binding.mediaGrid.isAttachedToWindow) return
         val manager = binding.mediaGrid.layoutManager as CarouselLayoutManager
         val focal = snap.findSnapView(manager) ?: return
         val id = adapter.currentList.getOrNull(manager.getPosition(focal))?.id ?: return
@@ -393,6 +396,26 @@ class PickerActivity : AppCompatActivity() {
         binding.sourceToggle.contentDescription = getString(R.string.source_hold_accessibility, label)
         androidx.appcompat.widget.TooltipCompat.setTooltipText(binding.sourceToggle, binding.sourceToggle.contentDescription)
     }
+    private fun nativeUnavailableHint(): String {
+        val status = NativeBridgeRegistry.status(targetPackage)
+        if (!NativeBridgeRegistry.available(targetPackage)) return getString(R.string.picker_native_inactive)
+        val reason = getString(when (status?.stage) {
+            "hooks_unavailable" -> R.string.picker_native_hooks_unavailable
+            "pending_metadata" -> R.string.picker_native_metadata_pending
+            "unsupported_mime" -> R.string.picker_native_mime_unsupported
+            "ready", "unfocused" -> R.string.picker_native_reopen
+            else -> R.string.picker_native_focus
+        })
+        return getString(R.string.picker_native_diagnostic, status?.version.orEmpty().ifEmpty { "—" }, reason)
+    }
+    private fun nativePasteRendition(item: MediaItem?): Rendition? {
+        if (item == null || item.isVideo) return null
+        if (target.isWhatsapp && options.preferStickers && !item.hasMotion &&
+            NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")) return Rendition.STICKER_WEBP
+        val mime = if (item.hasMotion) item.mimeType else "image/jpeg"
+        return if ((target.isWhatsapp || target == MessagingTarget.INSTAGRAM || target == MessagingTarget.DISCORD) &&
+            NativeBridgeRegistry.supports(targetPackage, nativeSession, mime)) Rendition.MEDIA else null
+    }
     private fun renderDock() {
         if (!::binding.isInitialized) return
         val item = model.selection.value
@@ -403,9 +426,10 @@ class PickerActivity : AppCompatActivity() {
         binding.selectionTitle.contentDescription = title
         binding.selectionStatus.contentDescription = status
         binding.copyAction.isEnabled = item != null && !busy
-        val nativePhoto = target == MessagingTarget.INSTAGRAM && item != null && !item.hasMotion &&
-            NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/jpeg")
-        binding.pasteAction.isEnabled = !busy && (nativePhoto || item != null &&
+        val nativeRendition = nativePasteRendition(item)
+        val nativePaste = nativeRendition != null
+        val nativePhoto = nativePaste && target == MessagingTarget.INSTAGRAM
+        binding.pasteAction.isEnabled = !busy && (nativePaste || item != null &&
             DeliveryPolicy.supportsPaste(item, target) && target != MessagingTarget.OTHER &&
             options.pasteAssistance && pasteAnchor != null && PasteAssistService.connected())
         val native = NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")
@@ -420,14 +444,19 @@ class PickerActivity : AppCompatActivity() {
         if (binding.mediaAction.text.toString() != mediaLabel) binding.mediaAction.text = mediaLabel
         binding.capabilityHint.text = when {
             nativePhoto -> getString(R.string.picker_instagram_native_hint)
+            target.isWhatsapp && nativeRendition == Rendition.STICKER_WEBP -> getString(R.string.picker_whatsapp_native_paste_hint)
+            nativePaste -> getString(R.string.picker_native_image_hint)
             target == MessagingTarget.INSTAGRAM && item?.hasMotion == true && NativeBridgeRegistry.available(targetPackage) -> getString(R.string.picker_instagram_motion_hint)
             target == MessagingTarget.INSTAGRAM && !canAttachInstagram -> getString(R.string.picker_instagram_unavailable)
+            target == MessagingTarget.INSTAGRAM && NativeBridgeRegistry.available(targetPackage) -> nativeUnavailableHint()
             target == MessagingTarget.INSTAGRAM -> getString(R.string.picker_instagram_hint)
             target == MessagingTarget.DISCORD && item?.isVideo == true -> getString(R.string.picker_discord_motion_hint)
+            target == MessagingTarget.DISCORD && !binding.pasteAction.isEnabled && NativeBridgeRegistry.available(targetPackage) -> nativeUnavailableHint()
+            target == MessagingTarget.DISCORD && !binding.pasteAction.isEnabled -> getString(R.string.picker_discord_paste_inactive)
             target == MessagingTarget.DISCORD -> getString(R.string.picker_discord_hint)
             item?.isVideo == true -> getString(R.string.picker_video_hint)
             item?.animated == true -> getString(R.string.picker_gif_hint)
-            target.isWhatsapp && !native -> getString(R.string.picker_native_hint)
+            target.isWhatsapp && !native -> nativeUnavailableHint()
             target == MessagingTarget.TELEGRAM && !canShareSticker -> getString(R.string.floating_app_unavailable)
             !binding.pasteAction.isEnabled -> getString(R.string.picker_assist_hint)
             else -> ""
@@ -621,10 +650,11 @@ class PickerActivity : AppCompatActivity() {
     }
     private suspend fun nativeInsert(item: MediaItem, rendition: Rendition = Rendition.STICKER_WEBP) {
         val pkg = targetPackage ?: return; val session = nativeSession ?: return
-        val mime = if (target == MessagingTarget.INSTAGRAM) "image/jpeg" else "image/webp.wasticker"
+        val mime = if (rendition == Rendition.STICKER_WEBP) "image/webp.wasticker" else if (item.hasMotion) item.mimeType else "image/jpeg"
         if (!NativeBridgeRegistry.supports(pkg, session, mime)) { inlineFailure(R.string.floating_native_rejected); return }
         val media = exports.prepare(item, rendition)
         val instagram = target == MessagingTarget.INSTAGRAM
+        val discord = target == MessagingTarget.DISCORD
         val context = applicationContext
         // Explicit handoff must outlive this activity while the original host regains focus.
         deliveryScope.launch {
@@ -632,7 +662,9 @@ class PickerActivity : AppCompatActivity() {
             Toast.makeText(context, when {
                 !accepted -> R.string.floating_native_rejected
                 instagram -> R.string.picker_instagram_native_accepted
-                else -> R.string.floating_native_accepted
+                discord -> R.string.picker_discord_native_accepted
+                rendition == Rendition.STICKER_WEBP -> R.string.floating_native_accepted
+                else -> R.string.picker_native_media_accepted
             }, Toast.LENGTH_LONG).show()
         }
         finish()
