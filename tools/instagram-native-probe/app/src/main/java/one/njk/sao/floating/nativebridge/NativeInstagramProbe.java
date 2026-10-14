@@ -75,6 +75,10 @@ public final class NativeInstagramProbe extends Instrumentation {
                     set(container,"A0N",null); set(container,"A0O",null);
                     report.put("replaced_editor_rejected",policy.identity(host,view)==null);
                     set(container,"A0N",view); set(container,"A0O",view);
+                    policy.reset();
+                    report.put("inactive_controller_binding_cleared",policy.identity(host,view)==null);
+                    policy.configuredFromEditor(view);
+                    report.put("reactivation_recovers_existing_listener",policy.identity(host,view)!=null);
                     configure.invoke(view,null,null);
                     report.put("cleared_listener_rejected",policy.identity(host,view)==null);
                     android.view.inputmethod.EditorInfo info=new android.view.inputmethod.EditorInfo();

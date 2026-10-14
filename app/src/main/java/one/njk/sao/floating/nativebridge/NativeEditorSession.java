@@ -1,13 +1,11 @@
 package one.njk.sao.floating.nativebridge;
 
 import android.app.Activity;
-import android.content.ClipDescription;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
-import android.view.inputmethod.InputContentInfo;
 import android.widget.EditText;
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
@@ -23,6 +21,7 @@ final class NativeEditorSession {
     private WeakReference<Activity> activity = new WeakReference<>(null);
     private WeakReference<EditText> editor = new WeakReference<>(null);
     private InputConnection input;
+    private boolean receiveContent;
     private String identity;
     private String session;
     private String[] mimeTypes = new String[0];
@@ -38,27 +37,36 @@ final class NativeEditorSession {
     }
     boolean owns(EditText view) { return editor.get() == view; }
     void clear() {
-        input = null; session = null; identity = null; mimeTypes = new String[0];
+        input = null; receiveContent = false; session = null; identity = null; mimeTypes = new String[0];
         editor.clear(); activity.clear(); status = "waiting_editor";
     }
+    void captureView(Activity current, EditText view) {
+        String[] types = policy.viewMimeTypes(view);
+        if (types.length == 0) return;
+        capture(current, view, null, types, true);
+    }
     void capture(Activity current, EditText view, InputConnection connection, EditorInfo info) {
+        String[] types = policy.viewMimeTypes(view);
+        boolean receiver = types.length > 0;
+        capture(current, view, connection, receiver ? types : policy.mimeTypes(info), receiver);
+    }
+    private void capture(Activity current, EditText view, InputConnection connection, String[] types, boolean receiver) {
         String nextIdentity = policy.isComposer(view) ? policy.identity(current, view) : null;
-        String[] types = policy.mimeTypes(info);
-        if (connection == null || !policy.isComposer(view) || types.length == 0) { clear(); status = "unsupported_mime"; return; }
+        if ((!receiver && connection == null) || !policy.isComposer(view) || types.length == 0) { clear(); status = "unsupported_mime"; return; }
         // Retain the naturally created wrapper while the host finishes loading its metadata.
         // No lease exists until that metadata is verified. A changed established identity
         // still clears the wrapper and cannot reuse an old conversation selection.
-        if (activity.get() != current || editor.get() != view || nextIdentity == null || !nextIdentity.equals(identity) || !Arrays.equals(types, mimeTypes)) session = null;
+        if (activity.get() != current || editor.get() != view || nextIdentity == null || !nextIdentity.equals(identity) || !Arrays.equals(types, mimeTypes) || receiveContent != receiver) session = null;
         activity = new WeakReference<>(current); editor = new WeakReference<>(view);
-        input = connection; identity = nextIdentity; mimeTypes = types.clone();
+        input = connection; receiveContent = receiver; identity = nextIdentity; mimeTypes = types.clone();
     }
     Bundle snapshot(Activity current, boolean resumed) {
         Bundle state = new Bundle();
         EditText view = editor.get();
-        if (input == null) { state.putString("status", status); return state; }
+        if (input == null && !receiveContent) { state.putString("status", status); return state; }
         if (!sameEditor(current, view)) { clear(); state.putString("status", status); return state; }
         String actual = policy.identity(current, view);
-        boolean ready = resumed && view.hasFocus() && current.hasWindowFocus();
+        boolean ready = resumed && (view.hasFocus() || receiveContent) && current.hasWindowFocus();
         if (identity == null) {
             if (actual == null) { status = "pending_metadata"; state.putString("status", status); return state; }
             identity = actual;
@@ -80,8 +88,8 @@ final class NativeEditorSession {
         return state;
     }
     private boolean sameEditor(Activity current, EditText view) {
-        return current != null && activity.get() == current && view != null && view.isAttachedToWindow() && input != null &&
-            view.getRootView() == current.getWindow().getDecorView().getRootView() && policy.isComposer(view);
+        return current != null && activity.get() == current && view != null && view.isAttachedToWindow() && view.isShown() && (input != null || receiveContent) && view.isEnabled() &&
+            view.getRootView() == current.getWindow().getDecorView().getRootView() && policy.isComposer(view) && (!receiveContent || Arrays.equals(mimeTypes, policy.viewMimeTypes(view)));
     }
     private boolean validEditor(Activity current, EditText view) {
         if (!sameEditor(current, view) || identity == null) return false;
@@ -93,13 +101,12 @@ final class NativeEditorSession {
             !Arrays.asList(mimeTypes).contains(mimeType)) return false;
         EditText view = editor.get();
         if (!validEditor(current, view)) { clear(); return false; }
-        if (!resumed || !current.hasWindowFocus() || !view.hasFocus() || expected == null || !expected.equals(session) ||
+        if (!resumed || !current.hasWindowFocus() || (!view.hasFocus() && !receiveContent) || expected == null || !expected.equals(session) ||
             requestId <= lastRequest || clock.getAsLong() - created > MAX_AGE_MS) return false;
         lastRequest = requestId;
         session = null; // Consume before dispatch; a false/unknown host result must never be replayed.
-        input.finishComposingText();
-        // SAO grants URI access explicitly. There is no fabricated IME permission token.
-        return input.commitContent(new InputContentInfo(uri,
-            new ClipDescription("SAO media", new String[]{mimeType}), null), 0, null);
+        // SAO grants URI access explicitly. The policy chooses the host's existing IME
+        // wrapper or its verified native receive-content view; there is no fabricated token.
+        return policy.insertContent(view, input, uri, mimeType);
     }
 }

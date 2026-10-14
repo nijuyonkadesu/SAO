@@ -7,6 +7,21 @@ import java.lang.ref.WeakReference;
 
 /** Synthetic DM closure graph: no host account or sending code. */
 public final class NativeBridgeFixtures {
+    public static final class WhatsappEditor extends EditText {
+        public final android.os.Bundle conversation = new android.os.Bundle();
+        public final android.os.Bundle other = new android.os.Bundle();
+        private android.content.res.Resources roleResources;
+        public WhatsappEditor(android.content.Context context) {
+            super(context);
+            android.content.res.Resources resources = context.getResources();
+            roleResources = new android.content.res.Resources(resources.getAssets(), resources.getDisplayMetrics(), resources.getConfiguration()) {
+                @Override public String getResourceEntryName(int id) { return "entry"; }
+            };
+        }
+        @Override public android.content.res.Resources getResources() {
+            return roleResources == null ? super.getResources() : roleResources;
+        }
+    }
     public static final class Key implements Parcelable {
         public String id;
         public Key(String id) { this.id = id; }

@@ -12,10 +12,11 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentHashMap
+import one.njk.sao.floating.FloatingSession
 
 object NativeBridgeRegistry {
     data class Selection(val packageName: String, val session: String, val mimeTypes: Set<String>)
-    private data class Client(val remote: INativeStickerClient, val binder: IBinder)
+    private data class Client(val remote: INativeStickerClient, val binder: IBinder, var death: IBinder.DeathRecipient? = null)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     private val operations = Mutex()
     private val cached = ConcurrentHashMap<String, Pair<Selection, Long>>()
@@ -30,28 +31,59 @@ object NativeBridgeRegistry {
     private val sessionState = MutableStateFlow<Map<String, Selection>>(emptyMap())
     val sessions = sessionState.asStateFlow()
 
+    init {
+        scope.launch {
+            FloatingSession.active.collect { active ->
+                if (!active) {
+                    polling?.cancel(); polling = null; cached.clear(); sessionState.value = emptyMap()
+                }
+                operations.withLock {
+                    val control = FloatingSession.controlState()
+                    clients.forEach { (_, client) -> runCatching { client.remote.setActive(control.active, control.generation) } }
+                }
+                connection.value = active && clients.isNotEmpty()
+                if (active) startPolling()
+            }
+        }
+    }
+    private fun unlink(client: Client) {
+        client.death?.let { runCatching { client.binder.unlinkToDeath(it, 0) } }
+    }
     @Synchronized internal fun register(packageName: String, remote: INativeStickerClient) {
         val binder = remote.asBinder()
+        if (clients[packageName]?.binder == binder) return
         val client = Client(remote, binder)
-        binder.linkToDeath({
+        val death = IBinder.DeathRecipient {
             if (clients.remove(packageName, client)) {
                 cached.remove(packageName)
                 sessionState.value = sessionState.value - packageName
                 statusState.value = statusState.value - packageName
-                connection.value = clients.isNotEmpty()
+                connection.value = FloatingSession.active.value && clients.isNotEmpty()
             }
-        }, 0)
-        clients[packageName] = client
+        }
+        client.death = death
+        binder.linkToDeath(death, 0)
+        clients.put(packageName, client)?.let(::unlink)
         cached.remove(packageName)
         sessionState.value = sessionState.value - packageName
         statusState.value = statusState.value + (packageName to HostStatus("waiting_editor", ""))
-        connection.value = true
-        if (polling?.isActive != true) polling = scope.launch {
-            while (isActive && clients.isNotEmpty()) {
+        connection.value = FloatingSession.active.value
+        scope.launch {
+            operations.withLock {
+                val control = FloatingSession.controlState()
+                if (clients[packageName] === client) runCatching { remote.setActive(control.active, control.generation) }
+            }
+        }
+        startPolling()
+    }
+    @Synchronized private fun startPolling() {
+        if (FloatingSession.active.value && clients.isNotEmpty() && polling?.isActive != true) polling = scope.launch {
+            while (isActive && FloatingSession.active.value && clients.isNotEmpty()) {
                 operations.withLock {
                     val validated = mutableMapOf<String, Selection>()
                     val diagnostics = mutableMapOf<String, HostStatus>()
                     clients.forEach { (name, current) ->
+                        if (!FloatingSession.active.value) return@forEach
                         try {
                             val state = current.remote.snapshot(true)
                             if (clients[name] !== current) return@forEach
@@ -67,7 +99,7 @@ object NativeBridgeRegistry {
                         } catch (_: android.os.RemoteException) { cached.remove(name) }
                         catch (_: SecurityException) { cached.remove(name) }
                     }
-                    sessionState.value = validated.filterKeys { clients.containsKey(it) }
+                    sessionState.value = if (FloatingSession.active.value) validated.filterKeys { clients.containsKey(it) } else emptyMap()
                     statusState.value = diagnostics.filterKeys { clients.containsKey(it) }
                 }
                 delay(400)
@@ -83,10 +115,11 @@ object NativeBridgeRegistry {
         return Selection(packageName, session, mimeTypes)
     }
     @Synchronized internal fun clear() {
+        clients.values.forEach(::unlink)
         clients.clear(); cached.clear(); polling?.cancel(); polling = null
         sessionState.value = emptyMap(); statusState.value = emptyMap(); connection.value = false
     }
-    fun available(packageName: String?) = packageName != null && clients[packageName]?.binder?.isBinderAlive == true
+    fun available(packageName: String?) = FloatingSession.active.value && packageName != null && clients[packageName]?.binder?.isBinderAlive == true
     fun supports(packageName: String?, session: String?, mimeType: String): Boolean =
         available(packageName) && session != null && sessionState.value[packageName]?.let {
             it.session == session && mimeType in it.mimeTypes
@@ -100,6 +133,7 @@ object NativeBridgeRegistry {
     }
     suspend fun insert(context: Context, packageName: String, uri: Uri, mimeType: String, session: String): Boolean = withContext(Dispatchers.IO) {
         operations.withLock {
+            if (!FloatingSession.active.value) return@withLock false
             val client = clients[packageName] ?: return@withLock false
             var granted = false
             var accepted = false
@@ -110,7 +144,7 @@ object NativeBridgeRegistry {
                 granted = true
                 repeat(20) {
                     delay(100)
-                    if (clients[packageName] !== client) return@withLock false
+                    if (!FloatingSession.active.value || clients[packageName] !== client) return@withLock false
                     val state = client.remote.snapshot(false)
                     val current = selection(packageName, state)
                     if (current?.session != session || mimeType !in current.mimeTypes) return@withLock false

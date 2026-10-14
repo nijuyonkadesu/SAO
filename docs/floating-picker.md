@@ -254,10 +254,10 @@ See [the isolated client probe](../tools/discord-native-probe/README.md).
 
 The WhatsApp host observes the naturally created final `onCreateInputConnection(EditorInfo)` wrapper of
 the conversation composer with resource name `entry`. It requires explicitly
-advertised **`image/webp.wasticker`** support, a conversation `jid`, and the
-composer's `ARG_JID` metadata.
-The latter catches in-place chat changes even when an activity retains an old
-intent. Missing or ambiguous metadata disables native insertion. No extra input connection is constructed during resume. Capability snapshots read
+advertised **`image/webp.wasticker`** support and the composer's live `ARG_JID`
+metadata. An activity launch `jid` is unnecessary and may be absent or stale when
+navigating between conversations.
+This catches in-place chat changes even when an activity retains an old intent. Missing or ambiguous metadata disables native insertion. No extra input connection is constructed during resume. Capability snapshots read
 immutable cached state without waiting for the host UI thread. The selected URI is explicitly
 granted to the scoped package. When the original chat resumes, the module calls
 the wrapper's own `commitContent` with a transparent 512 × 512 WebP and the
@@ -548,3 +548,43 @@ real-class probe still passes. Debug/release/prerelease build, JVM and lint chec
 These local recording probes do not establish Vector injection or authenticated host
 upload/delivery on the user's rooted phone. Per-app inline diagnostics support that
 remaining device verification.
+
+### Closed keyboard and inactive service (2026-10-14)
+
+Discord explicitly clears composer focus when its keyboard hides. On Android 12+,
+SAO now leases the configured native receive-content view instead of requiring a live
+IME connection. Listener configuration and view attachment trigger discovery, including
+late React composer creation. Only one visible enabled receiver can be selected. On
+explicit Paste, the same leased editor regains focus and its own `performReceiveContent`
+handler stages the URI. No input connection or replacement keyboard is manufactured.
+Android 11 retains the existing captured IME/clipboard fallback. MIME/capability removal,
+listener replacement, hidden/detached editors, changed drafts and consumed tokens still
+revoke selections. PNG/GIF insertions through Discord's actual classes work without an
+input connection in the isolated probe, with zero Send callbacks.
+
+WhatsApp no longer requires a `jid` in the activity launch intent. Its live editor's
+`ARG_JID` bundle already identifies the conversation; missing/conflicting live metadata
+still disables native insertion, and changed metadata revokes the prior lease.
+
+When the floating **service is stopped**, native snapshot polling and accessibility
+node discovery stop. Accessibility event types are set to zero and node leases cleared.
+Host hooks return without inspecting editors, scanning views or restarting input; native
+bindings are released and Instagram's captured controller bindings cleared. UsageStats
+sampling is owned by the floating service's canceled coroutine scope. A tucked/faded
+bubble remains an active floating service.
+
+A scoped host retains minimal lifecycle hooks and a permission-protected activation
+receiver. It performs at most one startup state handshake to discover an already running
+floating service; inactive failures have no retry loop. Signed start/stop broadcasts and
+Binder activation carry monotonic generations so stale control messages cannot restore
+older state. Both media Binder directions retain UID enforcement. Host snapshot callers
+use a UID resolved once per binding, rather than repeated PackageManager queries. Paused
+host snapshots do not schedule periodic UI metadata reads; insertion validates on resume.
+These one-time setup/control calls are distinct from continuous polling or discovery.
+
+A recording-client regression verifies zero snapshots during inactivity and after Stop,
+and cleared cached leases. A real AccessibilityService device test verifies event types
+are zero while stopped, restored on activation and zero again after Stop. Focus-loss tests preserve a view receiver lease across picker
+pause without an IME, while stale/ambiguous metadata, hidden editors and removed handlers
+remain rejected. Physical Vector injection and authenticated sends still require phone
+verification.

@@ -431,7 +431,7 @@ class PickerActivity : AppCompatActivity() {
         val nativePhoto = nativePaste && target == MessagingTarget.INSTAGRAM
         binding.pasteAction.isEnabled = !busy && (nativePaste || item != null &&
             DeliveryPolicy.supportsPaste(item, target) && target != MessagingTarget.OTHER &&
-            options.pasteAssistance && pasteAnchor != null && PasteAssistService.connected())
+            FloatingSession.active.value && options.pasteAssistance && pasteAnchor != null && PasteAssistService.connected())
         val native = NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")
         binding.stickerAction.isEnabled = item != null && !item.hasMotion && !busy &&
             (target == MessagingTarget.TELEGRAM && canShareSticker || target.isWhatsapp && native)

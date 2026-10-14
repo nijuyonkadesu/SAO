@@ -106,6 +106,16 @@ public class NativeDiscordProbe extends Instrumentation {
                         commits.put(new JSONObject().put("file",name).put("accepted",accepted).put("native_image_inserted",inserted.contains(uri.toString())));
                     }
                     report.put("native_commits",commits).put("send_callbacks",sends.get());
+                    report.put("view_receive_mime_types",new JSONArray(policy.viewMimeTypes(editor)));
+                    JSONArray receives=new JSONArray();
+                    for(String name:List.of("still.png","motion.gif")) {
+                        editor.clearFocus(); inserted.clear();
+                        Uri uri=Uri.parse("content://one.njk.sao.discordprobe.fixtures/"+name);
+                        boolean accepted=policy.insertContent(editor,null,uri,ProbeProvider.TYPES.get(name));
+                        receives.put(new JSONObject().put("file",name).put("accepted_without_input_connection",accepted)
+                            .put("native_image_inserted",inserted.contains(uri.toString())));
+                    }
+                    report.put("native_receive_content",receives).put("send_callbacks",sends.get());
                     rootType.getMethod("setListener",listenerType).invoke(root, new Object[]{null});
                     report.put("missing_listener_rejected",policy.identity(activity,editor)==null);
                     rootType.getMethod("setListener",listenerType).invoke(root,listener);

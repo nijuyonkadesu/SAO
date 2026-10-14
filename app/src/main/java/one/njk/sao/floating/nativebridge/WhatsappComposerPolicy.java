@@ -35,8 +35,6 @@ final class WhatsappComposerPolicy implements ComposerPolicy {
         return accepted.toArray(new String[0]);
     }
     @Override public String identity(Activity current, EditText view) {
-        String intentJid = current.getIntent().getStringExtra("jid");
-        if (intentJid == null || intentJid.isEmpty()) return null;
         try {
             List<Field> fields = conversationFields.get(view.getClass());
             if (fields == null) {
@@ -59,7 +57,9 @@ final class WhatsappComposerPolicy implements ComposerPolicy {
                 composerJid = candidate;
             }
             if (composerJid == null) return null;
-            byte[] bytes = (intentJid + "\u0000" + composerJid).getBytes(StandardCharsets.UTF_8);
+            // The current composer's metadata identifies its chat. Activity launch extras
+            // may be absent or stale when navigating conversations within the same activity.
+            byte[] bytes = composerJid.getBytes(StandardCharsets.UTF_8);
             return Arrays.toString(MessageDigest.getInstance("SHA-256").digest(bytes));
         } catch (Exception error) { return null; }
     }

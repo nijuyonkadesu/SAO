@@ -26,14 +26,15 @@ class NativeBridgeDeviceTest {
     private val app = InstrumentationRegistry.getInstrumentation().targetContext
     private val access get() = EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java)
     private var previous: SourceCatalog? = null
+    private var previousActive = false
     @Before fun setup() = runBlocking {
         previous = access.sources().current(); access.sources().select(null); access.browseSession().reset()
-        NativeBridgeRegistry.clear()
+        NativeBridgeRegistry.clear(); previousActive = FloatingSession.active.value; FloatingSession.active(true)
     }
     @After fun cleanup() = runBlocking {
-        NativeBridgeRegistry.clear(); previous?.let { access.sources().restore(it) }; access.browseSession().reset()
+        NativeBridgeRegistry.clear(); FloatingSession.active(previousActive); previous?.let { access.sources().restore(it) }; access.browseSession().reset()
     }
-    private class Policy : ComposerPolicy {
+    private open class Policy : ComposerPolicy {
         var identity: String? = "synthetic-thread-a"
         var draft = false
         override fun renewFocusedDraft() = draft
@@ -112,6 +113,139 @@ class NativeBridgeDeviceTest {
             assertEquals(0, recorder.calls)
         }
     }
+    @Test fun inactiveFloatingServiceStopsNativeSnapshotCallsAndClearsLeases() = runBlocking {
+        val snapshots = AtomicInteger(); val control = java.util.concurrent.atomic.AtomicReference<Boolean>()
+        FloatingSession.active(false)
+        NativeBridgeRegistry.register("com.discord", object : INativeStickerClient.Stub() {
+            override fun setActive(active: Boolean, generation: Long) { control.set(active) }
+            override fun snapshot(beginSelection: Boolean) = Bundle().apply {
+                snapshots.incrementAndGet(); putString("session", "idle-check")
+                putLong("created", SystemClock.elapsedRealtime()); putBoolean("resumed", true)
+                putStringArray("mime_types", arrayOf("image/gif"))
+            }
+            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long) = false
+        })
+        withTimeout(5_000) { while (control.get() != false) delay(20) }
+        delay(900); assertEquals("Inactive registration must not poll Android/native clients", 0, snapshots.get())
+        FloatingSession.active(true)
+        withTimeout(5_000) { while (!NativeBridgeRegistry.supports("com.discord", "idle-check", "image/gif")) delay(20) }
+        assertTrue(snapshots.get() > 0)
+        FloatingSession.active(false)
+        withTimeout(5_000) { while (control.get() != false) delay(20) }
+        val settled = snapshots.get(); delay(900)
+        assertEquals("No snapshots after Stop has settled", settled, snapshots.get())
+        assertNull(NativeBridgeRegistry.cachedSelection("com.discord")); assertTrue(NativeBridgeRegistry.sessions.value.isEmpty())
+        assertFalse(NativeBridgeRegistry.available("com.discord"))
+    }
+    @Test fun stoppedFloatingDisablesAccessibilityEventsAndRestartRestoresThem() = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val preferences = FloatingPreferences(app); val previousOptions = preferences.current()
+        val beforeActive = FloatingSession.active.value
+        val resolver = app.contentResolver
+        val servicesKey = android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        val enabledKey = android.provider.Settings.Secure.ACCESSIBILITY_ENABLED
+        val previousServices = android.provider.Settings.Secure.getString(resolver, servicesKey)
+        val previousEnabled = android.provider.Settings.Secure.getInt(resolver, enabledKey, 0)
+        val automation = instrumentation.getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        automation.adoptShellPermissionIdentity("android.permission.WRITE_SECURE_SETTINGS")
+        try {
+            preferences.pasteAssistance(true); FloatingSession.active(false)
+            val component = android.content.ComponentName(app, PasteAssistService::class.java).flattenToString()
+            val services = previousServices.orEmpty().split(':').filter { it.isNotBlank() }.toMutableSet().apply { add(component) }
+            android.provider.Settings.Secure.putString(resolver, servicesKey, services.joinToString(":"))
+            android.provider.Settings.Secure.putInt(resolver, enabledKey, 1)
+            val instanceField = PasteAssistService::class.java.getDeclaredField("instance").apply { isAccessible = true }
+            fun events(): Int? {
+                val service = (instanceField.get(null) as java.lang.ref.WeakReference<*>).get() as? PasteAssistService
+                return service?.serviceInfo?.eventTypes
+            }
+            withTimeout(10_000) { while (!PasteAssistService.connected() || events() != 0) delay(40) }
+            FloatingSession.active(true)
+            withTimeout(10_000) { while (events() != (android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)) delay(40) }
+            FloatingSession.active(false)
+            withTimeout(10_000) { while (events() != 0) delay(40) }
+            assertNull(PasteAssistService.captureAnchor("com.whatsapp"))
+        } finally {
+            FloatingSession.active(false)
+            android.provider.Settings.Secure.putString(resolver, servicesKey, previousServices)
+            android.provider.Settings.Secure.putInt(resolver, enabledKey, previousEnabled)
+            preferences.pasteAssistance(previousOptions.pasteAssistance)
+            automation.dropShellPermissionIdentity()
+            FloatingSession.active(beforeActive)
+        }
+    }
+    @Test fun whatsappUsesLiveComposerMetadataWithoutMissingOrStaleLaunchIntent() {
+        withHost { activity, _ ->
+            val editor = NativeBridgeFixtures.WhatsappEditor(activity).apply {
+                conversation.putString("ARG_JID", "synthetic-chat-a")
+            }
+            activity.setContentView(editor); editor.requestFocus()
+            val policy = WhatsappComposerPolicy(); val recorder = Recorder(editor)
+            val session = NativeEditorSession(policy, app.packageName)
+            assertNull(activity.intent.getStringExtra("jid"))
+            assertNotNull("Live editor metadata does not require a launch-extra jid", policy.identity(activity, editor))
+            session.capture(activity, editor, recorder, EditorInfo().apply { contentMimeTypes = arrayOf("image/webp.wasticker") })
+            val original = session.snapshot(activity, true).getString("session")!!
+            activity.intent.putExtra("jid", "stale-launch-chat")
+            assertEquals(original, session.snapshot(activity, true).getString("session"))
+            editor.conversation.putString("ARG_JID", "synthetic-chat-b")
+            assertNull(session.snapshot(activity, true).getString("session"))
+            val uri = Uri.parse("content://${app.packageName}.fileprovider/floating_exports/v1/fixture.webp")
+            assertFalse(session.insert(activity, true, uri, "image/webp.wasticker", original, 1))
+            assertEquals(0, recorder.calls)
+            editor.other.putString("ARG_JID", "ambiguous-other-chat")
+            assertNull("Conflicting live composer metadata stays disabled", policy.identity(activity, editor))
+            editor.other.clear(); editor.conversation.clear()
+            assertNull("An activity jid alone cannot identify the live editor", policy.identity(activity, editor))
+        }
+    }
+    @Test fun receiveContentLeaseSurvivesBlurAndNeedsNoInputConnection() {
+        withHost { activity, editor ->
+            val calls = AtomicInteger()
+            editor.setOnReceiveContentListener(arrayOf("image/gif")) { _, _ -> calls.incrementAndGet(); null }
+            val policy = object : Policy() {
+                override fun viewMimeTypes(view: EditText) = view.receiveContentMimeTypes.orEmpty()
+                override fun insertContent(view: EditText, input: android.view.inputmethod.InputConnection?, uri: Uri, mime: String): Boolean {
+                    if (!view.hasFocus() && !view.requestFocus()) return false
+                    val clip = android.content.ClipData(android.content.ClipDescription("fixture", arrayOf(mime)), android.content.ClipData.Item(uri))
+                    return view.performReceiveContent(android.view.ContentInfo.Builder(clip, android.view.ContentInfo.SOURCE_APP).build()) == null
+                }
+            }
+            (editor.parent as android.view.ViewGroup).removeView(editor)
+            val other = android.view.View(activity).apply { isFocusableInTouchMode = true }
+            val parent = android.widget.FrameLayout(activity).apply { addView(editor); addView(other, android.widget.FrameLayout.LayoutParams(1, 1)) }
+            activity.setContentView(parent); assertTrue(other.requestFocus()); assertFalse(editor.hasFocus())
+            val session = NativeEditorSession(policy, app.packageName)
+            session.captureView(activity, editor)
+            val original = session.snapshot(activity, true).getString("session")!!
+            assertEquals(original, session.snapshot(activity, false).getString("session"))
+            assertEquals(original, session.snapshot(activity, true).getString("session"))
+            val uri = Uri.parse("content://${app.packageName}.fileprovider/floating_exports/v1/fixture.gif")
+            assertFalse(session.insert(activity, false, uri, "image/gif", original, 1))
+            assertEquals(0, calls.get())
+            assertTrue(session.insert(activity, true, uri, "image/gif", original, 1))
+            assertFalse(session.insert(activity, true, uri, "image/gif", original, 2))
+            assertEquals(1, calls.get())
+        }
+    }
+    @Test fun receiveContentCapabilityRemovalAndHiddenEditorRevokeLease() {
+        withHost { activity, editor ->
+            editor.setOnReceiveContentListener(arrayOf("image/gif")) { _, _ -> null }
+            val policy = object : Policy() {
+                override fun viewMimeTypes(view: EditText) = view.receiveContentMimeTypes.orEmpty()
+            }
+            val session = NativeEditorSession(policy, app.packageName)
+            session.captureView(activity, editor)
+            assertNotNull(session.snapshot(activity, true).getString("session"))
+            editor.setOnReceiveContentListener(null, null)
+            assertNull(session.snapshot(activity, true).getString("session"))
+            editor.setOnReceiveContentListener(arrayOf("image/gif")) { _, _ -> null }
+            session.captureView(activity, editor)
+            assertNotNull(session.snapshot(activity, true).getString("session"))
+            editor.visibility = android.view.View.GONE
+            assertNull(session.snapshot(activity, true).getString("session"))
+        }
+    }
     @Test fun instagramDiscoveryFollowsDelegateRatherThanMediaStoreGraphs() {
         withHost { _, editor ->
             val owner = NativeBridgeFixtures.Owner(editor, "synthetic-noisy-thread")
@@ -184,6 +318,7 @@ class NativeBridgeDeviceTest {
     private suspend fun assertNativePaste(pkg: String, item: MediaItem, expectedMime: String, types: Array<String>) {
         val calls = AtomicInteger(); var delivered: String? = null
         NativeBridgeRegistry.register(pkg, object : INativeStickerClient.Stub() {
+            override fun setActive(active: Boolean, generation: Long) = Unit
             override fun snapshot(beginSelection: Boolean) = Bundle().apply {
                 putString("session", "priority-session"); putLong("created", SystemClock.elapsedRealtime())
                 putStringArray("mime_types", types); putBoolean("resumed", true)
@@ -237,6 +372,7 @@ class NativeBridgeDeviceTest {
     @Test fun registryUsesActualMimeAndNeverRetriesRejectedSend() = runBlocking {
         val inserts = AtomicInteger(); val snapshots = AtomicInteger(); var deliveredMime: String? = null
         val client = object : INativeStickerClient.Stub() {
+            override fun setActive(active: Boolean, generation: Long) = Unit
             override fun snapshot(beginSelection: Boolean) = Bundle().apply {
                 putString("session", "fixture-session"); putLong("created", SystemClock.elapsedRealtime())
                 putStringArray("mime_types", arrayOf("image/jpeg")); putBoolean("resumed", snapshots.incrementAndGet() >= 3)
@@ -256,6 +392,7 @@ class NativeBridgeDeviceTest {
     @Test fun verifiedInstagramLeaseEnablesOnlyExplicitPhotoActionWithoutAccessibility() = runBlocking {
         val calls = AtomicInteger()
         NativeBridgeRegistry.register("com.instagram.android", object : INativeStickerClient.Stub() {
+            override fun setActive(active: Boolean, generation: Long) = Unit
             override fun snapshot(beginSelection: Boolean) = Bundle().apply {
                 putString("session", "ui-session"); putLong("created", SystemClock.elapsedRealtime())
                 putStringArray("mime_types", arrayOf("image/jpeg", "image/png")); putBoolean("resumed", true)

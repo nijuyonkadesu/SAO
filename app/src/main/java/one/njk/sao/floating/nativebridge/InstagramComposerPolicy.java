@@ -52,8 +52,15 @@ final class InstagramComposerPolicy implements ComposerPolicy {
             bindings.put(view, new Binding(listener, listenerField, thread));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { /* Unsupported shapes stay disabled. */ }
     }
+    @Override public void reset() { bindings.clear(); }
     void configuredFromEditor(EditText view) {
-        if (bindings.containsKey(view) || !isComposer(view)) return;
+        if (!isComposer(view)) return;
+        Binding existing = bindings.get(view);
+        if (existing != null) try {
+            Object listener = existing.listener.get();
+            if (listener != null && existing.listenerField.get(view) == listener) return;
+        } catch (ReflectiveOperationException | RuntimeException ignored) { }
+        bindings.remove(view);
         // The host may configure its media listener before the module sees the setter.
         // Recover only the exact listener field identified by the named configuration API.
         for (java.lang.reflect.Method method : composerType.getMethods()) {
@@ -62,10 +69,13 @@ final class InstagramComposerPolicy implements ComposerPolicy {
             Class<?> listenerType = method.getParameterTypes()[1];
             try {
                 Object listener = null;
-                for (Field field : composerType.getDeclaredFields()) {
-                    if (field.getType() == listenerType && !Modifier.isStatic(field.getModifiers())) {
-                        field.setAccessible(true); listener = field.get(view); break;
+                for (Class<?> type = view.getClass(); type != null && type.getName().startsWith("com.instagram."); type = type.getSuperclass()) {
+                    for (Field field : type.getDeclaredFields()) {
+                        if (field.getType() == listenerType && !Modifier.isStatic(field.getModifiers())) {
+                            field.setAccessible(true); listener = field.get(view); break;
+                        }
                     }
+                    if (listener != null) break;
                 }
                 configured(view, listener, listenerType);
             } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { }

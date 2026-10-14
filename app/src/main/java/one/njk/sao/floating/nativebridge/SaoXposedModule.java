@@ -4,6 +4,9 @@ import android.app.Activity;
 import android.app.Instrumentation;
 import android.view.inputmethod.InputMethodManager;
 import android.content.ComponentName;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
+import android.os.Build;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
@@ -20,7 +23,6 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -35,9 +37,14 @@ public final class SaoXposedModule extends XposedModule {
     private WeakReference<Activity> activity = new WeakReference<>(null);
     private ComposerPolicy policy;
     private NativeEditorSession editorSession;
-    private boolean resumed;
+    private volatile boolean resumed;
+    private volatile boolean nativeActive;
+    private long controlGeneration;
+    private boolean controlRegistered;
+    private boolean initialHandshake;
     private Context host;
     private volatile boolean bound;
+    private volatile int moduleUid = -1;
     private final java.util.concurrent.Executor bridgeIo = java.util.concurrent.Executors.newSingleThreadExecutor(task -> {
         Thread worker = new Thread(task, "SAO bridge"); worker.setDaemon(true); return worker;
     });
@@ -47,6 +54,7 @@ public final class SaoXposedModule extends XposedModule {
     private boolean hooksInstalled;
     private INativeStickerClient.Stub client;
     private final Set<View> focusObserved = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+    private final Set<View> receiverObserved = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     private volatile Bundle cachedState = Bundle.EMPTY;
     private volatile String hostVersion = "";
     private String lastStatus = "";
@@ -68,7 +76,8 @@ public final class SaoXposedModule extends XposedModule {
                 Activity current = (Activity) chain.getArg(0);
                 if (current.getPackageName().equals(processName)) {
                     activity = new WeakReference<>(current);
-                    configureHost(current.getClassLoader());
+                    registerControl(current.getApplicationContext());
+                    if (nativeActive) configureHost(current.getClassLoader());
                 }
                 return chain.proceed();
             });
@@ -77,10 +86,18 @@ public final class SaoXposedModule extends XposedModule {
                 Activity current = (Activity) chain.getArg(0);
                 if (current.getPackageName().equals(processName)) {
                     activity = new WeakReference<>(current); resumed = true;
+                    registerControl(current.getApplicationContext());
+                    if (!nativeActive) {
+                        // One startup handshake discovers an already running floating service.
+                        // No retries or editor/API work while inactive; signed start broadcasts
+                        // wake this process if that initial bind was filtered or SAO was stopped.
+                        if (!initialHandshake) { initialHandshake = true; connect(current.getApplicationContext()); }
+                        return result;
+                    }
                     configureHost(current.getClassLoader());
                     connect(current.getApplicationContext());
                     View decor = current.getWindow().getDecorView();
-                    if (focusObserved.add(decor)) decor.getViewTreeObserver().addOnWindowFocusChangeListener(hasFocus -> publishState());
+                    observeWindow(decor, current);
                     main.post(() -> { scan(current.getWindow().getDecorView(), current); publishState(); });
                     main.postDelayed(() -> { scan(current.getWindow().getDecorView(), current); publishState(); }, 300);
                 }
@@ -88,20 +105,67 @@ public final class SaoXposedModule extends XposedModule {
             });
             hook(Instrumentation.class.getDeclaredMethod("callActivityOnPause", Activity.class)).intercept(chain -> {
                 Object result = chain.proceed();
-                if (chain.getArg(0) == activity.get()) { resumed = false; publishState(); }
+                if (chain.getArg(0) == activity.get()) { resumed = false; if (nativeActive) publishState(); }
                 return result;
             });
             hook(Instrumentation.class.getDeclaredMethod("callActivityOnDestroy", Activity.class)).intercept(chain -> {
                 Object result = chain.proceed();
                 if (chain.getArg(0) == activity.get()) {
                     if (editorSession != null) editorSession.clear();
-                    activity.clear(); resumed = false; publishState();
+                    activity.clear(); resumed = false; if (nativeActive) publishState();
                 }
                 return result;
             });
             hooksInstalled = true;
-            configureHost(param.getClassLoader());
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) { warn("Host lifecycle hooks unavailable: " + error.getClass().getSimpleName()); }
+    }
+    private void registerControl(Context context) {
+        if (controlRegistered) return;
+        host = context;
+        BroadcastReceiver receiver = new BroadcastReceiver() {
+            @Override public void onReceive(Context context, Intent intent) {
+                applyActive(intent.getBooleanExtra("active", false), intent.getLongExtra("generation", 0));
+            }
+        };
+        IntentFilter filter = new IntentFilter(modulePackage + ".floating.NATIVE_ACTIVE");
+        String senderPermission = modulePackage + ".permission.NATIVE_CONTROL";
+        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(receiver, filter, senderPermission, main, Context.RECEIVER_EXPORTED);
+        else context.registerReceiver(receiver, filter, senderPermission, main);
+        controlRegistered = true;
+    }
+    private void observeWindow(View decor, Activity current) {
+        if (focusObserved.add(decor)) decor.getViewTreeObserver().addOnWindowFocusChangeListener(hasFocus -> {
+            if (!nativeActive) return;
+            if (hasFocus && resumed) scan(decor, current);
+            publishState();
+        });
+    }
+    private void applyActive(boolean active, long generation) {
+        if (generation < controlGeneration || generation == controlGeneration && nativeActive == active) return;
+        boolean newSession = generation > controlGeneration;
+        controlGeneration = generation;
+        if (!newSession && nativeActive == active) { if (!active) unbind(); return; }
+        if (newSession && editorSession != null) editorSession.clear();
+        if (newSession && policy != null) policy.reset();
+        nativeActive = active;
+        if (!active) {
+            if (editorSession != null) editorSession.clear();
+            cachedState = Bundle.EMPTY;
+            unbind(); return;
+        }
+        Activity current = activity.get();
+        if (host != null) connect(host);
+        if (current != null && resumed) {
+            configureHost(current.getClassLoader());
+            View decor = current.getWindow().getDecorView();
+            observeWindow(decor, current);
+            scan(decor, current);
+            // WA/Instagram may have created their IME while SAO was inactive. Reconnect
+            // only on this activation, only the original focused supported text field.
+            View focused = current.getCurrentFocus();
+            if (focused instanceof EditText && policy != null && policy.isComposer((EditText) focused)) reconnectFocused((EditText) focused);
+            publishState();
+        }
     }
     private int configurationAttempts;
     private boolean adapterReady;
@@ -119,17 +183,33 @@ public final class SaoXposedModule extends XposedModule {
                         method.getParameterTypes()[0] != String[].class || !installed.add(method)) continue;
                     hook(method).intercept(chain -> {
                         Object result = chain.proceed();
+                        if (!nativeActive) return result;
                         EditText view = (EditText) chain.getThisObject();
                         if (editorSession.owns(view)) editorSession.clear();
                         instagram.configured(view, chain.getArg(1), method.getParameterTypes()[1]);
                         publishState();
-                        if (chain.getArg(1) != null) reconnectFocused(view);
+                        if (chain.getArg(1) != null && instagram.isComposer(view)) reconnectFocused(view);
                         return result;
                     });
                 }
             } else if (processName.equals("com.discord")) {
-                policy = new DiscordComposerPolicy(loader);
+                DiscordComposerPolicy discord = new DiscordComposerPolicy(loader);
+                policy = discord;
                 editorSession = new NativeEditorSession(policy, modulePackage);
+                Class<?> root = Class.forName("com.discord.chat.input.views.ChatInputRootView", false, loader);
+                Method setter = root.getMethod("setListener", Class.forName(root.getName() + "$ChatInputListener", false, loader));
+                if (installed.add(setter)) hook(setter).intercept(chain -> {
+                    Object result = chain.proceed();
+                    if (!nativeActive) return result;
+                    EditText editor = discord.configuredEditor(chain.getThisObject());
+                    if (editor != null) {
+                        if (editorSession.owns(editor)) editorSession.clear();
+                        observeReceiver(editor);
+                        if (editor.isAttachedToWindow()) scanReceiverAfterLayout();
+                    }
+                    publishState();
+                    return result;
+                });
                 composer = Class.forName("com.discord.chat.input.views.DCDChatInput", false, loader);
             } else {
                 policy = new WhatsappComposerPolicy();
@@ -144,12 +224,12 @@ public final class SaoXposedModule extends XposedModule {
         }
     }
     private void reconnectFocused(EditText view) {
-        if (!view.isAttachedToWindow() || !view.hasFocus()) return;
+        if (!nativeActive || !view.isAttachedToWindow() || !view.hasFocus()) return;
         // Request a natural IME connection after late listener configuration or hook discovery.
         // Never call onCreateInputConnection ourselves or fabricate the host's wrapper.
         main.post(() -> {
             Activity active = activity.get();
-            if (active != null && resumed && active.hasWindowFocus() && view.isAttachedToWindow() && view.hasFocus() &&
+            if (nativeActive && active != null && resumed && active.hasWindowFocus() && view.isAttachedToWindow() && view.hasFocus() &&
                 view.getRootView() == active.getWindow().getDecorView().getRootView()) {
                 InputMethodManager manager = view.getContext().getSystemService(InputMethodManager.class);
                 if (manager != null) manager.restartInput(view);
@@ -166,19 +246,20 @@ public final class SaoXposedModule extends XposedModule {
         bound = true;
         bridgeIo.execute(() -> {
             try {
+                moduleUid = context.getPackageManager().getApplicationInfo(modulePackage, 0).uid;
                 try { hostVersion = context.getPackageManager().getPackageInfo(processName, 0).versionName; }
                 catch (android.content.pm.PackageManager.NameNotFoundException ignored) { }
                 Intent intent = new Intent().setComponent(new ComponentName(modulePackage,
                     "one.njk.sao.floating.nativebridge.NativeBridgeService"));
-                bound = context.bindService(intent, connection, Context.BIND_AUTO_CREATE);
-            } catch (RuntimeException error) { bound = false; }
+                if (!context.bindService(intent, connection, Context.BIND_AUTO_CREATE)) bound = false;
+            } catch (android.content.pm.PackageManager.NameNotFoundException | RuntimeException error) { bound = false; }
             if (!bound) main.post(() -> {
                 // Visibility bootstrap may race the first resume. At most three bind attempts
                 // per resume, with backoff. No media insertion is retried.
-                if (attempt < 2 && resumed) main.postDelayed(() -> {
-                    if (resumed) bind(context, attempt + 1);
+                if (nativeActive && attempt < 2 && resumed) main.postDelayed(() -> {
+                    if (nativeActive && resumed) bind(context, attempt + 1);
                 }, attempt == 0 ? 250 : 1000);
-                else warn("Bridge bind rejected for " + processName);
+                else if (nativeActive) warn("Bridge bind rejected for " + processName);
             });
         });
     }
@@ -194,28 +275,72 @@ public final class SaoXposedModule extends XposedModule {
                 catch (Exception error) { main.post(() -> { unbind(); warn("Bridge registration rejected"); }); }
             });
         }
-        @Override public void onServiceDisconnected(ComponentName name) { /* Android reconnects this binding. */ }
-        @Override public void onBindingDied(ComponentName name) { unbind(); if (resumed) connect(host); }
+        @Override public void onServiceDisconnected(ComponentName name) {
+            nativeActive = false;
+            if (editorSession != null) editorSession.clear();
+            if (policy != null) policy.reset();
+            cachedState = Bundle.EMPTY; // No editor work while SAO is gone; Android may reconnect.
+        }
+        @Override public void onBindingDied(ComponentName name) {
+            boolean wasActive = nativeActive;
+            onServiceDisconnected(name); unbind();
+            if (wasActive) connect(host); // One state handshake, never an inactive retry loop.
+        }
         @Override public void onNullBinding(ComponentName name) { unbind(); warn("Bridge returned no binder"); }
     };
-    private void scan(View view, Activity current) {
-        if (current != activity.get() || !resumed || policy == null || editorSession == null) return;
-        if (view instanceof EditText && policy.isComposer((EditText) view)) {
-            try {
-                if (installConnectionHook(view.getClass().getMethod("onCreateInputConnection", EditorInfo.class))) reconnectFocused((EditText) view);
+    private void observeReceiver(EditText editor) {
+        if (!receiverObserved.add(editor)) return;
+        editor.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override public void onViewAttachedToWindow(View view) { scanReceiverAfterLayout(); }
+            @Override public void onViewDetachedFromWindow(View view) {
+                if (editorSession.owns(editor)) { editorSession.clear(); publishState(); }
             }
-            catch (ReflectiveOperationException | RuntimeException error) { editorSession.clear(); }
+        });
+        editor.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            // A late React editor can attach before it has bounds. Observe its first real
+            // layout rather than depending on the activity's earlier resume scan.
+            if (nativeActive && !editorSession.owns(editor) && right > left && bottom > top &&
+                (oldRight == oldLeft || oldBottom == oldTop)) scanReceiverAfterLayout();
+        });
+    }
+    private void scanReceiverAfterLayout() {
+        main.post(() -> {
+            Activity active = activity.get();
+            if (nativeActive && active != null && resumed) scan(active.getWindow().getDecorView(), active);
+            publishState();
+        });
+    }
+    private void scan(View view, Activity current) {
+        if (!nativeActive || current != activity.get() || !resumed || policy == null || editorSession == null) return;
+        java.util.List<EditText> receivers = new java.util.ArrayList<>();
+        scanViews(view, receivers);
+        if (receivers.size() == 1) {
+            EditText editor = receivers.get(0);
+            // Existing leases are validated by snapshot, never silently re-captured when
+            // resuming from the picker. A changed draft must revoke the original token.
+            if (!editorSession.owns(editor)) editorSession.captureView(current, editor);
+        } else if (receivers.size() > 1) editorSession.clear(); // Ambiguous native drafts stay disabled.
+    }
+    private void scanViews(View view, java.util.List<EditText> receivers) {
+        if (view instanceof EditText && view.isShown() && view.isEnabled() && policy.isComposer((EditText) view)) {
+            EditText editor = (EditText) view;
+            if (policy.viewMimeTypes(editor).length > 0 && editor.getGlobalVisibleRect(new android.graphics.Rect())) {
+                receivers.add(editor); observeReceiver(editor);
+            }
+            try {
+                if (installConnectionHook(view.getClass().getMethod("onCreateInputConnection", EditorInfo.class))) reconnectFocused(editor);
+            } catch (ReflectiveOperationException | RuntimeException error) { editorSession.clear(); }
         }
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) scan(group.getChildAt(i), current);
+            for (int i = 0; i < group.getChildCount(); i++) scanViews(group.getChildAt(i), receivers);
         }
     }
     private boolean installConnectionHook(Method method) {
         if (!installed.add(method)) return false;
         hook(method).intercept(chain -> {
             Object result = chain.proceed();
-            if (!(chain.getThisObject() instanceof EditText)) return result;
+            if (!nativeActive || !(chain.getThisObject() instanceof EditText)) return result;
             EditText actual = (EditText) chain.getThisObject();
             Activity active = activity.get();
             if (active != null && policy != null && editorSession != null && actual.hasFocus() && policy.isComposer(actual) &&
@@ -229,6 +354,7 @@ public final class SaoXposedModule extends XposedModule {
         return true;
     }
     private void publishState() {
+        if (!nativeActive) { cachedState = Bundle.EMPTY; return; }
         Bundle state = editorSession == null ? new Bundle() : editorSession.snapshot(activity.get(), resumed);
         if (!adapterReady) state.putString("status", "hooks_unavailable");
         state.putString("host_version", hostVersion);
@@ -240,27 +366,31 @@ public final class SaoXposedModule extends XposedModule {
         cachedState = state;
     }
     private void enforceCaller() {
-        String[] packages = host == null ? null : host.getPackageManager().getPackagesForUid(Binder.getCallingUid());
-        if (packages == null || !Arrays.asList(packages).contains(modulePackage))
+        // Resolve the installed module UID once per binding. Snapshots do not query
+        // PackageManager repeatedly; arbitrary UIDs still cannot call the native client.
+        if (moduleUid < 0 || Binder.getCallingUid() != moduleUid)
             throw new SecurityException("Unexpected native caller");
     }
     private final class HostClient extends INativeStickerClient.Stub {
         @Override public Bundle snapshot(boolean beginSelection) {
             enforceCaller();
             // Binder never waits for the UI thread. Coalesced refreshes validate in-place DM changes.
-            if (refreshQueued.compareAndSet(false, true))
+            if (nativeActive && resumed && refreshQueued.compareAndSet(false, true))
                 main.post(() -> { try { publishState(); } finally { refreshQueued.set(false); } });
             return new Bundle(cachedState);
         }
+        @Override public void setActive(boolean active, long generation) {
+            enforceCaller(); main.post(() -> applyActive(active, generation));
+        }
         @Override public boolean insert(Uri uri, String mimeType, String expected, long requestId) {
             enforceCaller();
-            if (uri == null || !"content".equals(uri.getScheme()) || !(modulePackage + ".fileprovider").equals(uri.getAuthority())) return false;
+            if (!nativeActive || uri == null || !"content".equals(uri.getScheme()) || !(modulePackage + ".fileprovider").equals(uri.getAuthority())) return false;
             boolean[] accepted = {false};
             AtomicBoolean expired = new AtomicBoolean(false);
             CountDownLatch ready = new CountDownLatch(1);
             main.post(() -> {
                 try {
-                    if (!expired.get() && editorSession != null) accepted[0] = editorSession.insert(activity.get(), resumed, uri, mimeType, expected, requestId);
+                    if (nativeActive && !expired.get() && editorSession != null) accepted[0] = editorSession.insert(activity.get(), resumed, uri, mimeType, expected, requestId);
                 } catch (RuntimeException error) { warn("Native content handler rejected insertion"); }
                 finally { publishState(); ready.countDown(); }
             });

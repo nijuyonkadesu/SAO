@@ -15,7 +15,8 @@ adb shell am instrument -w \
 The probe loads the installed client's unmodified native classes in the probe UID and
 substitutes a recording listener for React. It checks exact editor ownership, draft
 revision changes, listener removal, actual keyboard MIME types and PNG/GIF
-`commitContent` callbacks. It also tests accessibility Paste for PNG/GIF and the
+`commitContent` callbacks. It additionally verifies the production receiver path with
+no InputConnection after clearing focus, for PNG and GIF. It also tests accessibility Paste for PNG/GIF and the
 unsupported video formats. `onRequestSend` must never be called. No authenticated
 account, real chat, upload or send is involved.
 

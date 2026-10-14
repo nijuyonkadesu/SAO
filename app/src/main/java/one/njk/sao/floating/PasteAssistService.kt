@@ -8,6 +8,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.lang.ref.WeakReference
@@ -33,25 +34,34 @@ class PasteAssistService : AccessibilityService() {
     override fun onServiceConnected() {
         scope = CoroutineScope(SupervisorJob() + dispatchers.assistance)
         instance = WeakReference(this)
+        // Reconnection may return the previously disabled dynamic ServiceInfo. Use the
+        // discovery contract from paste_assistance.xml, rather than persisting that zero.
+        val enabledEvents = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_VIEW_FOCUSED
         scope.launch {
-            preferences.options.collect { options ->
+            var appliedPackages: Set<String>? = null
+            var appliedEvents = -1
+            combine(preferences.options, FloatingSession.active) { options, active -> options to active }.collect { (options, active) ->
                 supported = AppFamilyResolver.supported(options.telegramPackages)
-                withContext(dispatchers.main) {
-                    serviceInfo = serviceInfo.apply { packageNames = supported.toTypedArray() }
+                val eventTypes = if (active && options.pasteAssistance) enabledEvents else 0
+                if (appliedPackages != supported || appliedEvents != eventTypes) {
+                    withContext(dispatchers.main) {
+                        serviceInfo = serviceInfo.apply { packageNames = supported.toTypedArray(); this.eventTypes = eventTypes }
+                    }
+                    appliedPackages = supported; appliedEvents = eventTypes
                 }
-                if (!options.pasteAssistance) { cached = null; lease = null }
-                events.trySend(Unit)
+                if (!active || !options.pasteAssistance) { cached = null; lease = null }
+                if (eventTypes != 0) events.trySend(Unit)
             }
         }
         scope.launch {
             for (event in events) operations.withLock {
-                if (!preferences.current().pasteAssistance) return@withLock
+                if (!FloatingSession.active.value || FloatingSession.pickerVisible || !preferences.current().pasteAssistance) return@withLock
                 val version = discoveryVersion.get()
                 try {
                     val root = rootInActiveWindow
                     val pkg = root?.packageName?.toString()
                     val editor = if (pkg in supported) root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) else null
-                    if (version != discoveryVersion.get() || FloatingSession.pickerVisible) return@withLock
+                    if (version != discoveryVersion.get() || !FloatingSession.active.value || FloatingSession.pickerVisible) return@withLock
                     // A client may not advertise Paste until the clipboard contains media.
                     // Lease the focused editable node now; dispatch is still explicit and
                     // revalidates that exact node after the selected payload is copied.
@@ -64,6 +74,7 @@ class PasteAssistService : AccessibilityService() {
         // Refresh only while the user-started session is active, never while SAO owns focus.
         scope.launch {
             FloatingSession.active.collectLatest { active ->
+                if (!active) { discoveryVersion.incrementAndGet(); cached = null; lease = null }
                 if (active) while (isActive) {
                     if (!FloatingSession.pickerVisible) events.trySend(Unit)
                     delay(750)
@@ -72,7 +83,10 @@ class PasteAssistService : AccessibilityService() {
         }
         events.trySend(Unit)
     }
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) { discoveryVersion.incrementAndGet(); cached = null; events.trySend(Unit) }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (!FloatingSession.active.value) return
+        discoveryVersion.incrementAndGet(); cached = null; events.trySend(Unit)
+    }
     override fun onInterrupt() { discoveryVersion.incrementAndGet(); cached = null; lease = null }
     override fun onDestroy() {
         instance.clear(); if (::scope.isInitialized) scope.cancel(); events.close(); cached = null; lease = null
@@ -86,14 +100,14 @@ class PasteAssistService : AccessibilityService() {
     }
 
     private fun pasteOnce(token: String, pkg: String): Boolean {
-        if (pkg !in supported) return false
+        if (!FloatingSession.active.value || pkg !in supported) return false
         val anchor = lease?.takeIf { it.token == token && it.packageName == pkg } ?: return false
         lease = null // Consume before dispatch: at most one action, even with repeated taps.
         scope.launch {
             operations.withLock {
                 repeat(15) {
                     delay(100)
-                    if (SystemClock.elapsedRealtime() - anchor.capturedAt > 120_000) return@withLock
+                    if (!FloatingSession.active.value || SystemClock.elapsedRealtime() - anchor.capturedAt > 120_000) return@withLock
                     try {
                         val root = rootInActiveWindow
                         if (root?.packageName?.toString() != pkg) return@repeat

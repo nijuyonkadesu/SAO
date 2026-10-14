@@ -16,7 +16,8 @@ adb shell run-as one.njk.sao.instagramprobe cat files/native-report.json
 
 The probe never calls Instagram's sending listener. It checks the production
 adapter's exact composer role, native controller binding, mutable thread key,
-editor replacement, listener clearing and allowed PNG/JPEG MIME types. Its final
+editor replacement, listener clearing, inactive binding reset, recovery of a preconfigured
+listener across the native superclass hierarchy, and allowed PNG/JPEG MIME types. Its final
 `commitContent` call enters the unmodified native keyboard wrapper with a recording
 callback and synthetic content URI; that callback does not decode or upload media.
 It reports pass flags only, with no account, thread IDs or conversation content.

@@ -139,3 +139,9 @@ from its exact native field. The existing natural connection may await initial m
 changed established conversation identity still revokes it. JPEG/PNG remain the only
 supported native formats. The isolated real-class probe still passes; authenticated
 Instagram send and framework injection require physical-device verification.
+
+The module now gates editor work on the floating service's active state. Stop clears its
+session/controller bindings; reactivation can recover a listener configured while SAO
+was inactive. The existing JPEG/PNG keyboard send path remains unchanged. Activation
+uses a sender-permission-protected broadcast plus UID-checked Binder control, without
+continuous native polling while floating is stopped.

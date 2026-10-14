@@ -739,7 +739,8 @@ class FloatingDeviceTest {
             assertTrue(connected.await(10, TimeUnit.SECONDS))
             for (scoped in listOf("com.whatsapp", "com.whatsapp.w4b", "com.instagram.android", "com.discord")) try {
                 bridge!!.registerClient(scoped, object : INativeStickerClient.Stub() {
-                    override fun snapshot(beginSelection: Boolean): Bundle = Bundle.EMPTY
+                    override fun setActive(active: Boolean, generation: Long) = Unit
+            override fun snapshot(beginSelection: Boolean): Bundle = Bundle.EMPTY
                     override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long) = false
                 })
                 fail("An unscoped UID must not register a native client")

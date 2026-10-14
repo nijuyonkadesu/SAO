@@ -2,6 +2,11 @@ package one.njk.sao.floating.nativebridge;
 
 import android.app.Activity;
 import android.content.ClipDescription;
+import android.content.ClipData;
+import android.net.Uri;
+import android.os.Build;
+import android.view.ContentInfo;
+import android.view.inputmethod.InputConnection;
 import android.view.ViewParent;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
@@ -27,6 +32,10 @@ final class DiscordComposerPolicy implements ComposerPolicy {
         revisionField = rootType.getDeclaredField("lastEditId"); revisionField.setAccessible(true);
         listenerGetter = rootType.getMethod("getListener");
     }
+    EditText configuredEditor(Object root) {
+        try { return rootType.isInstance(root) ? (EditText) editorField.get(root) : null; }
+        catch (IllegalAccessException | ClassCastException error) { return null; }
+    }
     private Object owner(EditText view) {
         if (!editorType.isInstance(view)) return null;
         for (ViewParent parent = view.getParent(); parent != null; parent = parent.getParent())
@@ -50,10 +59,25 @@ final class DiscordComposerPolicy implements ComposerPolicy {
         } catch (Exception error) { return null; }
     }
     @Override public boolean renewFocusedDraft() { return true; }
-    @Override public String[] mimeTypes(EditorInfo info) {
+    @Override public String[] mimeTypes(EditorInfo info) { return supportedTypes(info.contentMimeTypes); }
+    @Override public String[] viewMimeTypes(EditText view) {
+        return Build.VERSION.SDK_INT >= 31 && isComposer(view) ? supportedTypes(view.getReceiveContentMimeTypes()) : new String[0];
+    }
+    @Override public boolean insertContent(EditText view, InputConnection input, Uri uri, String mimeType) {
+        if (Build.VERSION.SDK_INT < 31 || viewMimeTypes(view).length == 0)
+            return ComposerPolicy.super.insertContent(view, input, uri, mimeType);
+        if (!Arrays.asList(viewMimeTypes(view)).contains(mimeType) || !isComposer(view)) return false;
+        // Restore only the leased native editor on explicit Paste. No IME is constructed,
+        // no keyboard is forcibly opened, and Discord's own receive-content callback stages
+        // the attachment. Focusing first preserves native focus/image event ordering for JS.
+        if (!view.hasFocus() && !view.requestFocus()) return false;
+        ClipData clip = new ClipData(new ClipDescription("SAO media", new String[]{mimeType}), new ClipData.Item(uri));
+        return view.performReceiveContent(new ContentInfo.Builder(clip, ContentInfo.SOURCE_APP).build()) == null;
+    }
+    private static String[] supportedTypes(String[] declaredTypes) {
         ArrayList<String> result = new ArrayList<>();
-        if (info.contentMimeTypes != null) for (String mime : new String[]{"image/jpeg", "image/png", "image/gif"})
-            for (String declared : info.contentMimeTypes)
+        if (declaredTypes != null) for (String mime : new String[]{"image/jpeg", "image/png", "image/gif"})
+            for (String declared : declaredTypes)
                 if (ClipDescription.compareMimeTypes(mime, declared)) { result.add(mime); break; }
         return result.toArray(new String[0]);
     }

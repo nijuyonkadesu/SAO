@@ -115,3 +115,19 @@ to native editor dispatch in the probe UID, not authenticated React upload/serve
 The native composer has no reliable current-channel identifier. The adapter leases that
 exact draft/editor, with replacement/revision/focus checks, rather than claiming a verified
 channel-ID lease. It stages attachments and never presses Send.
+
+## Keyboard-hide correction (2026-10-14)
+
+`ChatInputRootView` schedules a blur job and clears its edit field when the IME hides.
+Requiring an IME/editor-focus lease made native Paste timing-dependent. SAO now uses
+Discord's already registered native receive-content MIME types on Android 12+ and calls
+that exact editor's public `performReceiveContent` handler on explicit Paste. It restores
+only the leased field's focus before dispatch, preserving the focus/image event ordering
+for React, and never calls Send. On Android 11, the captured keyboard/clipboard paths
+remain available.
+
+The real-class recording probe accepts PNG/GIF with a null InputConnection through the
+production policy; both trigger the image callback and zero Send callbacks. The shared
+lease tests additionally cover a genuinely unfocused field, pause/resume, single dispatch,
+capability removal and hidden-view revocation. Native upload/server behavior remains a
+physical-client verification step. See [Android receive-content](https://developer.android.com/develop/ui/views/receive-rich-content).

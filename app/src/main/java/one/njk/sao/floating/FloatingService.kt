@@ -141,7 +141,6 @@ class FloatingService : Service() {
     override fun onCreate() {
         super.onCreate()
         scope = CoroutineScope(SupervisorJob() + dispatchers.main)
-        scope.launch { NativeBridgeVisibility.prepare(applicationContext) }
         displayManager = getSystemService(DisplayManager::class.java)
         val display = displayManager.getDisplay(Display.DEFAULT_DISPLAY)
         displayGeometry = Triple(display.rotation, display.mode.physicalWidth, display.mode.physicalHeight)
@@ -225,7 +224,13 @@ class FloatingService : Service() {
             .addAction(0, getString(R.string.floating_stop), stop).build()
         ServiceCompat.startForeground(this, 21, notification,
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
-        FloatingSession.active(true)
+        if (!FloatingSession.active.value) {
+            FloatingSession.active(true)
+            scope.launch {
+                NativeBridgeVisibility.prepare(applicationContext)
+                NativeBridgeVisibility.notifyActive(applicationContext, true)
+            }
+        }
         cancelIdle()
         wantsVisible = true
         scope.launch {
@@ -425,6 +430,7 @@ class FloatingService : Service() {
         Choreographer.getInstance().removeFrameCallback(geometryFrame); geometryPosted = false
         scope.cancel(); cancelIdle(restore = false); cancelDrag(); removeBubble()
         unregisterReceiver(screenReceiver); FloatingSession.active(false)
+        NativeBridgeVisibility.notifyActive(applicationContext, false)
         super.onDestroy()
     }
     override fun onBind(intent: Intent?): IBinder? = null
