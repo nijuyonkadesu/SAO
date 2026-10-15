@@ -14,6 +14,7 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
     private val current: (PickerBrowseKey) -> Boolean,
     private val focused: (PickerBrowseKey) -> String?,
     private val focusChanged: (PickerBrowseKey, String?, Int) -> Unit,
+    private val centerChanged: () -> Unit,
     private val remember: () -> Unit, private val dragging: () -> Unit) : AutoCloseable {
     private val snap = CarouselSnapHelper(false)
     private var key: PickerBrowseKey? = null
@@ -27,6 +28,15 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
     private var recordingPending = false
     private var fullScreen = false
     private var closed = false
+    private var centered: MediaItem? = null
+    /** The committed focal card, independent of the last explicitly copied selection. */
+    val centeredItem: MediaItem? get() = centered?.takeIf {
+        !closed && !placing && key == displayed && key?.let(current) == true
+    }
+    private fun center(item: MediaItem?) {
+        if (centered == item) return
+        centered = item; centerChanged()
+    }
 
     init {
         view.layoutManager = manager(false)
@@ -61,25 +71,28 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
         if (changed || prepended) {
             wanted = focused(next)
             needsPlacement = true; placing = true
+            center(null)
         }
         key = next
         // Loading/pagination emissions with the same list must not cancel its pending commit/placement.
-        if (!changed && submittedItems === state.items) return
+        if (!changed && submittedItems === state.items) { recordFocus(); return }
         submittedItems = state.items
         val version = ++generation
         adapter.submitList(state.items) {
             if (!closed && version == generation && key == next && current(next)) {
                 displayed = next; committedGeneration = version
-                if (needsPlacement) place(version, next)
+                if (adapter.currentList.isEmpty()) center(null)
+                if (needsPlacement) place(version, next) else recordFocus()
             }
         }
     }
 
     private fun place(version: Long, browse: PickerBrowseKey) {
-        if (adapter.currentList.isEmpty()) { placing = false; needsPlacement = false; return }
+        if (adapter.currentList.isEmpty()) { placing = false; needsPlacement = false; center(null); return }
         val position = adapter.currentList.indexOfFirst { it.id == wanted }.coerceAtLeast(0)
         adapter.focusedId = adapter.currentList[position].id
         placing = true
+        center(null)
         view.stopScroll()
         view.scrollToPosition(position)
         // Read focus only after Material has rebuilt its keylines for the committed list and size.
@@ -104,8 +117,10 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
         val manager = view.layoutManager ?: return
         val focal = snap.findSnapView(manager) ?: return
         val position = manager.getPosition(focal)
-        val id = adapter.currentList.getOrNull(position)?.id ?: return
+        val item = adapter.currentList.getOrNull(position) ?: return
+        val id = item.id
         adapter.focusedId = id
+        center(item)
         focusChanged(browse, id, position)
     }
 
@@ -124,6 +139,7 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
         pause(); ++generation; key = null; displayed = null
         placing = false; needsPlacement = false; wanted = null; submittedItems = null
         adapter.focusedId = null; adapter.submitList(emptyList())
+        center(null)
     }
-    override fun close() { closed = true; ++generation; adapter.close(); snap.attachToRecyclerView(null); view.adapter = null }
+    override fun close() { closed = true; centered = null; ++generation; adapter.close(); snap.attachToRecyclerView(null); view.adapter = null }
 }

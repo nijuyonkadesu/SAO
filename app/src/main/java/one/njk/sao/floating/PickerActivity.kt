@@ -69,6 +69,7 @@ class PickerActivity : AppCompatActivity() {
     private var canShareSticker = false
     private var canAttachInstagram = false
     private var capabilityJob: Job? = null
+    private var capabilityMime: String? = null
     private var catalog = SourceCatalog()
     private var appChoices: List<AppChoice> = emptyList()
     private lateinit var metrics: android.view.WindowMetrics
@@ -122,7 +123,7 @@ class PickerActivity : AppCompatActivity() {
                 focused = { key -> model.focusForBrowse(key.sequenceId) },
                 focusChanged = { key, id, position ->
                     model.focus(id, key.sequenceId); model.loadMore(position)
-                }, remember = model::rememberBrowsing, dragging = ::collapseSearch)
+                }, centerChanged = ::centerChanged, remember = model::rememberBrowsing, dragging = ::collapseSearch)
         }
         resultsCarousel = createCarousel(binding.mediaGrid, false)
         sequenceCarousel = createCarousel(binding.sequenceGrid, true)
@@ -157,16 +158,16 @@ class PickerActivity : AppCompatActivity() {
             binding.preferStickers.isChecked = true
             collapseSearch(); model.preferStickers(!options.preferStickers)
         }
-        binding.copyAction.setOnClickListener { collapseSearch(); model.copy(target) }
-        binding.pasteAction.setOnClickListener { collapseSearch(); dispatch {
-            val rendition = nativePasteRendition(model.selection.value)
+        binding.copyAction.setOnClickListener { withCenteredItem { model.copy(target) } }
+        binding.pasteAction.setOnClickListener { withCenteredItem { item -> dispatch {
+            val rendition = nativePasteRendition(item)
             if (rendition != null) {
-                model.selection.value?.let { nativeInsert(it, rendition) }
+                nativeInsert(item, rendition)
             } else if (model.prepareClipboard(target) && PasteAssistService.requestPaste(pasteAnchor, targetPackage)) finish()
             else inlineFailure(R.string.floating_paste_unavailable)
-        } }
-        binding.mediaAction.setOnClickListener { collapseSearch(); model.selection.value?.let { item -> dispatch { share(item, Rendition.MEDIA) } } }
-        binding.stickerAction.setOnClickListener { collapseSearch(); model.selection.value?.let { item -> dispatch {
+        } } }
+        binding.mediaAction.setOnClickListener { withCenteredItem { item -> dispatch { share(item, Rendition.MEDIA) } } }
+        binding.stickerAction.setOnClickListener { withCenteredItem { item -> dispatch {
             if (target == MessagingTarget.TELEGRAM) share(item, Rendition.STICKER_WEBP) else nativeInsert(item)
         } } }
         binding.targetLabel.setOnClickListener {
@@ -215,7 +216,7 @@ class PickerActivity : AppCompatActivity() {
         } }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                launch { model.query.collect { syncQueryViews(it); renderHeader() } }
+                launch { model.query.collect { syncQueryViews(it); renderHeader(); renderDock() } }
                 launch { sourcesModel.state.collect { state ->
                     catalog = state.catalog
                     sourceGesture.update()
@@ -250,6 +251,7 @@ class PickerActivity : AppCompatActivity() {
                     binding.message.minimumHeight = (48 * resources.displayMetrics.density).toInt()
                     binding.message.isFocusable = state.error
                     binding.message.isVisible = binding.message.isVisible && !binding.sourcePanel.isVisible && !binding.targetList.isVisible && !searchController.visible
+                    renderDock()
                 } }
                 launch { model.canBrowseSequence.collect { /* Keep source capability live only while the picker is visible. */ } }
                 launch { NativeBridgeRegistry.sessions.collect { renderDock() } }
@@ -257,7 +259,6 @@ class PickerActivity : AppCompatActivity() {
                 launch { model.selection.collect {
                     resultsCarousel.adapter.selectedId = it?.id
                     sequenceCarousel.adapter.selectedId = it?.id
-                    if (target == MessagingTarget.INSTAGRAM) refreshCapability()
                     renderDock()
                 } }
                 launch { model.copyStatus.collect { renderDock() } }
@@ -311,6 +312,18 @@ class PickerActivity : AppCompatActivity() {
         super.onConfigurationChanged(newConfig); metrics = windowManager.maximumWindowMetrics; resize(0)
     }
     private fun recordFocus() = carousel.recordFocus()
+    private fun centerChanged() {
+        val mime = carousel.centeredItem?.mimeType
+        if (target == MessagingTarget.INSTAGRAM && mime != null && mime != capabilityMime) refreshCapability()
+        renderDock()
+    }
+    private fun withCenteredItem(action: (MediaItem) -> Unit) {
+        if (busy) return
+        recordFocus()
+        val item = carousel.centeredItem ?: return
+        model.selectForAction(item)
+        collapseSearch(); action(item)
+    }
     private fun updatePlayback() {
         val playing = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && !compactEditing &&
             !binding.targetList.isVisible && !binding.sourcePanel.isVisible && !searchController.visible
@@ -405,9 +418,10 @@ class PickerActivity : AppCompatActivity() {
     }
     private fun renderDock() {
         if (!::binding.isInitialized) return
-        val item = model.selection.value
+        val item = carousel.centeredItem
         val title = item?.title ?: getString(R.string.picker_choose)
-        val status = if (item == null) "" else getString(model.copyStatus.value)
+        val status = if (item == null || model.selection.value?.id != item.id || model.copyStatus.value == R.string.picker_choose)
+            "" else getString(model.copyStatus.value)
         if (binding.selectionTitle.text.toString() != title) binding.selectionTitle.text = title
         if (binding.selectionStatus.text.toString() != status) binding.selectionStatus.text = status
         binding.selectionTitle.contentDescription = title
@@ -519,7 +533,8 @@ class PickerActivity : AppCompatActivity() {
         val pkg = targetPackage ?: run { canAttachInstagram = false; return }
         val instagram = target == MessagingTarget.INSTAGRAM
         if (!instagram) canAttachInstagram = false
-        val mime = model.selection.value?.mimeType ?: "image/jpeg"
+        val mime = carousel.centeredItem?.mimeType ?: "image/jpeg"
+        capabilityMime = mime
         capabilityJob = lifecycleScope.launch {
             if (instagram) {
                 val supported = withContext(dispatchers.io) { InstagramDelivery.receiver(packageManager, mime) != null }

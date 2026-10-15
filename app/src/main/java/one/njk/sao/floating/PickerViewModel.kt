@@ -93,7 +93,12 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
     private var copying: Job? = null
     private var preferredOverride: Boolean? = null
     fun clearSelection() { request.next(); copying?.cancel(); selection.value = null; copyStatus.value = one.njk.sao.R.string.picker_choose }
-    fun select(item: MediaItem, target: MessagingTarget) { selection.value = item; copy(target) }
+    /** An explicit dock action adopts the center; scrolling alone never changes clipboard work. */
+    fun selectForAction(item: MediaItem) {
+        if (selection.value == item) return
+        clearSelection(); selection.value = item
+    }
+    fun select(item: MediaItem, target: MessagingTarget) { selectForAction(item); copy(target) }
     fun copy(target: MessagingTarget, prefer: Boolean? = preferredOverride) {
         val item = selection.value ?: return
         val version = request.next(); copying?.cancel()

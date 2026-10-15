@@ -182,15 +182,12 @@ class PasteAssistDeviceTest {
                     picker != null
                 }
                 try {
-                    val item = LocalMediaSource(app).all().first { !it.hasMotion }
-                    instrumentation.runOnMainSync {
-                        ViewModelProvider(picker!!)[PickerViewModel::class.java].select(item, MessagingTarget.TELEGRAM)
-                    }
                     await("On-demand capture must enable Paste for the original host") {
                         var ready = false
                         instrumentation.runOnMainSync { ready = picker!!.findViewById<View>(one.njk.sao.R.id.paste_action).isEnabled }
                         ready
                     }
+                    instrumentation.runOnMainSync { assertNull("Paste must require no image tap", ViewModelProvider(picker!!)[PickerViewModel::class.java].selection.value) }
                     instrumentation.runOnMainSync { picker!!.findViewById<View>(one.njk.sao.R.id.paste_action).performClick() }
                     await("The original host must stage the selected media") { state.get().getInt("previews") == 1 }
                     assertTrue(state.get().getInt("bytes") > 0)

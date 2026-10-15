@@ -188,7 +188,11 @@ class SequenceBrowseDeviceTest {
                 var correct = false
                 scenario.onActivity { correct = focal(grid(it))?.item?.remote?.assetId == id(55) }; correct
             }
-            scenario.onActivity { focal(grid(it))!!.itemView.performClick() }
+            scenario.onActivity {
+                assertNull("Sequence Copy must need no image tap", originalModel.selection.value)
+                assertTrue(it.findViewById<View>(R.id.copy_action).isEnabled)
+                it.findViewById<View>(R.id.copy_action).performClick()
+            }
             await("The chosen photo must copy") { originalModel.copyStatus.value in setOf(R.string.picker_copied, R.string.picker_media_fallback) }
             copied = clipboard(); innerItems = originalModel.state.value.items; sequenceId = originalModel.currentSequenceId
             readsBeforeDismiss = requests.count { it.requestUrl!!.encodedPath.startsWith("/api/timeline/") || it.requestUrl!!.encodedPath.startsWith("/api/search/") }
@@ -233,6 +237,13 @@ class SequenceBrowseDeviceTest {
                 reopened.onActivity { correct = focal(grid(it))?.item?.remote?.assetId == id(87) }; correct
             }
             assertEquals("sequence", picker.query.value.text)
+            reopened.onActivity {
+                assertTrue("Restored search center must be actionable", it.findViewById<View>(R.id.copy_action).isEnabled)
+                it.findViewById<View>(R.id.copy_action).performClick()
+            }
+            await("Back must copy the restored search center, not the sequence selection") {
+                picker.selection.value?.remote?.assetId == id(87) && clipboard() != copied
+            }
         }
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { reopened ->
             await("Explicit Back must remain at the search screen on the next opening") {

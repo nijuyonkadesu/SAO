@@ -332,7 +332,8 @@ class FloatingDeviceTest {
             scenario.onActivity { activity ->
                 val grid = activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.media_grid)
                 val chips = activity.findViewById<com.google.android.material.chip.ChipGroup>(R.id.filters)
-                ready = (grid.adapter as MediaCarouselAdapter).itemCount == (if (filtered) 1 else 7) && chips.childCount == 7
+                ready = (grid.adapter as MediaCarouselAdapter).itemCount == (if (filtered) 1 else 7) && chips.childCount == 7 &&
+                    activity.findViewById<android.view.View>(R.id.copy_action).isEnabled
             }
             return ready
         }
@@ -347,7 +348,7 @@ class FloatingDeviceTest {
                 assertTrue(mode.isChecked && mode.isCheckedIconVisible)
                 val clip = activity.getSystemService(android.content.ClipboardManager::class.java).primaryClip!!
                 assertEquals(marker, clip.getItemAt(0).text.toString())
-                assertFalse(activity.findViewById<android.view.View>(R.id.copy_action).isEnabled)
+                assertTrue(activity.findViewById<android.view.View>(R.id.copy_action).isEnabled)
             }
         }
         try {
@@ -567,6 +568,78 @@ class FloatingDeviceTest {
                 activity.findViewById<android.view.View>(R.id.search_toggle).performClick()
                 assertEquals("missing", activity.findViewById<android.widget.EditText>(R.id.search).text.toString())
             }
+        }
+    }
+
+    @Test fun dockCopiesTheCenteredItemWithoutATapAndFollowsReopenedPosition() {
+        val marker = UUID.randomUUID().toString()
+        fun await(label: String, condition: () -> Boolean) {
+            val deadline = SystemClock.elapsedRealtime() + 6000
+            while (!condition() && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(30)
+            assertTrue(label, condition())
+        }
+        fun clip(scenario: ActivityScenario<PickerActivity>): String? {
+            var uri: String? = null
+            scenario.onActivity { uri = it.getSystemService(android.content.ClipboardManager::class.java).primaryClip?.getItemAt(0)?.uri?.toString() }
+            return uri
+        }
+        fun centered(scenario: ActivityScenario<PickerActivity>): MediaItem? {
+            var item: MediaItem? = null
+            scenario.onActivity { activity ->
+                val grid = activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.media_grid)
+                val focal = (grid.onFlingListener as com.google.android.material.carousel.CarouselSnapHelper).findSnapView(grid.layoutManager!!)
+                item = focal?.let { (grid.getChildViewHolder(it) as MediaCarouselAdapter.Holder).item }
+                if (!activity.findViewById<android.view.View>(R.id.copy_action).isEnabled ||
+                    activity.findViewById<android.widget.TextView>(R.id.selection_title).text.toString() != item?.title) item = null
+            }
+            return item
+        }
+        var third: MediaItem? = null
+        var lastCopy: String? = null
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
+            await("The initial centered item must be actionable without selecting it") { centered(scenario) != null }
+            val first = centered(scenario)!!
+            scenario.onActivity { activity ->
+                val model = androidx.lifecycle.ViewModelProvider(activity)[PickerViewModel::class.java]
+                assertNull(model.selection.value)
+                assertFalse(activity.findViewById<android.view.View>(R.id.paste_action).isEnabled)
+                assertTrue(activity.findViewById<android.view.View>(R.id.media_action).isEnabled)
+                activity.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("marker", marker))
+                activity.findViewById<android.view.View>(R.id.copy_action).performClick()
+            }
+            await("Copy must use the centered image") { clip(scenario)?.contains("${first.id}-media") == true }
+            lastCopy = clip(scenario)
+            scenario.onActivity { it.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.media_grid).scrollToPosition(3) }
+            await("The dock must follow the next center") { centered(scenario)?.id?.let { it != first.id } == true }
+            val second = centered(scenario)!!
+            scenario.onActivity { activity ->
+                assertEquals(first.id, androidx.lifecycle.ViewModelProvider(activity)[PickerViewModel::class.java].selection.value?.id)
+                assertEquals("", activity.findViewById<android.widget.TextView>(R.id.selection_status).text.toString())
+            }
+            assertEquals("Browsing must not copy", lastCopy, clip(scenario))
+            scenario.onActivity { it.findViewById<android.view.View>(R.id.copy_action).performClick() }
+            await("Copy must no longer use the previously tapped/copied item") { clip(scenario)?.contains("${second.id}-media") == true }
+            lastCopy = clip(scenario)
+            scenario.onActivity { it.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.media_grid).scrollToPosition(5) }
+            await("A third item must be centered before dismissal") { centered(scenario)?.id?.let { it != second.id } == true }
+            third = centered(scenario)
+        }
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { reopened ->
+            await("Reopening must restore an actionable center without a selection") { centered(reopened)?.id == third!!.id }
+            assertEquals("Reopening must not copy", lastCopy, clip(reopened))
+            reopened.onActivity { assertNull(androidx.lifecycle.ViewModelProvider(it)[PickerViewModel::class.java].selection.value) }
+            reopened.onActivity { it.findViewById<android.view.View>(R.id.copy_action).performClick() }
+            await("Copy must use the restored center") { clip(reopened)?.contains("${third!!.id}-media") == true }
+            val copied = clip(reopened)
+            reopened.onActivity { it.findViewById<android.widget.EditText>(R.id.search).setText("no-such-reaction") }
+            await("An empty result must disable delivery") {
+                var empty = false
+                reopened.onActivity { activity ->
+                    empty = activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.media_grid).adapter!!.itemCount == 0 &&
+                        !activity.findViewById<android.view.View>(R.id.copy_action).isEnabled && !activity.findViewById<android.view.View>(R.id.media_action).isEnabled
+                }; empty
+            }
+            assertEquals(copied, clip(reopened))
         }
     }
 

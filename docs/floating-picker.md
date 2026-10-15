@@ -158,11 +158,20 @@ See [gesture verification and screenshots](../diagnostics/picker-hold-drag/READM
 
 | Dock action | Payload and behavior |
 | --- | --- |
-| Copy | Re-copies the selection: JPEG for ordinary static media, original GIF/video for animation, transparent 512 × 512 PNG for WhatsApp or WebP for Telegram with Sticker preference. Actual copy status is inline. |
+| Copy | Copies the centered item: JPEG for ordinary static media, original GIF/video for animation, transparent 512 × 512 PNG for WhatsApp or WebP for Telegram with Sticker preference. Actual copy status is inline. |
 | Paste | Explicitly copies, closes, and requests `ACTION_PASTE` once in the verified original editor. Requires optional assistance. Discord accepts image URIs, including GIFs; video Paste is disabled. Instagram Paste is disabled because its keyboard insertion callback is not reached by clipboard Paste. Never presses Send. |
 | Sticker | Telegram/fork: static 512 × 512 WebP of at most 100 KB sent through the client's document route to the exact originating/configured package. Provider MIME remains image/webp. WhatsApp: optional verified native LSPosed handler. Disabled for GIF/video or absent capability. |
 | Instagram Paste | Optional API-102 LSPosed bridge; enabled only for a verified original-DM editor lease and still image. Sends directly through the native keyboard handler on explicit press. GIF/video stay on DM attachments. |
 | Media / Attach / DM | Ordinary media handoff to the exact supported app, or Android sharesheet when the target is unknown. Discord labels this action Attach and receives original GIF/video bytes with their MIME and a URI read grant. Instagram uses only its exported DM receiver, labeled DM; no Feed/Stories fallback. See [Instagram delivery](instagram-dm-delivery.md) for APK evidence and authenticated-client limits. |
+
+All dock actions use the actual centered card in the active carousel, including
+sequence browsing and a restored scroll position. No image tap is required first.
+Tapping a card still centers/highlights it and copies immediately; scrolling and
+reopening do not copy or insert. Availability follows the centered media's type
+and the original app integration. Empty/pending results and in-progress delivery
+also disable actions. The title follows the center, and an earlier item's copy
+status is not shown under a different item. Instagram receiver discovery reruns
+on media MIME changes, not on every scroll frame or every photo.
 
 The compact **Sticker/Media** chip marks both active modes with a checkmark and persists the delivery preference and explicitly
 affects the next selection, Copy or explicit Paste; it does not re-copy when toggled. Unsupported sticker clipboard

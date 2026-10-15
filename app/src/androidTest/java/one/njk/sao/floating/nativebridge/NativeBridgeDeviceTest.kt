@@ -336,11 +336,17 @@ class NativeBridgeDeviceTest {
                     val grid = it.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.media_grid)
                     val adapter = grid.adapter as MediaCarouselAdapter
                     val position = adapter.currentList.indexOfFirst { media -> media.id == item.id }
-                    if (position >= 0) { grid.scrollToPosition(position); selected = grid.findViewHolderForAdapterPosition(position)?.itemView?.performClick() == true }
+                    if (position >= 0) {
+                        val focal = (grid.onFlingListener as com.google.android.material.carousel.CarouselSnapHelper).findSnapView(grid.layoutManager!!)
+                        selected = focal?.let { (grid.getChildViewHolder(it) as MediaCarouselAdapter.Holder).item?.id == item.id } == true &&
+                            it.findViewById<android.view.View>(R.id.paste_action).isEnabled
+                        if (!selected) grid.scrollToPosition(position)
+                    }
                 }; delay(40)
             }
             assertTrue(selected)
-            assertEquals("Selecting/copying must not insert", 0, calls.get())
+            assertEquals("Browsing must not insert", 0, calls.get())
+            scenario.onActivity { assertNull("Native Paste must require no image tap", androidx.lifecycle.ViewModelProvider(it)[PickerViewModel::class.java].selection.value) }
             scenario.onActivity {
                 val paste = it.findViewById<android.view.View>(R.id.paste_action)
                 assertTrue("Verified native Paste must work without an accessibility anchor", paste.isEnabled)
@@ -409,7 +415,12 @@ class NativeBridgeDeviceTest {
                         val grid = it.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.media_grid)
                         val adapter = grid.adapter as MediaCarouselAdapter
                         val position = adapter.currentList.indexOfFirst { media -> media.id == item.id }
-                        if (position >= 0) { grid.scrollToPosition(position); selected = grid.findViewHolderForAdapterPosition(position)?.itemView?.performClick() == true }
+                        if (position >= 0) {
+                            val focal = (grid.onFlingListener as com.google.android.material.carousel.CarouselSnapHelper).findSnapView(grid.layoutManager!!)
+                            selected = focal?.let { (grid.getChildViewHolder(it) as MediaCarouselAdapter.Holder).item?.id == item.id } == true &&
+                                it.findViewById<android.widget.TextView>(R.id.selection_title).text.toString() == item.title
+                            if (!selected) grid.scrollToPosition(position)
+                        }
                     }; delay(40)
                 }
                 assertTrue(selected)
@@ -419,7 +430,8 @@ class NativeBridgeDeviceTest {
                     assertFalse(it.findViewById<android.view.View>(R.id.sticker_action).isEnabled)
                 }
             }
-            assertEquals("Highlight/copy must not call the native send handler", 0, calls.get())
+            assertEquals("Browsing must not call the native send handler", 0, calls.get())
+            scenario.onActivity { assertNull(androidx.lifecycle.ViewModelProvider(it)[PickerViewModel::class.java].selection.value) }
             scenario.onActivity { assertTrue(it.findViewById<android.view.View>(R.id.paste_action).performClick()) }
             withTimeout(5_000) { while (calls.get() == 0) delay(20) }
             assertEquals("Explicit Instagram Paste dispatches once", 1, calls.get())
