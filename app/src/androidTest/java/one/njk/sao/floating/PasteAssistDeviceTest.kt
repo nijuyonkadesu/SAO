@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 /** Real Android accessibility, clipboard and separate-UID receiver, with no Telegram login/messages. */
 class PasteAssistDeviceTest {
+    @get:Rule val marquees = PickerMarqueeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app = instrumentation.targetContext
     private val hostPackage = instrumentation.context.packageName
@@ -199,5 +200,135 @@ class PasteAssistDeviceTest {
             preferences.autoHide(previous.autoHide)
             shell("appops set ${app.packageName} SYSTEM_ALERT_WINDOW default")
         }
+    }
+
+    @Test fun largeTextContextAmazingKeepsDockGeometryAndScrollsLongText() {
+        val original = Settings.System.getFloat(app.contentResolver, Settings.System.FONT_SCALE, 1f)
+        fun scale(value: Float) { automation.executeShellCommand("settings put system font_scale $value").use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).use { input -> input.readBytes() }
+        } }
+        try { scale(2f); contextAmazingKeepsDockGeometryAndScrollsLongText() }
+        finally { scale(original) }
+    }
+
+    @Test fun contextAmazingKeepsDockGeometryAndScrollsLongText() = runBlocking {
+        val access = EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java)
+        val oldSource = access.sources().current()
+        val png = app.assets.open("floating/happy.png").use { it.readBytes() }
+        val gif = app.assets.open("floating/hello.gif").use { it.readBytes() }
+        val longName = "Amazing reaction with a wonderfully expressive face and a very long descriptive filename "
+        val items = org.json.JSONArray().apply { repeat(4) { index -> put(org.json.JSONObject()
+            .put("id", java.util.UUID(7, index.toLong()).toString()).put("type", "IMAGE")
+            .put("originalFileName", "$longName$index.${if (index == 1) "gif" else "png"}")
+            .put("originalMimeType", if (index == 1) "image/gif" else "image/png")
+            .put("updatedAt", "2026-10-15T00:00:00Z")) } }
+        val searches = java.util.concurrent.CopyOnWriteArrayList<org.json.JSONObject>()
+        val server = okhttp3.mockwebserver.MockWebServer().apply {
+            dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse {
+                    val path = request.requestUrl!!.encodedPath
+                    return when {
+                        path == "/api/tags" -> okhttp3.mockwebserver.MockResponse().setBody("[]")
+                        path == "/api/server/features" -> okhttp3.mockwebserver.MockResponse().setBody("""{"search":true,"smartSearch":true,"ocr":true}""")
+                        path == "/api/search/smart" -> {
+                            searches += org.json.JSONObject(request.body.readUtf8())
+                            okhttp3.mockwebserver.MockResponse().setBody(org.json.JSONObject().put("assets", org.json.JSONObject().put("items", items)).toString())
+                        }
+                        path.endsWith("/thumbnail") || path.endsWith("/original") -> {
+                            val motion = path.contains(java.util.UUID(7, 1).toString())
+                            okhttp3.mockwebserver.MockResponse().setHeader("Content-Type", if (motion) "image/gif" else "image/png")
+                                .setBody(okio.Buffer().write(if (motion) gif else png))
+                        }
+                        else -> okhttp3.mockwebserver.MockResponse().setResponseCode(400)
+                    }
+                }
+            }
+            start()
+        }
+        try {
+            access.immichSettings().save(ImmichConfig(server.url("/").toString(), "dock-text-fixture"))
+            access.browseSession().remember(PickerBrowseState(MediaQuery("amazing", mode = SearchMode.CONTEXT)))
+            host(); val original = capture()
+            ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, hostPackage, original.token)).use { scenario ->
+                // A running marquee is deliberately not idle; dispatch on Main without waiting for it.
+                fun onPicker(action: (PickerActivity) -> Unit) = scenario.onMainActivity(action)
+                try {
+                    onPicker { marquees.animate(it) }
+                    fun text(id: Int): String {
+                        var value = ""; onPicker { value = it.findViewById<android.widget.TextView>(id).text.toString() }; return value
+                    }
+                    fun geometry(): List<Int> {
+                        var value = emptyList<Int>()
+                        onPicker { activity ->
+                            value = listOf(one.njk.sao.R.id.carousel_area, one.njk.sao.R.id.selection_row,
+                                one.njk.sao.R.id.capability_hint, one.njk.sao.R.id.dock_surface).flatMap { id ->
+                                activity.findViewById<View>(id).let { listOf(it.top, it.height) }
+                            }
+                        }; return value
+                    }
+                    fun screenshot(suffix: String) {
+                        val label = InstrumentationRegistry.getArguments().getString("dockShots") ?: return
+                        val bitmap = automation.takeScreenshot()
+                        java.io.File(app.filesDir, "dock-$label-$suffix.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                        bitmap.recycle()
+                    }
+                    fun pixels(id: Int): android.graphics.Bitmap {
+                        lateinit var bitmap: android.graphics.Bitmap
+                        onPicker {
+                            val view = it.findViewById<View>(id)
+                            bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+                            view.draw(android.graphics.Canvas(bitmap))
+                        }; return bitmap
+                    }
+                    await("Context amazing must show a still image with no tip") {
+                        var ready = false
+                        onPicker { activity ->
+                            val grid = activity.findViewById<androidx.recyclerview.widget.RecyclerView>(one.njk.sao.R.id.media_grid)
+                            ready = grid.adapter!!.itemCount == 4 && !grid.isLayoutRequested &&
+                                activity.findViewById<View>(one.njk.sao.R.id.paste_action).isEnabled &&
+                                activity.findViewById<android.widget.TextView>(one.njk.sao.R.id.selection_title).text.startsWith("Amazing reaction") &&
+                                activity.findViewById<android.widget.TextView>(one.njk.sao.R.id.capability_hint).text.isEmpty()
+                        }; ready
+                    }
+                    SystemClock.sleep(150)
+                    val empty = geometry(); screenshot("empty")
+                    onPicker { it.findViewById<View>(one.njk.sao.R.id.copy_action).performClick() }
+                    await("Copy status must appear") { text(one.njk.sao.R.id.selection_status).isNotEmpty() }
+                    SystemClock.sleep(150)
+                    val copied = geometry(); screenshot("copied")
+                    onPicker { it.findViewById<androidx.recyclerview.widget.RecyclerView>(one.njk.sao.R.id.media_grid).smoothScrollToPosition(1) }
+                    var trace = ""
+                    try {
+                        await("Centering a GIF must show its tip and clear the old copy status") {
+                            val hint = text(one.njk.sao.R.id.capability_hint)
+                            val status = text(one.njk.sao.R.id.selection_status)
+                            onPicker {
+                                val model = ViewModelProvider(it)[PickerViewModel::class.java]
+                                val grid = it.findViewById<androidx.recyclerview.widget.RecyclerView>(one.njk.sao.R.id.media_grid)
+                                val snap = (grid.onFlingListener as com.google.android.material.carousel.CarouselSnapHelper).findSnapView(grid.layoutManager!!)
+                                trace = "focus=${model.state.value.items.indexOfFirst { item -> item.id == model.focusedId }}, snap=${snap?.let { grid.getChildAdapterPosition(it) }}, layout=${grid.isLayoutRequested}, computing=${grid.isComputingLayout}, hint=$hint, status=$status"
+                            }
+                            hint.contains("GIF") && status.isEmpty()
+                        }
+                    } catch (failure: AssertionError) { screenshot("failure"); throw AssertionError(trace, failure) }
+                    SystemClock.sleep(150)
+                    val motion = geometry(); screenshot("tip")
+                    assertEquals("Copy status must not move the carousel or dock", empty, copied)
+                    assertEquals("An appearing tip must not move the carousel or dock", empty, motion)
+                    assertEquals(1, searches.size); assertEquals("amazing", searches.single().getString("query"))
+                    val titleBefore = pixels(one.njk.sao.R.id.selection_title)
+                    val tipBefore = pixels(one.njk.sao.R.id.capability_hint)
+                    SystemClock.sleep(1800)
+                    screenshot("scrolling")
+                    val titleAfter = pixels(one.njk.sao.R.id.selection_title)
+                    val tipAfter = pixels(one.njk.sao.R.id.capability_hint)
+                    try {
+                        assertFalse("An overflowing title must visibly scroll", titleBefore.sameAs(titleAfter))
+                        assertFalse("An overflowing tip must visibly scroll", tipBefore.sameAs(tipAfter))
+                        assertEquals("Marquee must not change layout", motion, geometry())
+                    } finally { listOf(titleBefore, tipBefore, titleAfter, tipAfter).forEach { it.recycle() } }
+                } finally { onPicker { it.finish() } }
+            }
+        } finally { access.sources().restore(oldSource); access.browseSession().reset(); server.shutdown() }
     }
 }

@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /** All assets and responses are local fixtures. Never touches a configured personal library. */
 class SequenceBrowseDeviceTest {
+    @get:org.junit.Rule val marquees = PickerMarqueeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app = instrumentation.targetContext
     private val access get() = EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java)

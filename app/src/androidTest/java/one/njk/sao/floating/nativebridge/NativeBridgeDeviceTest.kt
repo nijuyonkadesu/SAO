@@ -1,5 +1,7 @@
 package one.njk.sao.floating.nativebridge
 
+import one.njk.sao.floating.PickerMarqueeRule
+
 import android.app.Activity
 import android.content.Context
 import android.net.Uri
@@ -23,6 +25,7 @@ import X.NativeBridgeFixtures
 
 /** Exercises the production leases/adapters/registry with recording receivers; never sends. */
 class NativeBridgeDeviceTest {
+    @get:org.junit.Rule val marquees = PickerMarqueeRule()
     private val app = InstrumentationRegistry.getInstrumentation().targetContext
     private val access get() = EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java)
     private var previous: SourceCatalog? = null

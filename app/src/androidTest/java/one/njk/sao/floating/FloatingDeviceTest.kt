@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
 class FloatingDeviceTest {
+    @get:org.junit.Rule val marquees = PickerMarqueeRule()
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val app get() = instrumentation.targetContext
 

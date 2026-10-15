@@ -173,6 +173,18 @@ also disable actions. The title follows the center, and an earlier item's copy
 status is not shown under a different item. Instagram receiver discovery reruns
 on media MIME changes, not on every scroll frame or every photo.
 
+Title, copy status and delivery tips each reserve one line at the current font
+size. An empty tip stays invisible while retaining its space, so image/GIF
+transitions do not resize the carousel. Long text uses the platform TextView
+marquee with the full text available to accessibility; it stops when the picker
+stops. Unchanged tips are not reassigned during capability refreshes, preserving
+the scroll animation. The Context **amazing** regression uses a local Immich
+fixture to compare exact carousel/dock bounds across empty, copied and GIF-tip
+states, and pixel comparisons verify that overflowing titles and tips scroll
+at normal and 200% text sizes.
+Screenshots: [empty tip](screenshots/floating-dock-empty.png),
+[overflowing title and tip](screenshots/floating-dock-marquee.png).
+
 The compact **Sticker/Media** chip marks both active modes with a checkmark and persists the delivery preference and explicitly
 affects the next selection, Copy or explicit Paste; it does not re-copy when toggled. Unsupported sticker clipboard
 formats fall back to media with inline status. No selection menu or app-owned

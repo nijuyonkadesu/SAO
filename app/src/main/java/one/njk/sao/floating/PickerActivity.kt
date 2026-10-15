@@ -286,6 +286,7 @@ class PickerActivity : AppCompatActivity() {
     }
     override fun onStart() {
         super.onStart()
+        dockMarquee(true)
         model.pickerVisible(!isFinishing)
         refreshCapability()
         updatePlayback()
@@ -296,6 +297,7 @@ class PickerActivity : AppCompatActivity() {
         if (isFinishing) model.pickerVisible(false)
     }
     override fun onStop() {
+        dockMarquee(false)
         // The retained ViewModel keeps one owner during recreation, so the icon never flashes.
         // Backgrounding/covering a picker still releases it through the ordinary lifecycle.
         if (!isChangingConfigurations) model.pickerVisible(false)
@@ -312,6 +314,17 @@ class PickerActivity : AppCompatActivity() {
         super.onConfigurationChanged(newConfig); metrics = windowManager.maximumWindowMetrics; resize(0)
     }
     private fun recordFocus() = carousel.recordFocus()
+    private fun dockMarquee(active: Boolean) {
+        listOf(binding.selectionTitle, binding.selectionStatus, binding.capabilityHint).forEach { it.isSelected = active }
+    }
+    private fun updateHintVisibility() {
+        // Invisible reserves one font-scaled line; only a different UI mode removes the row.
+        binding.capabilityHint.visibility = when {
+            searchController.visible || compactEditing || compactSequence -> View.GONE
+            binding.capabilityHint.text.isEmpty() -> View.INVISIBLE
+            else -> View.VISIBLE
+        }
+    }
     private fun centerChanged() {
         val mime = carousel.centeredItem?.mimeType
         if (target == MessagingTarget.INSTAGRAM && mime != null && mime != capabilityMime) refreshCapability()
@@ -443,7 +456,7 @@ class PickerActivity : AppCompatActivity() {
             else -> R.string.picker_media
         })
         if (binding.mediaAction.text.toString() != mediaLabel) binding.mediaAction.text = mediaLabel
-        binding.capabilityHint.text = when {
+        val hint = when {
             nativePhoto -> getString(R.string.picker_instagram_native_hint)
             target.isWhatsapp && nativeRendition == Rendition.STICKER_WEBP -> getString(R.string.picker_whatsapp_native_paste_hint)
             nativePaste -> getString(R.string.picker_native_image_hint)
@@ -462,7 +475,8 @@ class PickerActivity : AppCompatActivity() {
             !binding.pasteAction.isEnabled -> getString(R.string.picker_assist_hint)
             else -> ""
         }
-        binding.capabilityHint.isVisible = !searchController.visible && !compactEditing && !compactSequence && binding.capabilityHint.text.isNotEmpty()
+        if (binding.capabilityHint.text.toString() != hint) binding.capabilityHint.text = hint
+        updateHintVisibility()
         if (target != MessagingTarget.OTHER && binding.targetList.isVisible) showTargets(false)
         updateActionAccessibility()
     }
@@ -570,12 +584,10 @@ class PickerActivity : AppCompatActivity() {
         binding.selectionRow.isVisible = !searchPanel && !compactEditing && !compactSequence
         binding.carouselArea.isVisible = searchPanel || !compactEditing
         updatePlayback()
-        binding.capabilityHint.isVisible = !searchController.visible && !compactEditing && !compactSequence && binding.capabilityHint.text.isNotEmpty()
+        updateHintVisibility()
         val useFullScreen = imeHeight > 0 || shortViewport || largeText
         carousel.useFullScreen(useFullScreen)
         val twoRows = largeText && width < 560 * density && !tight
-        binding.capabilityHint.maxLines = if (shortViewport || largeText) 1 else 3
-        binding.capabilityHint.ellipsize = android.text.TextUtils.TruncateAt.END
         val mode = if (tight) 2 else if (twoRows) 1 else 0
         if (mode != dockLayoutMode) {
             dockLayoutMode = mode

@@ -15,6 +15,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TelegramClipboardTest {
+    @get:org.junit.Rule val marquees = PickerMarqueeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app = instrumentation.targetContext
     @org.junit.Before fun resetSession() {
