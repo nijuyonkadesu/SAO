@@ -47,6 +47,9 @@ class SwitchingMediaSource @Inject constructor(private val local: LocalMediaSour
         val selected = catalog.selected
         if (selected == null) true else factories[selected.configuration.kind]?.get()?.randomBrowse == true
     }.distinctUntilChanged()
+    override val sequenceBrowse = profiles.catalogs.map { catalog ->
+        catalog.selected?.configuration?.kind?.let { factories[it]?.get()?.sequenceBrowse } == true
+    }.distinctUntilChanged()
 
     private suspend fun session(): Session = withContext(dispatchers.io) { mutex.withLock {
         if (!watching) {
@@ -80,6 +83,25 @@ class SwitchingMediaSource @Inject constructor(private val local: LocalMediaSour
     }
     internal suspend fun shutdown() = mutex.withLock { scope.cancel(); active?.close(); active = null }
     override suspend fun page(query: MediaQuery, cursor: String?) = read { it.page(query, cursor) }
+    override suspend fun openSequence(anchor: MediaItem): MediaSequence {
+        val owner = session()
+        check((anchor.remote?.sourceId ?: "local") == owner.identity) { "Media belongs to a different source" }
+        val sequence = owner.read { it.openSequence(anchor) }
+        if (profiles.current().identity != owner.identity) {
+            sequence.close(); throw CancellationException("Source changed")
+        }
+        return object : MediaSequence {
+            private suspend fun readPage(block: suspend () -> SequencePage): SequencePage {
+                check(profiles.current().identity == owner.identity) { "Sequence belongs to a different source" }
+                val page = owner.read { block() }
+                if (profiles.current().identity != owner.identity) throw CancellationException("Source changed")
+                return page
+            }
+            override suspend fun initial() = readPage { sequence.initial() }
+            override suspend fun page(direction: SequenceDirection, cursor: String) = readPage { sequence.page(direction, cursor) }
+            override fun close() = sequence.close()
+        }
+    }
     override suspend fun filters() = read { it.filters() }
     override suspend fun searchModes() = read { it.searchModes() }
     override suspend fun people(name: String, page: Int, expectedSourceId: String?) = read(expectedSourceId = expectedSourceId) { it.people(name, page, expectedSourceId) }

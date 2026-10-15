@@ -30,6 +30,8 @@ import one.njk.sao.databinding.ItemFloatingMediaBinding
 @androidx.annotation.OptIn(UnstableApi::class)
 class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: CoroutineScope,
     private val source: MediaSource, private val prefetch: (Int) -> Unit = {},
+    private val holdDelay: () -> Long = { HoldDragSelector.HOLD_MS },
+    private val canHold: () -> Boolean = { false }, private val held: (MediaItem) -> Unit = {},
     private val select: (MediaItem) -> Unit) :
     ListAdapter<MediaItem, MediaCarouselAdapter.Holder>(object : DiffUtil.ItemCallback<MediaItem>() {
         override fun areItemsTheSame(a: MediaItem, b: MediaItem) = a.id == b.id
@@ -43,6 +45,9 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     private var videoVersion = 0L
     private var closed = false
     private var furthestBound = -1
+    private var uploadFormatter: java.time.format.DateTimeFormatter? = null
+    var showUploadTime = false
+        set(value) { if (field != value) { field = value; furthestBound = -1; attached.forEach(::decorate) } }
     var selectedId: String? = null
         set(value) { if (field != value) { field = value; attached.forEach(::decorate) } }
     var focusedId: String? = null
@@ -58,13 +63,20 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     var playing = true
         set(value) { if (field != value) { field = value; attached.forEach(::decorate); syncVideo() } }
     class Holder(val binding: ItemFloatingMediaBinding) : RecyclerView.ViewHolder(binding.root) {
+        internal var hold: ResultHoldAction? = null
+        var uploadCaption: String? = null
+        var description: String = ""
         var item: MediaItem? = null
         var request: Disposable? = null
         var loading: Job? = null
     }
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = Holder(
-        ItemFloatingMediaBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+        ItemFloatingMediaBinding.inflate(LayoutInflater.from(parent.context), parent, false)).also { holder ->
+        holder.hold = ResultHoldAction(holder.binding.root, { canHold() && holder.item != null }, holdDelay,
+            { holder.item?.let(select) }, { holder.item?.let(held) })
+    }
     override fun onBindViewHolder(holder: Holder, position: Int) {
+        holder.hold?.cancel()
         furthestBound = maxOf(furthestBound, position)
         prefetch(furthestBound)
         if (videoHolder === holder) stopVideo()
@@ -77,9 +89,9 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
             val label = holder.binding.root.context.getString(kind)
             if (holder.binding.gifBadge.text.toString() != label) holder.binding.gifBadge.text = label
         }
-        holder.binding.root.contentDescription = "${item.title}, ${item.tags.joinToString(", ")}${kind?.let { ", ${holder.binding.root.context.getString(it)}" }.orEmpty()}"
+        holder.description = "${item.title}, ${item.tags.joinToString(", ")}${kind?.let { ", ${holder.binding.root.context.getString(it)}" }.orEmpty()}"
+        holder.uploadCaption = null
         load(holder)
-        holder.binding.root.setOnClickListener { select(item) }
         decorate(holder)
         syncVideo()
     }
@@ -108,6 +120,12 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     private fun decorate(holder: Holder) {
         val item = holder.item ?: return
         holder.binding.apply {
+            uploadedAt.isVisible = showUploadTime
+            if (showUploadTime) {
+                if (holder.uploadCaption == null) holder.uploadCaption = uploadCaption(root, item)
+                uploadedAt.text = holder.uploadCaption
+            }
+            root.contentDescription = holder.description + if (showUploadTime) ", ${holder.uploadCaption}" else ""
             val selected = item.id == selectedId
             root.isSelected = selected; check.isVisible = selected
             card.strokeWidth = if (selected) (2 * root.resources.displayMetrics.density).toInt() else 0
@@ -162,9 +180,22 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         videoHolder = null; videoId = null
         val old = player; player = null; old?.release()
     }
-    fun close() { closed = true; stopVideo() }
+    private fun uploadCaption(view: android.view.View, item: MediaItem): String {
+        val date = item.remote?.uploadedAt?.let { raw -> runCatching {
+            val formatter = uploadFormatter ?: java.time.format.DateTimeFormatter.ofLocalizedDateTime(
+                java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT)
+                .withLocale(view.resources.configuration.locales[0]).withZone(java.time.ZoneId.systemDefault())
+                .also { uploadFormatter = it }
+            formatter.format(java.time.Instant.parse(raw))
+        }.getOrNull() }
+        return date?.let { view.context.getString(one.njk.sao.R.string.sequence_uploaded_at, it) }
+            ?: view.context.getString(one.njk.sao.R.string.sequence_upload_unknown)
+    }
+    fun cancelGestures() { attached.forEach { it.hold?.cancel() } }
+    fun close() { closed = true; cancelGestures(); stopVideo() }
     override fun onViewAttachedToWindow(holder: Holder) { attached += holder; if (holder.request == null && holder.loading?.isActive != true) load(holder); decorate(holder); syncVideo() }
     override fun onViewDetachedFromWindow(holder: Holder) {
+        holder.hold?.cancel()
         attached -= holder; (holder.binding.preview.drawable as? Animatable)?.stop()
         if (videoHolder === holder) stopVideo()
         holder.request?.dispose(); holder.request = null; holder.binding.preview.setImageDrawable(null)
@@ -172,6 +203,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         syncVideo()
     }
     override fun onViewRecycled(holder: Holder) {
+        holder.hold?.cancel()
         if (videoHolder === holder) stopVideo()
         attached -= holder; holder.request?.dispose(); holder.request = null; holder.item = null
         holder.loading?.cancel(); holder.loading = null

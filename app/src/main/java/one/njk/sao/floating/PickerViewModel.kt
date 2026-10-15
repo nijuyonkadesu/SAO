@@ -28,7 +28,7 @@ import javax.inject.Inject
 
 data class PickerState(val items: List<MediaItem> = emptyList(), val loading: Boolean = true,
     val error: Boolean = false, val query: MediaQuery = MediaQuery(), val loadingMore: Boolean = false,
-    val hasMore: Boolean = false, val sourceId: String = "local")
+    val hasMore: Boolean = false, val sourceId: String = "local", val sequenceId: String? = null)
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
@@ -50,6 +50,9 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
     var focusedId: String? = initial.focusedId
         private set
     private var rememberedQuery: MediaQuery? = null
+    private var returnFocus: String? = null
+    private val sequence = PickerSequenceNavigator(source, viewModelScope, dispatchers) { focusedId = it }
+    val canBrowseSequence = source.sequenceBrowse.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     init { rememberBrowsing() }
 
@@ -67,8 +70,9 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
             savedState[QUERY_CONSTRAINTS] = SearchQueryState.encode(query.value.constraints)
             savedState[QUERY_RANDOM] = query.value.randomRequest
         }
-        savedState[FOCUSED_ID] = focusedId
-        session.remember(PickerBrowseState(query.value, focusedId))
+        val searchFocus = if (sequence.state.value != null) returnFocus else focusedId
+        savedState[FOCUSED_ID] = searchFocus
+        session.remember(PickerBrowseState(query.value, searchFocus))
     }
     val selection = MutableStateFlow<MediaItem?>(null)
     val copyStatus = MutableStateFlow<Int>(one.njk.sao.R.string.picker_choose)
@@ -104,18 +108,23 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         val media = exports.prepare(item, choice.rendition)
         return source.identity.first() == (item.remote?.sourceId ?: "local") && clipboard.publish(item, media, request, version)
     }
-    override fun onCleared() { request.next(); pickerVisible(false) }
+    override fun onCleared() { sequence.close(); request.next(); pickerVisible(false) }
 
-    val options = preferences.options.onEach { if (preferredOverride == it.preferStickers) preferredOverride = null }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), FloatingOptions())
+    val options = preferences.options.onEach {
+        if (preferredOverride == it.preferStickers) preferredOverride = null
+        if (!it.browseSequence) backToResults()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), FloatingOptions())
     private val pageRequests = Channel<Unit>(Channel.CONFLATED)
     private var requestingPage = false
     private val refresh = MutableStateFlow(0)
     private var appliedSource: String? = null
-    val state = combine(query.debounce(180), source.identity, refresh) { value, id, _ -> value to id }
+    private val resultsState = combine(query.debounce(180), source.identity, refresh) { value, id, _ -> value to id }
         .flatMapLatest { (query, sourceId) -> flow {
             while (pageRequests.tryReceive().isSuccess) { /* Drop requests from the old result set. */ }
             requestingPage = false
-            if (appliedSource != null && appliedSource != sourceId) { focusedId = null; clearSelection(); rememberBrowsing() }
+            if (appliedSource != null && appliedSource != sourceId) {
+                sequence.close(); returnFocus = null; focusedId = null; clearSelection(); rememberBrowsing()
+            }
             appliedSource = sourceId
             var snapshot = session.results(sourceId, query)
             if (snapshot == null) {
@@ -147,19 +156,41 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
             }
         }.catch { emit(PickerState(loading = false, error = true, query = query, sourceId = sourceId)) } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PickerState())
+    val state = combine(resultsState, sequence.state) { results, nearby ->
+        if (nearby == null || nearby.sourceId != results.sourceId) results else PickerState(
+            nearby.items, nearby.loading, nearby.error, results.query, nearby.loadingMore,
+            nearby.newer != null || nearby.older != null, nearby.sourceId, nearby.id)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PickerState())
+    fun browseSequence(item: MediaItem) {
+        val current = state.value
+        if (!options.value.browseSequence || !canBrowseSequence.value || current.loading || current.loadingMore ||
+            current.query != query.value || current.items.none { it.id == item.id }) return
+        if (sequence.state.value == null) returnFocus = focusedId
+        sequence.open(item, current.sourceId)
+    }
+    fun backToResults(): Boolean {
+        if (sequence.state.value == null) return false
+        sequence.close(); focusedId = returnFocus; returnFocus = null; rememberBrowsing()
+        return true
+    }
     fun loadMore(position: Int) {
+        if (sequence.state.value != null) { sequence.loadMore(position); return }
         val value = state.value
         if (value.query == query.value && value.hasMore && !value.error && !value.loading && !value.loadingMore && !requestingPage && position >= value.items.size - 10) {
             requestingPage = true; pageRequests.trySend(Unit)
         }
     }
-    fun retry() { if (state.value.items.isNotEmpty()) pageRequests.trySend(Unit) else refresh.value++ }
+    fun retry() {
+        if (sequence.state.value != null) sequence.retry()
+        else if (state.value.items.isNotEmpty()) pageRequests.trySend(Unit) else refresh.value++
+    }
     private suspend fun uniqueItems(items: List<MediaItem>) = withContext(dispatchers.cpu) {
         // Stable remote asset identity avoids duplicates if its revision changes between pages.
         items.distinctBy { it.remote?.assetId ?: it.id }
     }
     private fun searchQuery(value: MediaQuery) {
         if (query.value == value) return
+        backToResults()
         queryState.value = value; focusedId = null
         rememberBrowsing()
     }

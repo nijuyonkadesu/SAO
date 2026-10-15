@@ -9,6 +9,7 @@ class ImmichSourceFactory @Inject constructor(@ApplicationContext private val co
     private val dispatchers: FloatingDispatchers) : MediaSourceFactory {
     override val advancedSearch = true
     override val randomBrowse = true
+    override val sequenceBrowse = true
     override fun create(profile: SourceProfile) = ImmichMediaSource(context,
         profile.configuration as ImmichConfig, profile.identity, dispatchers)
 }

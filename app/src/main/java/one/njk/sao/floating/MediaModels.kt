@@ -18,7 +18,7 @@ data class MediaItem(
     val hasMotion get() = animated || isVideo
 }
 
-data class RemoteMedia(val sourceId: String, val assetId: String, val edited: Boolean)
+data class RemoteMedia(val sourceId: String, val assetId: String, val edited: Boolean, val uploadedAt: String? = null)
 data class MediaPage(val items: List<MediaItem>, val nextCursor: String? = null)
 
 enum class SearchMode { CONTEXT, FILENAME, DESCRIPTION, PATH, OCR }

@@ -119,6 +119,28 @@
             android:checkable="true"
             android:text="@string/floating_delay_ten" />
     </com.google.android.material.chip.ChipGroup>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:layout_marginBottom="20dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_marginEnd="16dp" android:text="@string/sequence_setting" android:textAppearance="?attr/textAppearanceTitleMedium" />
+            <com.google.android.material.chip.Chip android:id="@+id/browse_sequence" style="@style/Widget.Material3.Chip.Filter"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/disabled" />
+        </LinearLayout>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/sequence_setting_description"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/sequence_hold_setting"
+            android:textAppearance="?attr/textAppearanceTitleMedium" />
+        <TextView android:id="@+id/long_press_value" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textAppearance="?attr/textAppearanceLabelLarge" />
+    </LinearLayout>
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/sequence_hold_description"
+        android:textAppearance="?attr/textAppearanceBodyMedium" />
+    <com.google.android.material.slider.Slider android:id="@+id/long_press_delay" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginBottom="20dp" android:contentDescription="@string/sequence_hold_setting" android:valueFrom="100" android:valueTo="1000"
+        android:stepSize="1" android:value="160" app:tickVisible="false" />
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

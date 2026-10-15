@@ -4,6 +4,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.http.*
+import retrofit2.Call
 
 /** Relative routes preserve reverse-proxy prefixes. Mutation methods are never invoked by browsing. */
 interface ImmichApi {
@@ -20,6 +21,15 @@ interface ImmichApi {
     @GET("search/suggestions") suspend fun places(@Query("type") type: String,
         @Query("country") country: String? = null, @Query("state") state: String? = null): List<String?>
     @GET("assets/{id}") suspend fun asset(@Path("id") id: String): ImmichAsset
+    // Same ordering/scope as the Photos web timeline. Bucket bodies are streamed, not buffered.
+    @GET("timeline/buckets") suspend fun timeBuckets(@Query("albumId") albumId: String? = null,
+        @Query("order") order: String = "desc", @Query("orderBy") orderBy: String = "takenAt",
+        @Query("visibility") visibility: String = "timeline", @Query("withStacked") withStacked: Boolean = true,
+        @Query("withPartners") withPartners: Boolean = true): List<TimeBucket>
+    @Streaming @GET("timeline/bucket") fun timeBucket(@Query("timeBucket") bucket: String,
+        @Query("albumId") albumId: String? = null, @Query("order") order: String = "desc",
+        @Query("orderBy") orderBy: String = "takenAt", @Query("visibility") visibility: String = "timeline",
+        @Query("withStacked") withStacked: Boolean = true, @Query("withPartners") withPartners: Boolean = true): Call<ResponseBody>
     @PUT("assets/{id}") suspend fun updateAssetFields(@Path("id") id: String, @Body fields: RequestBody): ImmichAsset
     @POST("assets/bulk-upload-check") suspend fun checkUploads(@Body checks: UploadCheck): UploadChecks
     @HTTP(method = "DELETE", path = "assets", hasBody = true)

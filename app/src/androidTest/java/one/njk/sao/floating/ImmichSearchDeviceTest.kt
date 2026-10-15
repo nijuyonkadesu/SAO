@@ -590,13 +590,28 @@ class ImmichSearchDeviceTest {
                 model(it).lucky() // Same frame's second tap must not start another request.
             }
             await(scenario, "A full random batch must load") { !model(it).state.value.loading && model(it).state.value.items.size == 100 && model(it).query.value.randomRequest != null }
+            // The result StateFlow can update before AsyncListDiffer commits its UI batch.
+            // Programmatic scrolls must target the displayed list, as a user's fling does.
+            await(scenario, "Random batch must be displayed before scrolling") {
+                it.findViewById<RecyclerView>(R.id.media_grid).let { grid ->
+                    grid.adapter!!.itemCount == 100 && !grid.isLayoutRequested && grid.childCount > 0
+                }
+            }
             assertEquals(1, randomCalls.get()); assertEquals(copied, clip())
             scenario.onActivity {
                 assertNull(model(it).selection.value); assertEquals("", model(it).query.value.text)
                 nonce = model(it).query.value.randomRequest; firstIds = model(it).state.value.items.map { item -> item.id }
                 it.findViewById<RecyclerView>(R.id.media_grid).scrollToPosition(40)
             }
-            await(scenario, "The random carousel must navigate") { model(it).focusedId?.let { id -> firstIds.indexOf(id) >= 30 } == true }
+            var scrollTrace = ""
+            try {
+                await(scenario, "The random carousel must navigate") { activity ->
+                    val grid = activity.findViewById<RecyclerView>(R.id.media_grid)
+                    val positions = (0 until grid.childCount).map { grid.getChildAdapterPosition(grid.getChildAt(it)) }
+                    scrollTrace = "focus=${model(activity).focusedId?.let(firstIds::indexOf)},positions=$positions,layout=${grid.isLayoutRequested},count=${grid.adapter!!.itemCount},scroll=${grid.scrollState}"
+                    model(activity).focusedId?.let { id -> firstIds.indexOf(id) >= 30 } == true
+                }
+            } catch (failure: AssertionError) { throw AssertionError("${failure.message}: $scrollTrace", failure) }
             SystemClock.sleep(5_000); screenshot("search-lucky-results.png")
             await(scenario, "The random carousel must settle before recording focus") { it.findViewById<RecyclerView>(R.id.media_grid).scrollState == RecyclerView.SCROLL_STATE_IDLE }
             scenario.onActivity { focused = model(it).focusedId }

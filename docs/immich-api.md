@@ -43,6 +43,7 @@ preserves that prefix and accepts either a server-root URL or an existing `/api`
 | Metadata search | `POST search/metadata` | `asset.read`; structured filters, opaque cursor, 60 assets/page in picker |
 | Semantic search | `POST search/smart` | `asset.read`; server ML/index required; 100 assets/page, follows server `nextPage` |
 | Random browsing | `POST search/random` | `asset.read`; structured filters, direct asset array, 100 items per explicit tap |
+| Sequence browsing | `GET timeline/buckets`, `GET timeline/bucket`, `GET assets/{id}` | `asset.read`; optional hold-to-browse using Photos ordering, a streamed bucket ID index and bounded metadata hydration; internal timeline contract |
 | People filters | `GET people`, `GET search/person`, `GET people/{id}/thumbnail` | `person.read`; 40 people/page, bounded name lookup and portrait downloads |
 | Place filters | `GET search/suggestions?type=country/state/city` | `asset.read`; country/state constrain dependent suggestions |
 | Asset details | `GET assets/{id}` | `asset.read`; IDs are UUIDs, original disk paths are not download URLs |

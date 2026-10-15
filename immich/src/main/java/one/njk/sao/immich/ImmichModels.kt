@@ -13,7 +13,9 @@ data class ImmichAsset(val id: String, val originalFileName: String, val type: S
     val updatedAt: String, val originalMimeType: String? = null, val isEdited: Boolean = false,
     val duration: Int? = null, val tags: List<ImmichTag> = emptyList(), val exifInfo: AssetExif? = null,
     val width: Long? = null, val height: Long? = null, val fileCreatedAt: String? = null,
-    val fileModifiedAt: String? = null, val isFavorite: Boolean = false, val visibility: String = "timeline")
+    val fileModifiedAt: String? = null, val isFavorite: Boolean = false, val visibility: String = "timeline",
+    val createdAt: String? = null, val localDateTime: String? = null)
+data class TimeBucket(val timeBucket: String, val count: Int)
 data class AssetExif(val description: String? = null, val dateTimeOriginal: String? = null,
     val latitude: Double? = null, val longitude: Double? = null, val rating: Int? = null)
 data class ImmichTag(val id: String, val name: String, val value: String,

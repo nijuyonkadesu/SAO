@@ -27,6 +27,11 @@
                     android:minWidth="0dp" android:padding="0dp" android:contentDescription="@string/floating_close"
                     app:icon="@drawable/ic_picker_close" app:iconGravity="textStart" app:iconPadding="0dp" app:iconSize="24dp" />
             </LinearLayout>
+            <com.google.android.material.button.MaterialButton android:id="@+id/sequence_back"
+                style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="48dp"
+                android:text="@string/sequence_back" android:contentDescription="@string/sequence_back_description"
+                android:gravity="start|center_vertical" android:visibility="gone"
+                app:icon="@drawable/ic_picker_back" app:iconGravity="textStart" />
             <HorizontalScrollView android:id="@+id/search_controls" android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:visibility="gone">
                 <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center_vertical">
                 <com.google.android.material.chip.Chip android:id="@+id/query_mode" style="@style/Widget.Material3.Chip.Assist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/search_mode_context" />

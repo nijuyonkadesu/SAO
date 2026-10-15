@@ -588,3 +588,60 @@ are zero while stopped, restored on activation and zero again after Stop. Focus-
 pause without an IME, while stale/ambiguous metadata, hidden editors and removed handlers
 remain rejected. Physical Vector injection and authenticated sends still require phone
 verification.
+
+## Immich sequence browsing
+
+In the inline floating settings, **Browse sequence on hold** is off by default.
+When enabled for an Immich source, a short tap still highlights and copies; a
+stationary hold opens that asset's neighbors in the same order as Immich's
+Photos timeline. Scrolling, a second pointer, recycling and leaving the window
+cancel pending holds. **Long-press delay** defaults to **160 ms** and can be set
+from 100–1000 ms. Results, Context, Filters and Sources all read this same value.
+The settings slider saves at the end of a touch gesture, not on every drag step;
+discrete accessibility/keyboard adjustments also save.
+
+The sequence replaces the carousel temporarily. It has a **Back to results**
+action, and system Back restores the original query, filters, loaded results and
+focused item without querying or copying again. Search results stay in the
+existing in-memory session; the ViewModel owns the temporary sequence and its
+cancellable work. Rotation/recreation retains that navigation. Finishing the
+picker closes the temporary sequence and keeps the original search session for
+reopening. Changing sources discards the old sequence; stale reads cannot
+publish into the new source. Changing the search returns to search mode.
+
+Ordering comes directly from `timeline/buckets` and `timeline/bucket` with
+`order=desc`, `orderBy=takenAt`, `visibility=timeline`, `withStacked=true`, and
+`withPartners=true`, retaining any configured album scope. This preserves the
+Photos local-day, capture-time and filename tie breaks instead of approximating
+them with an upload-time sort. Query text, emoji and search filters do not
+restrict the neighboring timeline. Archived/hidden assets and non-primary stack
+members that are absent from Photos cannot anchor this view; a failed read
+keeps Back and an explicit Retry available.
+
+Immich's internal timeline API returns an entire bucket's index. SAO streams
+only its ordered IDs into memory, discarding the parallel thumbnail/date arrays;
+it keeps at most one bucket index per active sequence. No originals or previews
+for an entire month/library are fetched. Metadata is hydrated for the initial
+window (up to 20 items on either side) and subsequent pages of up to 40 cards,
+in either direction. A bucket response has a 64 MiB metadata safety limit.
+Slow streams are cancelled through the underlying HTTP call, with cancellation
+preserved as cancellation rather than an error/retry. Transient reads use the
+existing one-retry policy; authentication/permission failures await user action.
+
+Every sequence card has a small **Uploaded** caption from Immich's `createdAt`,
+formatted in the device's local timezone and locale. It does not affect ordering.
+Missing or invalid upload dates are labelled unavailable, never replaced with a
+capture date. Normal search cards keep their existing appearance. Large-text
+landscape retains the Back action, carousel and delivery dock by hiding redundant
+selection/status text in the constrained viewport.
+
+`SequenceBrowseDeviceTest` covers real tap/hold/swipe timing, shared selector
+delay, both paging directions and month boundaries, exact server ID ordering,
+Back without a search request or clipboard write, recreation, source changes,
+upload captions, settings persistence and large-text landscape. Its localhost
+fixtures return metadata in a deliberately different order from the timeline.
+`TimelineIndexTest` checks streaming parsing and cancellation of a stalled body.
+
+References: [Photos defaults](https://github.com/immich-app/immich/blob/main/web/src/lib/managers/timeline-manager/timeline-manager.svelte.ts),
+[timeline contract](https://github.com/immich-app/immich/blob/main/server/src/dtos/time-bucket.dto.ts),
+[timeline ordering](https://github.com/immich-app/immich/blob/main/server/src/repositories/asset.repository.ts).

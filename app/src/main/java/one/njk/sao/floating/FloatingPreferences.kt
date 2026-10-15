@@ -30,7 +30,14 @@ private val Context.floatingDataStore by preferencesDataStore("floating_picker",
 
 data class FloatingOptions(val preferStickers: Boolean = true, val pasteAssistance: Boolean = false,
     val edgeEnd: Boolean = true, val verticalPosition: Float = .35f,
-    val autoHide: Boolean = true, val idleSeconds: Int = 3, val telegramPackages: Set<String> = emptySet())
+    val autoHide: Boolean = true, val idleSeconds: Int = 3, val telegramPackages: Set<String> = emptySet(),
+    val browseSequence: Boolean = false, val longPressMs: Int = DEFAULT_LONG_PRESS_MS) {
+    companion object {
+        const val DEFAULT_LONG_PRESS_MS = 160
+        const val MIN_LONG_PRESS_MS = 100
+        const val MAX_LONG_PRESS_MS = 1000
+    }
+}
 
 @Singleton
 class FloatingPreferences @Inject constructor(@ApplicationContext private val context: Context) {
@@ -41,15 +48,22 @@ class FloatingPreferences @Inject constructor(@ApplicationContext private val co
     private val hide = booleanPreferencesKey("auto_hide")
     private val idle = intPreferencesKey("idle_seconds")
     private val telegram = stringSetPreferencesKey("telegram_packages")
+    private val sequence = booleanPreferencesKey("browse_sequence")
+    private val hold = intPreferencesKey("long_press_ms")
     val options = context.floatingDataStore.data.map {
         FloatingOptions(it[stickers] ?: true, it[paste] ?: false, it[edge] ?: true, it[position] ?: .35f,
-            it[hide] ?: true, (it[idle] ?: 3).coerceIn(3, 10), it[telegram].orEmpty())
+            it[hide] ?: true, (it[idle] ?: 3).coerceIn(3, 10), it[telegram].orEmpty(), it[sequence] ?: false,
+            (it[hold] ?: FloatingOptions.DEFAULT_LONG_PRESS_MS).coerceIn(FloatingOptions.MIN_LONG_PRESS_MS, FloatingOptions.MAX_LONG_PRESS_MS))
     }
     suspend fun current() = options.first()
     suspend fun preferStickers(value: Boolean) { context.floatingDataStore.edit { it[stickers] = value } }
     suspend fun pasteAssistance(value: Boolean) { context.floatingDataStore.edit { it[paste] = value } }
     suspend fun autoHide(value: Boolean) { context.floatingDataStore.edit { it[hide] = value } }
     suspend fun idleSeconds(value: Int) { context.floatingDataStore.edit { it[idle] = value.coerceIn(3, 10) } }
+    suspend fun browseSequence(value: Boolean) { context.floatingDataStore.edit { it[sequence] = value } }
+    suspend fun longPressMs(value: Int) { context.floatingDataStore.edit {
+        it[hold] = value.coerceIn(FloatingOptions.MIN_LONG_PRESS_MS, FloatingOptions.MAX_LONG_PRESS_MS)
+    } }
     suspend fun telegramPackages(value: Set<String>) {
         context.floatingDataStore.edit { it[telegram] = value.filter(PackageNames::valid).toSet() }
     }

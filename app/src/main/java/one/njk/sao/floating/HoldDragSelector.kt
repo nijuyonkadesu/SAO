@@ -34,7 +34,8 @@ internal class HoldDragSelector<T>(private val anchor: View, private val host: F
     private val nextAction: Int = R.string.search_hold_next,
     private val previousAction: Int = R.string.search_hold_previous,
     private val opening: () -> Unit = {},
-    private val hint: (T) -> String = { anchor.context.getString(R.string.search_hold_release) }) {
+    private val hint: (T) -> String = { anchor.context.getString(R.string.search_hold_release) },
+    private val holdDelay: () -> Long = { HOLD_MS }) {
     private val density = anchor.resources.displayMetrics.density
     private val slop = ViewConfiguration.get(anchor.context).scaledTouchSlop
     private val accessibility = anchor.context.getSystemService(AccessibilityManager::class.java)
@@ -85,7 +86,7 @@ internal class HoldDragSelector<T>(private val anchor: View, private val host: F
                     tracking = true; key = identity(); pointer = event.getPointerId(0)
                     downX = event.rawX; downY = event.rawY
                     anchor.isPressed = true
-                    anchor.postDelayed(arm, HOLD_MS)
+                    anchor.postDelayed(arm, holdDelay())
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -257,5 +258,5 @@ internal class HoldDragSelector<T>(private val anchor: View, private val host: F
             AccessibilityActionCompat.ACTION_SCROLL_BACKWARD).forEach { ViewCompat.removeAccessibilityAction(anchor, it.id) }
     }
     private fun px(dp: Int) = (dp * density).roundToInt()
-    companion object { const val HOLD_MS = 160L }
+    companion object { val HOLD_MS = FloatingOptions.DEFAULT_LONG_PRESS_MS.toLong() }
 }

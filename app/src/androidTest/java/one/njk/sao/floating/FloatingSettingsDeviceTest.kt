@@ -56,6 +56,7 @@ class FloatingSettingsDeviceTest {
             shell("wm user-rotation lock 1")
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 scenario.onActivity { activity ->
+                    activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                     val host = activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
                     host.navController.navigate(R.id.settingsFragment)
                 }

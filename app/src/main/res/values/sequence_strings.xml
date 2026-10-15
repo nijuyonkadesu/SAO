@@ -1,0 +1,13 @@
+<resources>
+    <string name="sequence_setting">Browse sequence on hold</string>
+    <string name="sequence_setting_description">Tap a result to copy it. Hold an Immich result to browse its neighbors in Photos timeline order, newest first. Back restores your search and position.</string>
+    <string name="sequence_hold_setting">Long-press delay</string>
+    <string name="sequence_hold_description">Used for results and the Context, Filters and Sources selectors. Default: 160 ms.</string>
+    <string name="sequence_hold_value">%1$d ms</string>
+    <string name="sequence_back">Back to results</string>
+    <string name="sequence_back_description">Photos timeline. Back to search results</string>
+    <string name="sequence_title">Photos timeline</string>
+    <string name="sequence_uploaded_at">Uploaded · %1$s</string>
+    <string name="sequence_upload_unknown">Upload time unavailable</string>
+    <string name="sequence_retry">Couldn’t load Photos neighbors. Tap to retry, or go back to your results.</string>
+</resources>

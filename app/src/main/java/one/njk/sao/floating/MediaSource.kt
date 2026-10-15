@@ -9,6 +9,8 @@ interface MediaSource {
     val identity: Flow<String> get() = flowOf("local")
     val advancedSearch: Flow<Boolean> get() = flowOf(false)
     val randomBrowse: Flow<Boolean> get() = flowOf(false)
+    val sequenceBrowse: Flow<Boolean> get() = flowOf(false)
+    suspend fun openSequence(anchor: MediaItem): MediaSequence = throw UnsupportedOperationException("Sequence browsing is unavailable")
     suspend fun searchModes(): Set<SearchMode> = setOf(SearchMode.CONTEXT)
     suspend fun people(name: String, page: Int = 1, expectedSourceId: String? = null): PeoplePage = PeoplePage(emptyList())
     suspend fun personPreview(person: SearchPerson): Any? = null

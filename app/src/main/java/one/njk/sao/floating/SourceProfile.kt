@@ -32,6 +32,7 @@ interface SourceConfigurationCodec {
 interface MediaSourceFactory {
     val advancedSearch: Boolean get() = false
     val randomBrowse: Boolean get() = false
+    val sequenceBrowse: Boolean get() = false
     fun create(profile: SourceProfile): ManagedMediaSource
 }
 

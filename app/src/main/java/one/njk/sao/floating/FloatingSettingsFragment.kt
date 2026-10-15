@@ -36,6 +36,7 @@ class FloatingSettingsFragment : Fragment() {
     private val binding get() = requireNotNull(_binding)
     private var pendingStart = false
     private var updating = false
+    private var draggingHoldDelay = false
     private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { startFloating() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,6 +61,19 @@ class FloatingSettingsFragment : Fragment() {
             telegramApps.setOnClickListener { startActivity(Intent(requireContext(), TelegramAppsActivity::class.java)) }
             immichSettings.setOnClickListener { startActivity(Intent(requireContext(), SourceSettingsActivity::class.java)) }
             autoHide.setOnCheckedChangeListener { _, checked -> if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.autoHide(checked) } }
+            browseSequence.setOnCheckedChangeListener { _, checked -> if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.browseSequence(checked) } }
+            longPressDelay.setLabelFormatter { getString(R.string.sequence_hold_value, it.toInt()) }
+            longPressDelay.addOnSliderTouchListener(object : com.google.android.material.slider.Slider.OnSliderTouchListener {
+                override fun onStartTrackingTouch(slider: com.google.android.material.slider.Slider) { draggingHoldDelay = true }
+                override fun onStopTrackingTouch(slider: com.google.android.material.slider.Slider) {
+                    draggingHoldDelay = false
+                    viewLifecycleOwner.lifecycleScope.launch { preferences.longPressMs(slider.value.toInt()) }
+                }
+            })
+            longPressDelay.addOnChangeListener { _, value, fromUser ->
+                longPressValue.text = getString(R.string.sequence_hold_value, value.toInt())
+                if (fromUser && !draggingHoldDelay && !updating) viewLifecycleOwner.lifecycleScope.launch { preferences.longPressMs(value.toInt()) }
+            }
             hideDelay.setOnCheckedStateChangeListener { _, ids -> if (!updating) viewLifecycleOwner.lifecycleScope.launch {
                 preferences.idleSeconds(when (ids.firstOrNull()) { R.id.delay_five -> 5; R.id.delay_ten -> 10; else -> 3 })
             } }
@@ -98,6 +112,9 @@ class FloatingSettingsFragment : Fragment() {
                     renderToggle(binding.preferStickers, options.preferStickers, R.string.floating_prefer_stickers)
                     renderToggle(binding.pasteAssistance, options.pasteAssistance, R.string.floating_paste_assistance)
                     renderToggle(binding.autoHide, options.autoHide, R.string.floating_auto_hide)
+                    renderToggle(binding.browseSequence, options.browseSequence, R.string.sequence_setting)
+                    if (!draggingHoldDelay) binding.longPressValue.text = getString(R.string.sequence_hold_value, options.longPressMs)
+                    if (!draggingHoldDelay) binding.longPressDelay.value = options.longPressMs.toFloat()
                     binding.hideDelay.check(when (options.idleSeconds) { 5 -> R.id.delay_five; 10 -> R.id.delay_ten; else -> R.id.delay_three })
                     for (i in 0 until binding.hideDelay.childCount) binding.hideDelay.getChildAt(i).isEnabled = options.autoHide
                     updating = false
@@ -127,6 +144,7 @@ class FloatingSettingsFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        draggingHoldDelay = false
         _binding = null
         super.onDestroyView()
     }

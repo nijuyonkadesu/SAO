@@ -25,6 +25,18 @@ class ImmichMediaSource(private val context: Context, private val config: Immich
     private var lastCacheTrim = 0L
     override val advancedSearch = flowOf(true)
     override val randomBrowse = flowOf(true)
+    override val sequenceBrowse = flowOf(true)
+    override suspend fun openSequence(anchor: MediaItem): MediaSequence = withContext(dispatchers.io) {
+        val ref = requireNotNull(anchor.remote)
+        check(ref.sourceId == sourceId) { "Media belongs to a different source" }
+        val asset = ReadRetry.run { client.api.asset(ref.assetId) }
+        check(asset.visibility == "timeline") { "This item is not in the Photos timeline" }
+        val month = requireNotNull(asset.localDateTime).substringBefore('T').substringBeforeLast('-')
+        val buckets = ReadRetry.run { client.api.timeBuckets(config.albumId) }
+        val bucket = buckets.indexOfFirst { it.timeBucket.substringBefore('T').substringBeforeLast('-') == month }
+        check(bucket >= 0) { "This item is not in the Photos timeline" }
+        ImmichMediaSequence(client.api, config.albumId, asset.id, bucket, buckets, dispatchers, ::mapAsset)
+    }
     override fun close() = client.close()
     override suspend fun searchModes(): Set<SearchMode> = withContext(dispatchers.io) {
         val features = ReadRetry.run { client.api.features() }
@@ -54,15 +66,15 @@ class ImmichMediaSource(private val context: Context, private val config: Immich
             val result = ReadRetry.run { api.search(MetadataSearch(filter, cursor)).assets }
             result.items to result.nextCursor?.takeIf { it.isNotBlank() && it != cursor }
         }
-        withContext(dispatchers.cpu) { MediaPage(assets.filter { it.type in setOf("IMAGE", "VIDEO") }.map { asset ->
-            val mime = mediaMime(asset)
-            val gif = mime == "image/gif"
-            val motion = asset.type == "VIDEO" || gif || mime.startsWith("video/")
-            MediaItem("immich_${digest(sourceId).take(16)}_${digest(asset.id + asset.updatedAt + asset.isEdited).take(32)}",
-                asset.exifInfo?.description?.takeIf { it.isNotBlank() } ?: asset.originalFileName, "", mime,
-                asset.tags.map { it.value }, asset.tags.map { it.name }.filter(::isEmojiTag), motion,
-                RemoteMedia(sourceId, asset.id, asset.isEdited && !motion))
-        }, next) }
+        withContext(dispatchers.cpu) { MediaPage(assets.filter { it.type in setOf("IMAGE", "VIDEO") }.map(::mapAsset), next) }
+    }
+    private fun mapAsset(asset: ImmichAsset): MediaItem {
+        val mime = mediaMime(asset)
+        val motion = asset.type == "VIDEO" || mime == "image/gif" || mime.startsWith("video/")
+        return MediaItem("immich_${digest(sourceId).take(16)}_${digest(asset.id + asset.updatedAt + asset.isEdited).take(32)}",
+            asset.exifInfo?.description?.takeIf { it.isNotBlank() } ?: asset.originalFileName, "", mime,
+            asset.tags.map { it.value }, asset.tags.map { it.name }.filter(::isEmojiTag), motion,
+            RemoteMedia(sourceId, asset.id, asset.isEdited && !motion, asset.createdAt))
     }
     private fun mediaMime(asset: ImmichAsset): String {
         val reported = asset.originalMimeType?.substringBefore(';')?.trim()?.lowercase(java.util.Locale.ROOT)

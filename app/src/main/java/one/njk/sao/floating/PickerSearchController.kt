@@ -40,7 +40,8 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
     private val modeGesture: HoldDragSelector<SearchMode> = HoldDragSelector(binding.queryMode, binding.root as android.widget.FrameLayout,
         choices = { if (supported) SearchMode.entries.filter { it in options.state.value.modes } else emptyList() },
         selected = { picker.query.value.mode }, label = { activity.getString(modeLabel(it)) },
-        identity = { options.state.value.sourceId }, apply = { picker.searchMode(it) }, opening = { filterGesture.cancel(); beforeGesture() })
+        identity = { options.state.value.sourceId }, apply = { picker.searchMode(it) }, opening = { filterGesture.cancel(); beforeGesture() },
+        holdDelay = { picker.options.value.longPressMs.toLong() })
     private val filterGesture: HoldDragSelector<QuickFilter> = HoldDragSelector(binding.searchFilters, binding.root as android.widget.FrameLayout,
         choices = { if (supported) QuickFilter.entries.toList() else emptyList() },
         selected = { when (constraints.media) {
@@ -56,7 +57,7 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
         opening = { modeGesture.cancel(); beforeGesture() }, hint = { activity.getString(when (it) {
             QuickFilter.PEOPLE -> R.string.search_hold_choose_people; QuickFilter.PLACES -> R.string.search_hold_choose_places
             else -> R.string.search_hold_release
-        }) })
+        }) }, holdDelay = { picker.options.value.longPressMs.toLong() })
     init {
         binding.queryMode.setOnClickListener { open(R.id.section_type) }
         binding.searchFilters.setOnClickListener { open(R.id.section_people) }
