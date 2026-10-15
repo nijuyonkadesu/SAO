@@ -164,7 +164,7 @@ class NativeBridgeDeviceTest {
             withTimeout(10_000) { while (events() != (android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)) delay(40) }
             FloatingSession.active(false)
             withTimeout(10_000) { while (events() != 0) delay(40) }
-            assertNull(PasteAssistService.captureAnchor("com.whatsapp"))
+            assertNull(PasteAssistService.prepareTarget())
         } finally {
             FloatingSession.active(false)
             android.provider.Settings.Secure.putString(resolver, servicesKey, previousServices)

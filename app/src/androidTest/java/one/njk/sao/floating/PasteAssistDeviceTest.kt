@@ -1,0 +1,206 @@
+package one.njk.sao.floating
+
+import android.app.UiAutomation
+import android.content.*
+import android.os.Bundle
+import android.os.SystemClock
+import android.provider.Settings
+import android.view.View
+import android.view.inspector.WindowInspector
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
+import androidx.test.core.app.ActivityScenario
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
+import com.google.android.material.floatingactionbutton.FloatingActionButton
+import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.runBlocking
+import org.junit.*
+import org.junit.Assert.*
+import java.util.concurrent.atomic.AtomicReference
+
+/** Real Android accessibility, clipboard and separate-UID receiver, with no Telegram login/messages. */
+class PasteAssistDeviceTest {
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val app = instrumentation.targetContext
+    private val hostPackage = instrumentation.context.packageName
+    private val preferences = FloatingPreferences(app)
+    private val state = AtomicReference<Bundle>()
+    private lateinit var previous: FloatingOptions
+    private var oldServices: String? = null
+    private var oldEnabled = 0
+    private var oldActive = false
+    private lateinit var automation: UiAutomation
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) { state.set(intent.extras ?: Bundle.EMPTY) }
+    }
+    private fun await(label: String, condition: () -> Boolean) {
+        val deadline = SystemClock.elapsedRealtime() + 10_000
+        while (!condition() && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(30)
+        assertTrue(label, condition())
+    }
+    @Before fun setup() = runBlocking {
+        previous = preferences.current(); oldActive = FloatingSession.active.value
+        EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java).browseSession().reset()
+        oldServices = Settings.Secure.getString(app.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+        oldEnabled = Settings.Secure.getInt(app.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
+        automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        automation.adoptShellPermissionIdentity("android.permission.WRITE_SECURE_SETTINGS")
+        preferences.telegramPackages(previous.telegramPackages + hostPackage); preferences.pasteAssistance(true)
+        FloatingSession.active(true)
+        ContextCompat.registerReceiver(app, receiver, IntentFilter(PasteHostActivity.STATE), ContextCompat.RECEIVER_EXPORTED)
+        val component = ComponentName(app, PasteAssistService::class.java).flattenToString()
+        val services = oldServices.orEmpty().split(':').filter(String::isNotBlank).toMutableSet().apply { add(component) }
+        Settings.Secure.putString(app.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, services.joinToString(":"))
+        Settings.Secure.putInt(app.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
+        await("Accessibility service must connect") { PasteAssistService.connected() }
+    }
+    @After fun cleanup() = runBlocking {
+        command("finish")
+        FloatingSession.active(false)
+        Settings.Secure.putString(app.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, oldServices)
+        Settings.Secure.putInt(app.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, oldEnabled)
+        preferences.telegramPackages(previous.telegramPackages); preferences.pasteAssistance(previous.pasteAssistance)
+        FloatingSession.active(oldActive)
+        app.unregisterReceiver(receiver); automation.dropShellPermissionIdentity()
+        EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java).browseSession().reset()
+    }
+    private fun command(value: String) { app.sendBroadcast(Intent(PasteHostActivity.COMMAND).setPackage(hostPackage).putExtra("command", value)) }
+    private fun host(neverFocused: Boolean = false) {
+        state.set(null)
+        app.startActivity(Intent().setComponent(ComponentName(hostPackage, PasteHostActivity::class.java.name))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("return_package", app.packageName).putExtra("never_focused", neverFocused))
+        await("Host must display its composer") { state.get()?.let { it.getBoolean("window_focused") && (neverFocused || it.getBoolean("focused")) } == true }
+        SystemClock.sleep(150)
+    }
+    private fun capture(): PasteAssistService.Capture {
+        var result: PasteAssistService.Capture? = null
+        await("The currently focused composer must be captured") {
+            result = runBlocking { PasteAssistService.prepareTarget() }; result?.token != null
+        }
+        assertEquals(hostPackage, result!!.packageName)
+        return result!!
+    }
+    private fun picker(capture: PasteAssistService.Capture, action: (ActivityScenario<PickerActivity>) -> Unit = {}) {
+        val item = runBlocking { LocalMediaSource(app).all().first { !it.hasMotion } }
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, hostPackage, capture.token)).use { scenario ->
+            lateinit var model: PickerViewModel
+            scenario.onActivity {
+                model = ViewModelProvider(it)[PickerViewModel::class.java]
+                model.select(item, MessagingTarget.TELEGRAM)
+            }
+            await("The real media URI must be copied and Paste enabled") {
+                var ready = false
+                scenario.onActivity { ready = it.findViewById<View>(one.njk.sao.R.id.paste_action).isEnabled }
+                ready && model.copyStatus.value in setOf(one.njk.sao.R.string.picker_telegram_sticker_copied, one.njk.sao.R.string.picker_copied)
+            }
+            action(scenario)
+            scenario.onActivity { it.findViewById<View>(one.njk.sao.R.id.paste_action).performClick() }
+            await("The queued request must reach an actual outcome") { PasteAssistService.results.value?.token == capture.token }
+        }
+    }
+    @Test fun previouslyFocusedComposerReceivesRealMediaAfterLosingFocus() {
+        host(); capture()
+        command("unfocus"); await("Composer must be unfocused") { !state.get().getBoolean("focused") }
+        val retained = capture()
+        picker(retained)
+        assertEquals(PasteOutcome.DISPATCHED, PasteAssistService.results.value!!.outcome)
+        await("The receiver must stage readable media exactly once") { state.get().getInt("pastes") == 1 && state.get().getInt("previews") == 1 }
+        assertTrue(state.get().getInt("bytes") > 0)
+        assertTrue(state.get().getString("mime") in setOf("image/webp", "image/jpeg"))
+        assertFalse("Consumed requests must not replay", PasteAssistService.requestPaste(retained.token, hostPackage))
+    }
+    @Test fun waitsForEditorFocusAfterTheHostWindowHasAlreadyReturned() {
+        host(); capture(); command("delay")
+        await("Host must delay focus restoration") { state.get().getBoolean("block") }
+        val retained = capture()
+        picker(retained)
+        assertEquals(PasteOutcome.DISPATCHED, PasteAssistService.results.value!!.outcome)
+        await("Paste must wait for the delayed editor") { state.get().getInt("pastes") == 1 }
+        assertTrue(state.get().getLong("pasted") - state.get().getLong("returned") >= 450)
+    }
+    @Test fun replacementEditorCannotReceiveTheOriginalRequest() {
+        host(); val original = capture()
+        picker(original) { command("replace"); SystemClock.sleep(150) }
+        assertEquals(PasteOutcome.UNAVAILABLE, PasteAssistService.results.value!!.outcome)
+        assertEquals(0, state.get().getInt("pastes"))
+    }
+    @Test fun anotherFocusedEditableFieldCannotStealTheRequest() {
+        host(); val original = capture()
+        picker(original) { command("other"); SystemClock.sleep(150) }
+        assertEquals(PasteOutcome.UNAVAILABLE, PasteAssistService.results.value!!.outcome)
+        assertEquals(0, state.get().getInt("pastes"))
+    }
+    @Test fun aFalseHostResultDoesNotDuplicateAnAlreadyStagedPreview() {
+        host(); val original = capture(); command("reject")
+        picker(original)
+        assertEquals(PasteOutcome.UNCONFIRMED, PasteAssistService.results.value!!.outcome)
+        SystemClock.sleep(600)
+        assertEquals(1, state.get().getInt("pastes")); assertEquals(1, state.get().getInt("previews"))
+    }
+    @Test fun unfocusedEditorWithoutPreviousFocusIsNotGuessed() {
+        host(neverFocused = true)
+        var result: PasteAssistService.Capture? = null
+        await("The unfocused host window must be available") {
+            result = runBlocking { PasteAssistService.prepareTarget() }; result?.packageName == hostPackage
+        }
+        assertFalse(state.get().getBoolean("focused"))
+        assertNull("Do not guess an arbitrary editable field", result?.token)
+    }
+    @Test fun unavailableFocusStopsWithoutPastingIntoAnotherField() {
+        host(); capture(); command("deny")
+        await("The original editor must refuse focus") { state.get().getBoolean("block") }
+        val retained = capture()
+        picker(retained)
+        assertEquals(PasteOutcome.UNAVAILABLE, PasteAssistService.results.value!!.outcome)
+        assertFalse(state.get().getBoolean("focused"))
+        assertEquals(0, state.get().getInt("pastes"))
+    }
+    @Test fun actualFloatingIconCapturesTheHostBeforeOpeningThePicker() = runBlocking {
+        fun shell(value: String) { automation.executeShellCommand(value).use { descriptor ->
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { it.readBytes() }
+        } }
+        shell("appops set ${app.packageName} SYSTEM_ALERT_WINDOW allow")
+        preferences.autoHide(false)
+        try {
+            ActivityScenario.launch<FloatingSettingsActivity>(Intent(app, FloatingSettingsActivity::class.java)).use { settings ->
+                settings.onActivity { ContextCompat.startForegroundService(it, Intent(it, FloatingService::class.java)) }
+                var icon: FloatingActionButton? = null
+                await("The real floating icon must appear") {
+                    instrumentation.runOnMainSync { icon = WindowInspector.getGlobalWindowViews().filterIsInstance<FloatingActionButton>().singleOrNull() }
+                    icon != null
+                }
+                host(); capture(); command("unfocus")
+                await("The editor must lose focus before icon press") { !state.get().getBoolean("focused") }
+                instrumentation.runOnMainSync { icon!!.performClick() }
+                var picker: PickerActivity? = null
+                await("An icon press must open the real picker") {
+                    instrumentation.runOnMainSync {
+                        picker = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<PickerActivity>().singleOrNull()
+                    }
+                    picker != null
+                }
+                try {
+                    val item = LocalMediaSource(app).all().first { !it.hasMotion }
+                    instrumentation.runOnMainSync {
+                        ViewModelProvider(picker!!)[PickerViewModel::class.java].select(item, MessagingTarget.TELEGRAM)
+                    }
+                    await("On-demand capture must enable Paste for the original host") {
+                        var ready = false
+                        instrumentation.runOnMainSync { ready = picker!!.findViewById<View>(one.njk.sao.R.id.paste_action).isEnabled }
+                        ready
+                    }
+                    instrumentation.runOnMainSync { picker!!.findViewById<View>(one.njk.sao.R.id.paste_action).performClick() }
+                    await("The original host must stage the selected media") { state.get().getInt("previews") == 1 }
+                    assertTrue(state.get().getInt("bytes") > 0)
+                    assertEquals(1, state.get().getInt("pastes"))
+                } finally { instrumentation.runOnMainSync { picker?.finish() } }
+            }
+        } finally {
+            app.stopService(Intent(app, FloatingService::class.java))
+            preferences.autoHide(previous.autoHide)
+            shell("appops set ${app.packageName} SYSTEM_ALERT_WINDOW default")
+        }
+    }
+}

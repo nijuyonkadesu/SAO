@@ -180,6 +180,8 @@ guarantee a fork accepts sticker WebP. When detection is unavailable, tapping th
 original-editor Paste or native lease.
 
 Usage Access is optional and lets SAO choose formats for the foreground app.
+Its foreground query runs once on an icon press, off Main, with a UI deadline;
+there is no periodic UsageStats scan.
 An enabled Paste assistance service or a live native bridge can also identify
 the current supported app. Ambiguous foreground state is treated as unknown.
 Unknown targets and animated items use ordinary media for clipboard delivery.
@@ -197,9 +199,13 @@ transparent 512-pixel canvas; ordinary static media uses a white JPEG canvas.
 Paste assistance is explicitly enabled through Android's Accessibility
 settings and separately toggled in SAO. It is limited to WhatsApp, WhatsApp
 Business, Telegram, configured Telegram forks, and image paste (including GIFs) in Discord. Instagram attachments use its DM receiver instead of paste assistance. The service inspects editor identity and editability, not message
-text. A paste anchor expires after two minutes and must still match the original
-focused node when the target returns. Failure leaves the clipboard available for
-manual paste.
+text. It remembers the previously focused editor across focus loss, then captures
+that exact node and window on an icon press. An explicit Paste restores its focus
+and waits for readiness before performing one Paste action. Replacement windows,
+removed editors and another focused editable field invalidate the request. A never
+focused field is not guessed. Browsing the picker does not expire the selection;
+opening another picker or stopping assistance clears it. Failure leaves the
+clipboard available for manual paste.
 
 ## Modern LSPosed bridge
 
@@ -570,7 +576,7 @@ When the floating **service is stopped**, native snapshot polling and accessibil
 node discovery stop. Accessibility event types are set to zero and node leases cleared.
 Host hooks return without inspecting editors, scanning views or restarting input; native
 bindings are released and Instagram's captured controller bindings cleared. UsageStats
-sampling is owned by the floating service's canceled coroutine scope. A tucked/faded
+is queried only on an icon press. A tucked/faded
 bubble remains an active floating service.
 
 A scoped host retains minimal lifecycle hooks and a permission-protected activation
@@ -603,11 +609,12 @@ discrete accessibility/keyboard adjustments also save.
 The sequence replaces the carousel temporarily. It has a **Back to results**
 action, and system Back restores the original query, filters, loaded results and
 focused item without querying or copying again. Search results stay in the
-existing in-memory session; the ViewModel owns the temporary sequence and its
+existing in-memory session, which also owns the temporary sequence and its
 cancellable work. Rotation/recreation retains that navigation. Finishing the
-picker closes the temporary sequence and keeps the original search session for
-reopening. Changing sources discards the old sequence; stale reads cannot
-publish into the new source. Changing the search returns to search mode.
+picker pauses reads and preserves the inner screen, loaded pages and focused
+item for reopening. Changing sources discards the old sequence; stale reads
+cannot publish into the new source. Changing/submitting the search returns to
+search mode; merely opening the search bar does not.
 
 Ordering comes directly from `timeline/buckets` and `timeline/bucket` with
 `order=desc`, `orderBy=takenAt`, `visibility=timeline`, `withStacked=true`, and
@@ -628,7 +635,7 @@ Slow streams are cancelled through the underlying HTTP call, with cancellation
 preserved as cancellation rather than an error/retry. Transient reads use the
 existing one-retry policy; authentication/permission failures await user action.
 
-Every sequence card has a small **Uploaded** caption from Immich's `createdAt`,
+Every sequence card has a small date/time caption from Immich's `createdAt`,
 formatted in the device's local timezone and locale. It does not affect ordering.
 Missing or invalid upload dates are labelled unavailable, never replaced with a
 capture date. Normal search cards keep their existing appearance. Large-text

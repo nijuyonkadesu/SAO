@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <activity android:name="one.njk.sao.floating.PasteHostActivity" android:exported="true"
+            android:process=":paste_host" android:taskAffinity="one.njk.sao.test.paste" android:excludeFromRecents="true" />
         <activity android:name="one.njk.sao.floating.RotationHostActivity" android:exported="true" android:process=":rotation_host"
             android:taskAffinity="one.njk.sao.test.rotation" android:excludeFromRecents="true" />
         <activity android:name="one.njk.sao.floating.MediaReceiverProbeActivity"

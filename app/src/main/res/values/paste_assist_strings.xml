@@ -1,0 +1,3 @@
+<resources>
+    <string name="floating_paste_unconfirmed">Paste wasn’t confirmed. The media remains copied; check the chat before trying again.</string>
+</resources>

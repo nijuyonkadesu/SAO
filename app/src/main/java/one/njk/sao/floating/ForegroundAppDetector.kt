@@ -31,8 +31,6 @@ class ForegroundAppDetector @Inject constructor(@ApplicationContext private val 
     private val queries = Mutex()
     private var since = 0L
     private val active = linkedMapOf<String, String>()
-    @Volatile private var last: Pair<String?, Long>? = null
-    fun cachedPackage(): String? = last?.takeIf { android.os.SystemClock.elapsedRealtime() - it.second < 1500 }?.first
     fun hasAccess(): Boolean = context.getSystemService(AppOpsManager::class.java)
         .checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName) == AppOpsManager.MODE_ALLOWED
 
@@ -54,7 +52,6 @@ class ForegroundAppDetector @Inject constructor(@ApplicationContext private val 
                 }
             }
             val pkg = active.values.distinct().singleOrNull().takeUnless { it == context.packageName }
-            last = pkg to android.os.SystemClock.elapsedRealtime()
             pkg
         } catch (_: SecurityException) { null }
     } }

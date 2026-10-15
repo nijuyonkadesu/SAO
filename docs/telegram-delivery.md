@@ -58,6 +58,41 @@ The [official sticker-import API](https://core.telegram.org/import-stickers) cre
 on each import. It is a separate operation and is not used as a substitute for sending a
 single selected sticker.
 
+## Non-root editor handoff (2026-10-15)
+
+SAO retains the last focused, visible, enabled, non-password editor when it loses
+focus. Pressing the floating icon captures that exact editor and its original
+package/window off Main. Discovery follows supported-app focus/window events;
+there is no periodic accessibility or UsageStats scan. UsageStats is queried
+once on an icon press, with a UI deadline. Stopping the floating service or
+assistance clears the editor and cancels pending work.
+
+After an explicit **Paste**, SAO waits for the original window, requests focus
+once if necessary, waits for readiness and performs **one** `ACTION_PASTE`.
+The wait has 24 checks, separated by 100 ms. It does not choose an arbitrary
+unfocused field, a replacement editor/window or another focused editable field.
+Requests are single-use and do not expire merely from browsing the picker.
+Another picker capture invalidates the prior request.
+
+The inspected Telegram/Nagram editor can open its photo preview and then return
+the superclass Paste result. A `false` action result therefore produces an
+unconfirmed status, never a retry that could duplicate the attachment. Failures
+leave the copied media available and show a short status. Android accepting
+Paste is not confirmation of upload or sending. SAO never presses Send in this
+path. Clipboard Paste still follows the client's photo workflow; this change
+does not make it a native sticker insertion or add Telegram Vector hooks.
+
+Non-root accessibility cannot verify Telegram's internal conversation ID when
+the app reuses the same editor and window. The native WhatsApp/Instagram/Discord
+adapters separately retain and validate composer/chat identity. Eight API-35
+device tests exercise real accessibility actions, picker dismissal and readable
+clipboard media in a separate-UID fixture: previous focus, delayed focus,
+refused focus, replacement editors, another focused field, a false result after
+staging a preview, no previously focused editor, and the complete floating-icon
+capture/open/Paste handoff. Seven JVM tests cover
+bounded waits, cancellation and no duplicate actions. The fixture sends no
+messages and does not establish behavior in a logged-in Telegram/Nagram client.
+
 ## Verification limits
 
 Tests decode the actual clipboard/provider bytes, verify WebP MIME and dimensions, retain JPEG

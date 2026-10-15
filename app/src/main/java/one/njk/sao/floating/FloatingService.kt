@@ -41,6 +41,9 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -194,11 +197,6 @@ class FloatingService : Service() {
                 options = it
                 if (!attached) positionBubble()
                 if (timingChanged && attached) scheduleIdle()
-            }
-        }
-        scope.launch(dispatchers.io) {
-            while (kotlinx.coroutines.currentCoroutineContext().isActive) {
-                detector.capturePackage(); delay(500)
             }
         }
     }
@@ -385,15 +383,31 @@ class FloatingService : Service() {
     private fun openPicker() {
         if (opening || FloatingSession.pickerVisible) return
         opening = true; cancelIdle()
-        // These reads are memory-only. Optional Binder discovery never delays showing the UI.
-        val detected = detector.cachedPackage() ?: PasteAssistService.capturePackage()
-        val nativeSelection = NativeBridgeRegistry.cachedSelection(detected)
-        val target = detected ?: nativeSelection?.packageName
-        val anchor = if (options.pasteAssistance) PasteAssistService.captureAnchor(target) else null
-        try {
-            startActivity(PickerActivity.intent(this, target, anchor, nativeSelection?.session).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            scope.launch { delay(1000); if (opening) { opening = false; scheduleIdle() } }
-        } catch (_: RuntimeException) { opening = false; scheduleIdle() }
+        // One-shot reads only on an explicit icon press, in parallel and off Main.
+        val foreground = scope.async(dispatchers.io) {
+            try { detector.capturePackage() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: RuntimeException) { null }
+        }
+        val capture = scope.async { if (options.pasteAssistance) PasteAssistService.prepareTarget() else null }
+        scope.launch {
+            try {
+                val deadline = android.os.SystemClock.elapsedRealtime() + 250
+                val detected = withTimeoutOrNull(150) { foreground.await() }
+                val original = withTimeoutOrNull(maxOf(1, deadline - android.os.SystemClock.elapsedRealtime())) { capture.await() }
+                if (!FloatingSession.active.value) return@launch
+                val nativeSelection = NativeBridgeRegistry.cachedSelection(original?.packageName ?: detected)
+                val target = original?.packageName ?: detected ?: nativeSelection?.packageName
+                startActivity(PickerActivity.intent(this@FloatingService, target, original?.token, nativeSelection?.session)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                delay(1000)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: RuntimeException) { /* Keep the icon available if the activity cannot open. */ }
+            finally {
+                foreground.cancel(); capture.cancel()
+                if (opening) { opening = false; scheduleIdle() }
+            }
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
