@@ -99,7 +99,6 @@ class PickerActivity : AppCompatActivity() {
             collapseSearch(); showSource(false); showTargets(false); model.backToResults()
         }
         binding.searchToggle.setOnClickListener {
-            model.backToResults()
             if (editing && searchController.controlsAvailable && !binding.searchControls.isVisible) searchController.open()
             else if (editing) collapseSearch() else expandSearch()
         }
@@ -151,7 +150,7 @@ class PickerActivity : AppCompatActivity() {
             renderHeader()
         }
         binding.search.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) { collapseSearch(); true } else false
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) { model.backToResults(); collapseSearch(); true } else false
         }
         binding.preferStickers.setOnClickListener {
             // This chip names the active mode, so both modes keep their active checkmark.

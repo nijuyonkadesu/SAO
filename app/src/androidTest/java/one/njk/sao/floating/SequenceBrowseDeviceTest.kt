@@ -168,6 +168,135 @@ class SequenceBrowseDeviceTest {
         val view = com.google.android.material.carousel.CarouselSnapHelper(false).findSnapView(grid.layoutManager!!) ?: return null
         return grid.getChildViewHolder(view) as MediaCarouselAdapter.Holder
     }
+    @Test fun closingAfterCopyResumesTheInnerScreenAndBackRestoresTheOriginalSearch() {
+        searchIndices = (40..119).toList() + (0..39).toList()
+        lateinit var originalModel: PickerViewModel
+        lateinit var innerItems: List<MediaItem>
+        var sequenceId: String? = null
+        var copied: String? = null
+        var readsBeforeDismiss = 0
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
+            originalModel = ready(scenario)
+            scenario.onActivity { grid(it).scrollToPosition(47) }
+            await("Search must settle on the original result") { originalModel.focusedId == originalModel.state.value.items[47].id }
+            scenario.onActivity { originalModel.browseSequence(originalModel.state.value.items.first { item -> item.remote!!.assetId == id(80) }) }
+            await("Initial sequence must load") { originalModel.state.value.sequenceId != null && !originalModel.state.value.loading }
+            scenario.onActivity { originalModel.loadMore(0) }
+            await("Sequence must retain pages beyond its initial window") { originalModel.state.value.items.size == 81 && !originalModel.state.value.loadingMore }
+            scenario.onActivity { grid(it).scrollToPosition(35) }
+            await("Inner carousel must visibly navigate") {
+                var correct = false
+                scenario.onActivity { correct = focal(grid(it))?.item?.remote?.assetId == id(55) }; correct
+            }
+            scenario.onActivity { focal(grid(it))!!.itemView.performClick() }
+            await("The chosen photo must copy") { originalModel.copyStatus.value in setOf(R.string.picker_copied, R.string.picker_media_fallback) }
+            copied = clipboard(); innerItems = originalModel.state.value.items; sequenceId = originalModel.currentSequenceId
+            readsBeforeDismiss = requests.count { it.requestUrl!!.encodedPath.startsWith("/api/timeline/") || it.requestUrl!!.encodedPath.startsWith("/api/search/") }
+            // All successful Paste/share paths finish this activity; dismiss through that same lifecycle.
+            scenario.onActivity {
+                it.findViewById<View>(R.id.close).performClick()
+                originalModel.loadMore(0) // A late layout callback during the exit animation.
+            }
+        }
+        val reads = requests.count { it.requestUrl!!.encodedPath.startsWith("/api/timeline/") || it.requestUrl!!.encodedPath.startsWith("/api/search/") }
+        assertEquals("Exit-animation callbacks must not restart paging", readsBeforeDismiss, reads)
+        val prefs = java.io.File(app.filesDir, "datastore/floating_picker.preferences_pb")
+        val bytes = prefs.readBytes(); val modified = prefs.lastModified()
+        SystemClock.sleep(350)
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { reopened ->
+            lateinit var picker: PickerViewModel
+            reopened.onActivity { picker = model(it); assertNotSame(originalModel, picker) }
+            await("A new picker instance must resume the exact loaded sequence") {
+                picker.currentSequenceId == sequenceId && picker.state.value.sequenceId == sequenceId && !picker.state.value.loading
+            }
+            assertSame("Keep the loaded sequence and its pagination state", innerItems, picker.state.value.items)
+            await("Resume the actual visible inner photo") {
+                var correct = false
+                reopened.onActivity { correct = focal(grid(it))?.item?.remote?.assetId == id(55) }; correct
+            }
+            reopened.onActivity {
+                originalModel.focus("stale-exiting-picker", sequenceId)
+                originalModel.pickerVisible(false)
+                originalModel.rememberBrowsing()
+                assertFalse("An exiting picker cannot clear the new picker's navigation", originalModel.backToResults())
+            }
+            assertEquals(copied, clipboard())
+            assertEquals("Reopening must not refetch search or timeline metadata", reads,
+                requests.count { it.requestUrl!!.encodedPath.startsWith("/api/timeline/") || it.requestUrl!!.encodedPath.startsWith("/api/search/") })
+            assertArrayEquals("No preference writes for sequence restoration", bytes, prefs.readBytes())
+            assertEquals(modified, prefs.lastModified())
+            reopened.onActivity { picker.loadMore(0) }
+            await("The retained source-owned cursors must still page") { picker.state.value.items.size == 101 && !picker.state.value.loadingMore }
+            reopened.onActivity { it.findViewById<View>(R.id.sequence_back).performClick() }
+            await("Back must reveal the original search position") {
+                var correct = false
+                reopened.onActivity { correct = focal(grid(it))?.item?.remote?.assetId == id(87) }; correct
+            }
+            assertEquals("sequence", picker.query.value.text)
+        }
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { reopened ->
+            await("Explicit Back must remain at the search screen on the next opening") {
+                var correct = false
+                reopened.onActivity { correct = model(it).state.value.let { state -> !state.loading && state.sequenceId == null && state.query.text == "sequence" } }; correct
+            }
+        }
+    }
+    @Test fun openingSearchKeepsTheInnerScreenUntilANewQueryIsSubmitted() {
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
+            val picker = ready(scenario)
+            scenario.onActivity { picker.browseSequence(picker.state.value.items.first()) }
+            await("Sequence must load") { picker.currentSequenceId != null && !picker.state.value.loading }
+            val sequence = picker.currentSequenceId
+            scenario.onActivity { it.findViewById<View>(R.id.search_toggle).performClick() }
+            assertEquals("Merely opening the search bar must retain the inner screen", sequence, picker.currentSequenceId)
+            scenario.onActivity { it.findViewById<EditText>(R.id.search).onEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) }
+            await("Explicitly submitting even the same query must return to search results") { picker.currentSequenceId == null && picker.state.value.sequenceId == null }
+            scenario.onActivity { picker.browseSequence(picker.state.value.items.first()) }
+            await("A new sequence must open") { picker.currentSequenceId != null && !picker.state.value.loading }
+            scenario.onActivity { it.findViewById<View>(R.id.search_toggle).performClick() }
+            scenario.onActivity { it.findViewById<EditText>(R.id.search).setText("another query") }
+            await("A new query must leave the sequence") { picker.state.value.sequenceId == null && !picker.state.value.loading && picker.state.value.query.text == "another query" }
+        }
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { reopened ->
+            await("The new search must replace the parked inner screen") {
+                var correct = false
+                reopened.onActivity { correct = model(it).state.value.let { state -> !state.loading && state.sequenceId == null && state.query.text == "another query" } }; correct
+            }
+        }
+    }
+    @Test fun closingDuringInitialReadCancelsWorkUntilThePickerIsOpenedAgain() {
+        slowTimeline.set(true)
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
+            val picker = ready(scenario)
+            scenario.onActivity { picker.browseSequence(picker.state.value.items.first()) }
+            await("The initial streaming read must begin") { requests.any { it.requestUrl!!.encodedPath == "/api/timeline/bucket" } }
+            scenario.onActivity { it.finish() }
+        }
+        val reads = requests.count { it.requestUrl!!.encodedPath.startsWith("/api/timeline/") }
+        SystemClock.sleep(1_100)
+        assertEquals("No reads or retries while the picker is closed", reads, requests.count { it.requestUrl!!.encodedPath.startsWith("/api/timeline/") })
+        slowTimeline.set(false)
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { reopened ->
+            await("Opening the picker must resume the interrupted inner screen") {
+                var correct = false
+                reopened.onActivity { correct = model(it).state.value.let { state -> state.sequenceId != null && !state.loading && !state.error } && focal(grid(it))?.item?.remote?.assetId == id(80) }; correct
+            }
+        }
+    }
+    @Test fun changingSourcesWhileClosedDiscardsTheOldInnerScreen() {
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
+            val picker = ready(scenario)
+            scenario.onActivity { picker.browseSequence(picker.state.value.items.first()) }
+            await("Sequence must load") { picker.currentSequenceId != null && !picker.state.value.loading }
+        }
+        runBlocking { access.sources().select(null) }
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { reopened ->
+            await("A different source must not restore another source's sequence") {
+                var correct = false
+                reopened.onActivity { correct = model(it).state.value.let { state -> state.sourceId == "local" && !state.loading && state.sequenceId == null } }; correct
+            }
+        }
+    }
     @Test fun heldImageIsActuallyVisibleAndBackKeepsTheScrolledSearchView() {
         searchIndices = (40..119).toList() + (0..39).toList()
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->

@@ -13,12 +13,15 @@ internal data class SequenceState(val id: String, val sourceId: String, val anch
 
 /** One level of temporary navigation. Owns cancellable reads, never the search result cache. */
 internal class PickerSequenceNavigator(private val source: MediaSource, private val scope: CoroutineScope,
-    private val dispatchers: FloatingDispatchers, private val focus: (String?) -> Unit) : AutoCloseable {
+    private val dispatchers: FloatingDispatchers) : AutoCloseable {
     private val value = MutableStateFlow<SequenceState?>(null)
     val state = value.asStateFlow()
     private var work: Job? = null
     private var session: MediaSequence? = null
     private val seen = mutableSetOf<Pair<SequenceDirection, String>>()
+    var focusedId: String? = null
+        private set
+    fun focus(id: String?) { focusedId = id }
     fun open(anchor: MediaItem, sourceId: String) {
         close()
         val start = SequenceState(UUID.randomUUID().toString(), sourceId, anchor)
@@ -43,6 +46,7 @@ internal class PickerSequenceNavigator(private val source: MediaSource, private 
             } catch (cancelled: CancellationException) { opened?.close(); throw cancelled }
             catch (_: Exception) {
                 opened?.close()
+                ensureActive()
                 if (value.value?.id == start.id) { session = null; value.value = start.copy(loading = false, error = true) }
             }
         }
@@ -80,6 +84,7 @@ internal class PickerSequenceNavigator(private val source: MediaSource, private 
                     failedDirection = null)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) {
+                ensureActive()
                 if (value.value?.id == current.id) value.value = current.copy(error = true, failedDirection = direction)
             }
         }
@@ -90,8 +95,19 @@ internal class PickerSequenceNavigator(private val source: MediaSource, private 
         if (session == null) open(current.anchor, current.sourceId)
         else current.failedDirection?.let(::load)
     }
+    /** Cancel reads while hidden, retaining loaded items and their source-owned cursors. */
+    fun pause() {
+        work?.cancel(); work = null
+        val current = value.value ?: return
+        if (current.loading) { session?.close(); session = null }
+        if (current.loadingMore) value.value = current.copy(loadingMore = false)
+    }
+    fun resume() {
+        val current = value.value ?: return
+        if (current.loading && work?.isActive != true) open(current.anchor, current.sourceId)
+    }
     override fun close() {
         work?.cancel(); work = null; session?.close(); session = null
-        seen.clear(); value.value = null
+        seen.clear(); value.value = null; focusedId = null
     }
 }

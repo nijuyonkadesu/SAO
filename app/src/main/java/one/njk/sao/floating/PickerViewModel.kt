@@ -39,7 +39,12 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
     private val savedState: SavedStateHandle = SavedStateHandle(),
     private val dispatchers: FloatingDispatchers = FloatingDispatchers()) : ViewModel() {
     private val visibilityOwner = Any()
-    internal fun pickerVisible(visible: Boolean) = FloatingSession.pickerVisible(visibilityOwner, visible)
+    private var pickerShowing = false
+    internal fun pickerVisible(visible: Boolean) {
+        pickerShowing = visible
+        FloatingSession.pickerVisible(visibilityOwner, visible)
+        session.sequenceVisible(visibilityOwner, visible)
+    }
     private val initial = if (savedState.contains(QUERY_TEXT)) PickerBrowseState(
         MediaQuery(savedState[QUERY_TEXT] ?: "", savedState[QUERY_FILTER],
             SearchMode.entries.firstOrNull { it.name == savedState.get<String>(QUERY_MODE) } ?: SearchMode.CONTEXT,
@@ -47,27 +52,28 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         else session.snapshot()
     private val queryState = MutableStateFlow(initial.query)
     val query = queryState.asStateFlow()
-    var focusedId: String? = initial.focusedId
-        private set
+    private var searchFocusedId: String? = initial.focusedId
+    val focusedId: String? get() = if (sequence.state.value == null) searchFocusedId else sequence.focusedId
     private var rememberedQuery: MediaQuery? = null
-    private var returnFocus: String? = null
-    private val sequence = PickerSequenceNavigator(source, viewModelScope, dispatchers) { focusedId = it }
+    private val sequence = session.acquireSequence(visibilityOwner, source, dispatchers, initial.query)
     val canBrowseSequence = source.sequenceBrowse.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     init { rememberBrowsing() }
 
     internal val currentSequenceId get() = sequence.state.value?.id
-    internal fun isCurrentBrowse(key: PickerBrowseKey) = key.sourceId == appliedSource &&
+    internal fun isCurrentBrowse(key: PickerBrowseKey) = session.ownsSequence(visibilityOwner) && key.sourceId == appliedSource &&
         key.query == query.value && key.sequenceId == currentSequenceId
     internal fun focusForBrowse(sequenceId: String?): String? =
-        if (sequenceId == null && currentSequenceId != null) returnFocus else focusedId
+        if (sequenceId == null) searchFocusedId else sequence.focusedId
 
     fun focus(id: String?, sequenceId: String? = currentSequenceId) {
-        if (sequenceId != currentSequenceId) return
+        if (!session.ownsSequence(visibilityOwner) || sequenceId != currentSequenceId) return
         if (focusedId == id) return
-        focusedId = id; rememberBrowsing()
+        if (sequenceId == null) searchFocusedId = id else sequence.focus(id)
+        rememberBrowsing()
     }
     fun rememberBrowsing() {
+        if (!session.ownsSequence(visibilityOwner)) return
         // SavedStateHandle is serialized by Android's lifecycle saved-state mechanism, not DataStore.
         if (rememberedQuery != query.value) {
             rememberedQuery = query.value
@@ -77,7 +83,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
             savedState[QUERY_CONSTRAINTS] = SearchQueryState.encode(query.value.constraints)
             savedState[QUERY_RANDOM] = query.value.randomRequest
         }
-        val searchFocus = if (sequence.state.value != null) returnFocus else focusedId
+        val searchFocus = searchFocusedId
         savedState[FOCUSED_ID] = searchFocus
         session.remember(PickerBrowseState(query.value, searchFocus))
     }
@@ -115,7 +121,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         val media = exports.prepare(item, choice.rendition)
         return source.identity.first() == (item.remote?.sourceId ?: "local") && clipboard.publish(item, media, request, version)
     }
-    override fun onCleared() { sequence.close(); request.next(); pickerVisible(false) }
+    override fun onCleared() { session.releaseSequence(visibilityOwner); request.next(); pickerVisible(false) }
 
     val options = preferences.options.onEach {
         if (preferredOverride == it.preferStickers) preferredOverride = null
@@ -129,8 +135,9 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         .flatMapLatest { (query, sourceId) -> flow {
             while (pageRequests.tryReceive().isSuccess) { /* Drop requests from the old result set. */ }
             requestingPage = false
-            if (appliedSource != null && appliedSource != sourceId) {
-                sequence.close(); returnFocus = null; focusedId = null; clearSelection(); rememberBrowsing()
+            if (session.ownsSequence(visibilityOwner) && (appliedSource != null && appliedSource != sourceId ||
+                sequence.state.value?.sourceId?.let { it != sourceId } == true)) {
+                sequence.close(); searchFocusedId = null; clearSelection(); rememberBrowsing()
             }
             appliedSource = sourceId
             var snapshot = session.results(sourceId, query)
@@ -170,17 +177,17 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PickerState())
     fun browseSequence(item: MediaItem) {
         val current = state.value
-        if (!options.value.browseSequence || !canBrowseSequence.value || current.loading || current.loadingMore ||
+        if (!pickerShowing || !session.ownsSequence(visibilityOwner) || !options.value.browseSequence || !canBrowseSequence.value || current.loading || current.loadingMore ||
             current.query != query.value || current.items.none { it.id == item.id }) return
-        if (sequence.state.value == null) returnFocus = focusedId
         sequence.open(item, current.sourceId)
     }
     fun backToResults(): Boolean {
-        if (sequence.state.value == null) return false
-        sequence.close(); focusedId = returnFocus; returnFocus = null; rememberBrowsing()
+        if (!session.ownsSequence(visibilityOwner) || sequence.state.value == null) return false
+        sequence.close(); rememberBrowsing()
         return true
     }
     fun loadMore(position: Int) {
+        if (!pickerShowing || !session.ownsSequence(visibilityOwner)) return
         if (sequence.state.value != null) { sequence.loadMore(position); return }
         val value = state.value
         if (value.query == query.value && value.hasMore && !value.error && !value.loading && !value.loadingMore && !requestingPage && position >= value.items.size - 10) {
@@ -188,6 +195,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         }
     }
     fun retry() {
+        if (!pickerShowing || !session.ownsSequence(visibilityOwner)) return
         if (sequence.state.value != null) sequence.retry()
         else if (state.value.items.isNotEmpty()) pageRequests.trySend(Unit) else refresh.value++
     }
@@ -196,9 +204,9 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         items.distinctBy { it.remote?.assetId ?: it.id }
     }
     private fun searchQuery(value: MediaQuery) {
-        if (query.value == value) return
+        if (!session.ownsSequence(visibilityOwner) || query.value == value) return
         backToResults()
-        queryState.value = value; focusedId = null
+        queryState.value = value; searchFocusedId = null
         rememberBrowsing()
     }
     fun search(text: String) {
