@@ -47,6 +47,7 @@
                 android:layout_width="match_parent" android:layout_height="wrap_content" android:indeterminate="true" android:visibility="gone" />
             <FrameLayout android:id="@+id/carousel_area" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:minHeight="56dp">
                 <androidx.recyclerview.widget.RecyclerView android:id="@+id/media_grid" android:layout_width="match_parent" android:layout_height="match_parent" android:clipToPadding="false" android:paddingVertical="8dp" />
+                <androidx.recyclerview.widget.RecyclerView android:id="@+id/sequence_grid" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone" android:clipToPadding="false" android:paddingVertical="8dp" />
                 <androidx.recyclerview.widget.RecyclerView android:id="@+id/target_list" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone" />
                 <LinearLayout android:id="@+id/source_panel" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:visibility="gone" android:paddingVertical="8dp">
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">

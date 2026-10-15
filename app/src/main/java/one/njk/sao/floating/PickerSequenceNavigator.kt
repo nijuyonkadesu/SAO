@@ -35,7 +35,9 @@ internal class PickerSequenceNavigator(private val source: MediaSource, private 
                 check(items.isNotEmpty()) { "No Photos timeline neighbors" }
                 if (value.value?.id == start.id) {
                     val anchorIdentity = anchor.remote?.assetId ?: anchor.id
-                    focus(items.firstOrNull { (it.remote?.assetId ?: it.id) == anchorIdentity }?.id ?: items.first().id)
+                    val exactAnchor = items.firstOrNull { (it.remote?.assetId ?: it.id) == anchorIdentity }
+                    checkNotNull(exactAnchor) { "The held item is no longer available in the timeline" }
+                    focus(exactAnchor.id)
                     value.value = start.copy(items = items, loading = false, newer = page.newer, older = page.older)
                 }
             } catch (cancelled: CancellationException) { opened?.close(); throw cancelled }

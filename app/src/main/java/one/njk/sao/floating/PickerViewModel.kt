@@ -56,7 +56,14 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
 
     init { rememberBrowsing() }
 
-    fun focus(id: String?) {
+    internal val currentSequenceId get() = sequence.state.value?.id
+    internal fun isCurrentBrowse(key: PickerBrowseKey) = key.sourceId == appliedSource &&
+        key.query == query.value && key.sequenceId == currentSequenceId
+    internal fun focusForBrowse(sequenceId: String?): String? =
+        if (sequenceId == null && currentSequenceId != null) returnFocus else focusedId
+
+    fun focus(id: String?, sequenceId: String? = currentSequenceId) {
+        if (sequenceId != currentSequenceId) return
         if (focusedId == id) return
         focusedId = id; rememberBrowsing()
     }

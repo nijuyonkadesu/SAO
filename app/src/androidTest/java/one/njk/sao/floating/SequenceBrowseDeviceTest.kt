@@ -8,11 +8,15 @@ import android.widget.EditText
 import android.widget.TextView
 import androidx.core.view.isVisible
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import okhttp3.mockwebserver.*
 import okio.Buffer
 import one.njk.sao.R
@@ -37,11 +41,15 @@ class SequenceBrowseDeviceTest {
     private val requests = CopyOnWriteArrayList<RecordedRequest>()
     private val rejectTimeline = AtomicBoolean()
     private val slowTimeline = AtomicBoolean()
+    private val updatedAsset = AtomicBoolean()
+    private val omitHeldAsset = AtomicBoolean()
+    private var numberedPreviews = false
+    private var searchIndices = listOf(80, 5)
     private val album = "22222222-4222-4222-8222-222222222222"
     private fun id(index: Int) = UUID(0x1111111141114111L, Long.MIN_VALUE + index).toString()
     private fun asset(index: Int) = JSONObject().put("id", id(index)).put("type", "IMAGE")
         .put("originalFileName", "sequence-$index.png").put("originalMimeType", "image/png")
-        .put("updatedAt", "2026-10-15T00:00:00Z").put("visibility", "timeline")
+        .put("updatedAt", if (updatedAsset.get()) "2026-10-16T00:00:00Z" else "2026-10-15T00:00:00Z").put("visibility", "timeline")
         .put("fileCreatedAt", if (index < 60) "2026-10-10T09:00:00Z" else "2026-09-10T09:00:00Z")
         .put("localDateTime", if (index < 60) "2026-10-10T09:00:00" else "2026-09-10T09:00:00")
         // Deliberately unrelated to timeline ordering: this is the caption's date, not its sort key.
@@ -50,6 +58,7 @@ class SequenceBrowseDeviceTest {
         previous = access.sources().current(); oldOptions = preferences.current()
         access.browseSession().reset(); preferences.browseSequence(true); preferences.longPressMs(160)
         val png = app.assets.open("floating/happy.png").use { it.readBytes() }
+        val numbered = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
         server = MockWebServer().apply {
             dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse {
@@ -57,8 +66,24 @@ class SequenceBrowseDeviceTest {
                     val path = request.requestUrl!!.encodedPath
                     if (path == "/api/server/features") return MockResponse().setBody("""{"search":true,"smartSearch":true,"ocr":true}""")
                     if (path == "/api/tags") return MockResponse().setBody("[]")
-                    if (path.endsWith("/thumbnail") || path.endsWith("/original"))
-                        return MockResponse().setHeader("Content-Type", "image/png").setBody(Buffer().write(png))
+                    if (path.endsWith("/thumbnail") || path.endsWith("/original")) {
+                        val assetId = path.substringAfter("/api/assets/").substringBefore('/')
+                        val image = if (!numberedPreviews) png else numbered.computeIfAbsent(assetId) {
+                            val index = (0..119).first { id(it) == assetId }
+                            val bitmap = android.graphics.Bitmap.createBitmap(240, 240, android.graphics.Bitmap.Config.ARGB_8888)
+                            android.graphics.Canvas(bitmap).apply {
+                                drawColor(android.graphics.Color.HSVToColor(floatArrayOf((index * 137.5f) % 360, .4f, .85f)))
+                                drawText("Image $index", 120f, 130f, android.graphics.Paint().apply {
+                                    textSize = 36f; textAlign = android.graphics.Paint.Align.CENTER; isAntiAlias = true
+                                })
+                            }
+                            java.io.ByteArrayOutputStream().use { output ->
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
+                                bitmap.recycle(); output.toByteArray()
+                            }
+                        }
+                        return MockResponse().setHeader("Content-Type", "image/png").setBody(Buffer().write(image))
+                    }
                     if (path == "/api/timeline/buckets") {
                         if (rejectTimeline.get()) return MockResponse().setResponseCode(403)
                         return MockResponse().setBody("""[{"timeBucket":"2026-10-01","count":60},{"timeBucket":"2026-09-01","count":60}]""")
@@ -73,7 +98,7 @@ class SequenceBrowseDeviceTest {
                         val index = (0..119).first { id(it) == path.substringAfterLast('/') }
                         return MockResponse().setBody(asset(index).toString())
                     }
-                    if (path == "/api/search/smart") return results(listOf(80, 5))
+                    if (path == "/api/search/smart") return results(searchIndices)
                     if (path == "/api/search/metadata") {
                         val filter = JSONObject(request.body.clone().readUtf8()).getJSONObject("filter")
                         val branches = filter.optJSONArray("or")
@@ -82,7 +107,7 @@ class SequenceBrowseDeviceTest {
                             (0..119).first { id(it) == wanted }
                         } } ?: listOf(80, 5)
                         // Hydration is intentionally returned in a different order from the timeline.
-                        return results(indices.reversed())
+                        return results(indices.reversed().filterNot { omitHeldAsset.get() && it == 80 })
                     }
                     return MockResponse().setResponseCode(404)
                 }
@@ -108,7 +133,7 @@ class SequenceBrowseDeviceTest {
     private fun ready(scenario: ActivityScenario<PickerActivity>): PickerViewModel {
         lateinit var picker: PickerViewModel
         scenario.onActivity { picker = model(it); picker.search("sequence") }
-        await("Search must load") { !picker.state.value.loading && picker.state.value.query.text == "sequence" && picker.state.value.items.size == 2 && picker.canBrowseSequence.value && picker.options.value.browseSequence }
+        await("Search must load") { !picker.state.value.loading && picker.state.value.query.text == "sequence" && picker.state.value.items.size == searchIndices.size && picker.canBrowseSequence.value && picker.options.value.browseSequence }
         instrumentation.waitForIdleSync(); SystemClock.sleep(300)
         return picker
     }
@@ -117,12 +142,12 @@ class SequenceBrowseDeviceTest {
         instrumentation.runOnMainSync { value = app.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.uri?.toString() }
         return value
     }
-    private inner class Touch(private val activity: PickerActivity, view: View) {
+    private inner class Touch(private val activity: PickerActivity, view: View, localX: Float? = null) {
         private val down = SystemClock.uptimeMillis()
         private var x = 0f; private var y = 0f
         init { instrumentation.runOnMainSync {
             val point = IntArray(2); view.getLocationOnScreen(point)
-            x = point[0] + view.width / 2f; y = point[1] + view.height / 2f
+            x = point[0] + (localX ?: view.width / 2f); y = point[1] + view.height / 2f
         }; send(MotionEvent.ACTION_DOWN) }
         fun send(action: Int, deltaX: Float = 0f) = instrumentation.runOnMainSync {
             val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x + deltaX, y, 0)
@@ -131,8 +156,154 @@ class SequenceBrowseDeviceTest {
     }
     private fun first(scenario: ActivityScenario<PickerActivity>): Pair<PickerActivity, View> {
         lateinit var activity: PickerActivity; lateinit var view: View
-        scenario.onActivity { activity = it; view = it.findViewById<RecyclerView>(R.id.media_grid).findViewHolderForAdapterPosition(0)!!.itemView }
+        scenario.onActivity { activity = it; view = grid(it).findViewHolderForAdapterPosition(0)!!.itemView }
         return activity to view
+    }
+    private fun grid(activity: PickerActivity): RecyclerView {
+        val sequence = activity.findViewById<RecyclerView>(R.id.sequence_grid)
+        return if (sequence.isVisible) sequence else activity.findViewById(R.id.media_grid)
+    }
+    private fun focal(grid: RecyclerView): MediaCarouselAdapter.Holder? {
+        if (!grid.isShown) return null
+        val view = com.google.android.material.carousel.CarouselSnapHelper(false).findSnapView(grid.layoutManager!!) ?: return null
+        return grid.getChildViewHolder(view) as MediaCarouselAdapter.Holder
+    }
+    @Test fun heldImageIsActuallyVisibleAndBackKeepsTheScrolledSearchView() {
+        searchIndices = (40..119).toList() + (0..39).toList()
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
+            val picker = ready(scenario)
+            lateinit var searchGrid: RecyclerView
+            lateinit var searchAdapter: RecyclerView.Adapter<*>
+            lateinit var searchManager: RecyclerView.LayoutManager
+            var searchListChanges = 0
+            scenario.onActivity {
+                searchGrid = it.findViewById(R.id.media_grid)
+                searchAdapter = searchGrid.adapter!!; searchManager = searchGrid.layoutManager!!
+                searchAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+                    override fun onChanged() { searchListChanges++ }
+                    override fun onItemRangeInserted(positionStart: Int, itemCount: Int) { searchListChanges++ }
+                    override fun onItemRangeRemoved(positionStart: Int, itemCount: Int) { searchListChanges++ }
+                    override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) { searchListChanges++ }
+                })
+                searchGrid.scrollToPosition(47)
+            }
+            await("Search must visibly reach result 47") {
+                var visible = false
+                scenario.onActivity { visible = !searchGrid.isLayoutRequested && focal(searchGrid)?.item?.remote?.assetId == id(87) }
+                visible
+            }
+            lateinit var card: View
+            lateinit var activity: PickerActivity
+            var originalLeft = 0
+            scenario.onActivity {
+                activity = it; card = focal(searchGrid)!!.itemView; originalLeft = card.left
+            }
+            val hold = Touch(activity, card)
+            await("Hold must finish loading") { picker.state.value.sequenceId != null && !picker.state.value.loading }
+            hold.send(MotionEvent.ACTION_UP)
+            await("The held asset must be the visible focal card, not just the model's focus") {
+                var visible = false
+                scenario.onActivity {
+                    val grid = grid(it)
+                    visible = !grid.isLayoutRequested && focal(grid)?.item?.remote?.assetId == id(87)
+                }; visible
+            }
+            scenario.onActivity { grid(it).scrollToPosition(32) }
+            instrumentation.waitForIdleSync()
+            scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+            await("Back must visibly return to the original result") {
+                var restored = false
+                scenario.onActivity { restored = !searchGrid.isLayoutRequested && focal(searchGrid)?.item?.remote?.assetId == id(87) }
+                picker.state.value.sequenceId == null && restored
+            }
+            scenario.onActivity {
+                assertSame("Keep the original search adapter", searchAdapter, searchGrid.adapter)
+                assertSame("Keep the original layout manager", searchManager, searchGrid.layoutManager)
+                assertEquals("Restore its exact settled offset", originalLeft, focal(searchGrid)!!.itemView.left)
+                assertEquals("Sequence navigation must not replace or reset the search list", 0, searchListChanges)
+            }
+        }
+    }
+    @Test fun paginationDuringFirstDiffAndUpdatedMetadataKeepTheExactHeldAssetVisible() {
+        searchIndices = (40..119).toList() + (0..39).toList()
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
+            val picker = ready(scenario)
+            val anchor = picker.state.value.items.first { it.remote!!.assetId == id(80) }
+            updatedAsset.set(true)
+            scenario.onActivity { activity ->
+                activity.lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    picker.state.first { it.sequenceId != null && !it.loading }
+                    // A pagination emission can supersede the initial asynchronous list diff's callback.
+                    picker.loadMore(0)
+                }
+                picker.browseSequence(anchor)
+            }
+            await("The next month must prepend during the initial list update") {
+                picker.state.value.sequenceId != null && picker.state.value.items.size == 81 && !picker.state.value.loadingMore
+            }
+            await("The actual visible card must remain the held asset despite changed revision IDs and prepending") {
+                var correct = false
+                scenario.onActivity { correct = !grid(it).isLayoutRequested && focal(grid(it))?.item?.remote?.assetId == id(80) }
+                correct
+            }
+            assertNotEquals("The test must exercise changed media revision IDs", anchor.id,
+                picker.state.value.items.first { it.remote!!.assetId == id(80) }.id)
+        }
+    }
+    @Test fun holdingTheVisibleCardEdgeDoesNotSelectAnOverlappingMaskedNeighbor() {
+        numberedPreviews = true
+        searchIndices = (40..119).toList() + (0..39).toList()
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
+            val picker = ready(scenario)
+            scenario.onActivity { grid(it).scrollToPosition(47) }
+            await("Search must reach the expected visible image") {
+                var correct = false
+                scenario.onActivity { correct = focal(grid(it))?.item?.remote?.assetId == id(87) }; correct
+            }
+            lateinit var activity: PickerActivity
+            lateinit var card: com.google.android.material.carousel.MaskableFrameLayout
+            var edge = 0f
+            scenario.onActivity {
+                activity = it; card = focal(grid(it))!!.itemView as com.google.android.material.carousel.MaskableFrameLayout
+                edge = card.maskRectF.right - 20 * it.resources.displayMetrics.density
+            }
+            screenshot("sequence-edge-before.png")
+            val hold = Touch(activity, card, edge)
+            await("Hold must open the sequence") { picker.state.value.sequenceId != null && !picker.state.value.loading }
+            hold.send(MotionEvent.ACTION_UP)
+            assertEquals("A visible edge press must browse the photo under the finger, not its masked neighbor",
+                id(87), picker.state.value.items.firstOrNull { it.id == picker.focusedId }?.remote?.assetId)
+            await("The photo touched on its visible edge must actually be centered") {
+                var correct = false
+                scenario.onActivity { correct = focal(grid(it))?.item?.remote?.assetId == id(87) }; correct
+            }
+            screenshot("sequence-edge-after.png")
+            scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+            await("Back must show the original card") {
+                var correct = false
+                scenario.onActivity { correct = focal(grid(it))?.item?.remote?.assetId == id(87) }; correct
+            }
+            val tap = Touch(activity, card, edge)
+            tap.send(MotionEvent.ACTION_UP)
+            await("A short edge tap must still select and copy the visible photo") {
+                picker.selection.value?.remote?.assetId == id(87) &&
+                    picker.copyStatus.value in setOf(R.string.picker_copied, R.string.picker_media_fallback)
+            }
+        }
+    }
+    @Test fun missingHeldAssetShowsAnErrorWithoutSubstitutingAnUnrelatedPhoto() {
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
+            val picker = ready(scenario)
+            val anchor = picker.state.value.items.first()
+            omitHeldAsset.set(true)
+            scenario.onActivity { picker.browseSequence(anchor) }
+            await("A missing anchor must be recoverable") { picker.state.value.sequenceId != null && picker.state.value.error }
+            assertEquals(listOf(anchor), picker.state.value.items)
+            await("Keep showing the held photo with the error") {
+                var correct = false
+                scenario.onActivity { correct = focal(grid(it))?.item?.remote?.assetId == id(80) }; correct
+            }
+        }
     }
     @Test fun longHoldBrowsesBothDirectionsAndBackRestoresSearchWithoutRecopy() {
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
@@ -217,18 +388,19 @@ class SequenceBrowseDeviceTest {
         }
     }
     @Test fun returningFromADifferentAnchorRestoresTheOriginalFocalItem() {
+        searchIndices = (40..119).toList() + (0..39).toList()
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
             val picker = ready(scenario)
             val original = picker.state.value.items
-            scenario.onActivity { it.findViewById<RecyclerView>(R.id.media_grid).scrollToPosition(1) }
-            await("Original carousel must navigate") { picker.focusedId == original[1].id }
+            scenario.onActivity { grid(it).scrollToPosition(47) }
+            await("Original carousel must navigate") { picker.focusedId == original[47].id }
             scenario.onActivity { picker.browseSequence(original[0]) }
             await("Other result must open as sequence anchor") { picker.state.value.sequenceId != null && !picker.state.value.loading }
-            scenario.onActivity { it.findViewById<RecyclerView>(R.id.media_grid).scrollToPosition(30) }
+            scenario.onActivity { grid(it).scrollToPosition(30) }
             await("Sequence must navigate independently") { picker.focusedId == picker.state.value.items[30].id }
             scenario.onActivity { it.findViewById<View>(R.id.sequence_back).performClick() }
             await("Original results and focal item must restore") {
-                picker.state.value.sequenceId == null && picker.state.value.items == original && picker.focusedId == original[1].id
+                picker.state.value.sequenceId == null && picker.state.value.items == original && picker.focusedId == original[47].id
             }
         }
     }
@@ -264,7 +436,7 @@ class SequenceBrowseDeviceTest {
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
             val picker = ready(scenario)
             scenario.onActivity {
-                val card = it.findViewById<RecyclerView>(R.id.media_grid).findViewHolderForAdapterPosition(0)!!.itemView
+                val card = grid(it).findViewHolderForAdapterPosition(0)!!.itemView
                 assertFalse(card.findViewById<View>(R.id.uploaded_at).isVisible)
                 picker.browseSequence(picker.state.value.items.first())
             }
@@ -272,10 +444,10 @@ class SequenceBrowseDeviceTest {
             instrumentation.waitForIdleSync()
             SystemClock.sleep(350)
             scenario.onActivity {
-                val grid = it.findViewById<RecyclerView>(R.id.media_grid)
+                val grid = grid(it)
                 val holder = grid.findViewHolderForAdapterPosition(picker.state.value.items.indexOfFirst { item -> item.remote!!.assetId == id(80) })!!
                 val caption = holder.itemView.findViewById<TextView>(R.id.uploaded_at)
-                assertTrue(caption.isVisible); assertTrue(caption.text.toString().startsWith("Uploaded"))
+                assertTrue(caption.isVisible); assertFalse(caption.text.toString().contains("Uploaded"))
                 assertTrue(caption.text.toString().contains("2026"))
             }
             screenshot("sequence-neighbors.png")
@@ -297,7 +469,7 @@ class SequenceBrowseDeviceTest {
             runBlocking { preferences.browseSequence(false) }
             await("Setting must disable holds") { !picker.options.value.browseSequence }
             scenario.onActivity {
-                val grid = it.findViewById<RecyclerView>(R.id.media_grid)
+                val grid = grid(it)
                 val holder = grid.findViewHolderForAdapterPosition(0) ?: grid.findViewHolderForAdapterPosition(1)!!
                 assertFalse(holder.itemView.performLongClick())
                 holder.itemView.performClick()
@@ -366,7 +538,7 @@ class SequenceBrowseDeviceTest {
                 scenario.onActivity { activity ->
                     val panel = activity.findViewById<View>(R.id.picker_panel)
                     val bounds = android.graphics.Rect(); assertTrue(panel.getGlobalVisibleRect(bounds))
-                    for (id in listOf(R.id.sequence_back, R.id.copy_action, R.id.media_grid)) {
+                    for (id in listOf(R.id.sequence_back, R.id.copy_action, R.id.sequence_grid)) {
                         val view = activity.findViewById<View>(id)
                         val visible = android.graphics.Rect()
                         assertTrue("Control must remain visible: $id", view.getGlobalVisibleRect(visible))

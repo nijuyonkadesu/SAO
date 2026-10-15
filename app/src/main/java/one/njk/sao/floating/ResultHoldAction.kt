@@ -6,6 +6,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityManager
+import com.google.android.material.carousel.MaskableFrameLayout
 import kotlin.math.abs
 
 /** Short tap copies; a stationary hold navigates once. Scrolling and recycling cancel the hold. */
@@ -34,6 +35,11 @@ internal class ResultHoldAction(private val view: View, private val enabled: () 
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     cancel()
+                    // OnTouchListener runs before MaskableFrameLayout.onTouchEvent. Respect its
+                    // visible mask here too, or a clipped neighbor can steal this card's press.
+                    val mask = (view as? MaskableFrameLayout)?.maskRectF
+                    if (mask != null && !mask.isEmpty && !mask.contains(event.x, event.y))
+                        return@setOnTouchListener false
                     if (!enabled() || accessibility?.isTouchExplorationEnabled == true) return@setOnTouchListener false
                     tracking = true; consumed = false; moved = false
                     x = event.x; y = event.y; view.isPressed = true

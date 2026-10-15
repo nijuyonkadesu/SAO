@@ -17,7 +17,6 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.isVisible
-import androidx.core.view.doOnNextLayout
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -25,10 +24,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil3.ImageLoader
-import com.google.android.material.carousel.CarouselLayoutManager
-import com.google.android.material.carousel.CarouselSnapHelper
-import com.google.android.material.carousel.HeroCarouselStrategy
-import com.google.android.material.carousel.FullScreenCarouselStrategy
 import com.google.android.material.chip.Chip
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
@@ -53,7 +48,10 @@ class PickerActivity : AppCompatActivity() {
     private lateinit var sourceGesture: HoldDragSelector<SourceGestureChoice>
     private var imeHeight = 0
     private lateinit var binding: ActivityPickerBinding
-    private lateinit var adapter: MediaCarouselAdapter
+    private lateinit var resultsCarousel: PickerCarousel
+    private lateinit var sequenceCarousel: PickerCarousel
+    private val carousel get() = if (renderedSequence == null) resultsCarousel else sequenceCarousel
+    private val adapter get() = carousel.adapter
     private var targetPackage: String? = null
     private var pasteAnchor: String? = null
     private var nativeSession: String? = null
@@ -66,21 +64,12 @@ class PickerActivity : AppCompatActivity() {
     private var compactSequence = false
     private var dockLayoutMode = -1
     private var modeChipWidth = 0
-    private var fullScreenCarousel = false
-    private val snap = CarouselSnapHelper(false) // Keep natural fling momentum; snap only on settling.
-    private var appliedQuery: MediaQuery? = null
-    private var appliedSequence: String? = null
     private var renderedSequence: String? = null
-    private var displayedBrowse: Triple<String, MediaQuery, String?>? = null
-    private var placingPosition = false
-    private var focusRecordPending = false
-    private var positionVersion = 0L
     private var options = FloatingOptions()
     private var canShareSticker = false
     private var canAttachInstagram = false
     private var capabilityJob: Job? = null
     private var catalog = SourceCatalog()
-    private var renderedSource: String? = null
     private var appChoices: List<AppChoice> = emptyList()
     private lateinit var metrics: android.view.WindowMetrics
     private val target get() = AppFamilyResolver.resolve(targetPackage, options.telegramPackages)
@@ -114,28 +103,34 @@ class PickerActivity : AppCompatActivity() {
             if (editing && searchController.controlsAvailable && !binding.searchControls.isVisible) searchController.open()
             else if (editing) collapseSearch() else expandSearch()
         }
-        adapter = MediaCarouselAdapter(imageLoader, lifecycleScope, source, prefetch = { position ->
-            if (model.state.value.sequenceId == null && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && binding.mediaGrid.isVisible && !compactEditing)
-                model.loadMore(position)
-        }, holdDelay = { options.longPressMs.toLong() },
-            canHold = { options.browseSequence && model.canBrowseSequence.value && !busy &&
-                !model.state.value.loading && !model.state.value.loadingMore && model.state.value.query == model.query.value }, held = { item ->
-                collapseSearch(); recordFocus(); model.browseSequence(item)
-            }) { item ->
-            if (busy) return@MediaCarouselAdapter
-            collapseSearch(); adapter.focusedId = item.id
-            binding.mediaGrid.smoothScrollToPosition(adapter.currentList.indexOfFirst { it.id == item.id })
-            model.select(item, target)
+        fun createCarousel(view: RecyclerView, sequence: Boolean): PickerCarousel {
+            val media = MediaCarouselAdapter(imageLoader, lifecycleScope, source, prefetch = { position ->
+                if (!sequence && model.currentSequenceId == null && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
+                    view.isShown && !compactEditing) model.loadMore(position)
+            }, holdDelay = { options.longPressMs.toLong() },
+                canHold = { options.browseSequence && model.canBrowseSequence.value && !busy &&
+                    !model.state.value.loading && !model.state.value.loadingMore && model.state.value.query == model.query.value }, held = { item ->
+                    recordFocus(); collapseSearch(); model.browseSequence(item)
+                }) { item ->
+                if (!busy) {
+                    collapseSearch(); carousel.adapter.focusedId = item.id
+                    carousel.view.smoothScrollToPosition(carousel.adapter.currentList.indexOfFirst { it.id == item.id })
+                    model.select(item, target)
+                }
+            }
+            media.showUploadTime = sequence
+            return PickerCarousel(view, media, current = { key -> model.isCurrentBrowse(key) },
+                focused = { key -> model.focusForBrowse(key.sequenceId) },
+                focusChanged = { key, id, position ->
+                    model.focus(id, key.sequenceId); model.loadMore(position)
+                }, remember = model::rememberBrowsing, dragging = ::collapseSearch)
         }
-        val manager = CarouselLayoutManager(HeroCarouselStrategy()).apply {
-            carouselAlignment = CarouselLayoutManager.ALIGNMENT_CENTER
-        }
-        binding.mediaGrid.layoutManager = manager
-        binding.mediaGrid.adapter = adapter
+        resultsCarousel = createCarousel(binding.mediaGrid, false)
+        sequenceCarousel = createCarousel(binding.sequenceGrid, true)
         searchController = PickerSearchController(this, binding, model, searchOptions, source, imageLoader,
             visibilityChanged = { visible ->
                 if (visible) { showSource(false); showTargets(false); binding.message.isVisible = false }
-                binding.mediaGrid.isVisible = !visible && !binding.sourcePanel.isVisible && !binding.targetList.isVisible
+                showCarousels()
                 resize(imeHeight)
             }, redraw = { renderHeader(); resize(imeHeight) }, randomRequested = { collapseSearch(); model.lucky() },
             beforeGesture = { if (::sourceGesture.isInitialized) sourceGesture.cancel() })
@@ -150,19 +145,6 @@ class PickerActivity : AppCompatActivity() {
             nextAction = R.string.source_hold_next, previousAction = R.string.source_hold_previous,
             opening = { searchController.cancelGesture() },
             hint = { getString(R.string.source_hold_release) }, holdDelay = { options.longPressMs.toLong() })
-        snap.attachToRecyclerView(binding.mediaGrid)
-        binding.mediaGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrollStateChanged(view: RecyclerView, state: Int) {
-                // SnapHelper can start another settling scroll inside an idle callback.
-                // Use the actual state and settle focus before allowing motion playback.
-                if (view.scrollState == RecyclerView.SCROLL_STATE_IDLE) {
-                    recordFocus(); adapter.scrolling = false
-                    if (!placingPosition) model.rememberBrowsing()
-                } else adapter.scrolling = true
-                if (state == RecyclerView.SCROLL_STATE_DRAGGING) collapseSearch()
-            }
-            override fun onScrolled(view: RecyclerView, dx: Int, dy: Int) { recordFocus() }
-        })
         binding.search.setText(model.query.value.text)
         binding.search.doAfterTextChanged {
             if (!syncingQuery) model.search(it?.toString().orEmpty())
@@ -246,31 +228,16 @@ class PickerActivity : AppCompatActivity() {
                 } }
                 launch { model.state.collect { state ->
                     searchController.renderLoading(state)
-                    adapter.showUploadTime = state.sequenceId != null
-                    if (renderedSequence != state.sequenceId) { renderedSequence = state.sequenceId; renderHeader(); resize(imeHeight) }
-                    if (renderedSource != state.sourceId) {
-                        displayedBrowse = null
-                        renderedSource = state.sourceId; adapter.focusedId = null; adapter.submitList(emptyList())
+                    if (renderedSequence != state.sequenceId) {
+                        carousel.pause()
+                        renderedSequence = state.sequenceId
+                        if (state.sequenceId == null) sequenceCarousel.clear()
+                        showCarousels(); renderHeader(); resize(imeHeight)
                     }
                     if (!state.loading && model.selection.value?.id?.let { id -> state.items.none { it.id == id } } == true) model.clearSelection()
-                    if (!state.loading) {
-                        if (state.query != model.query.value) return@collect
-                        val queryChanged = appliedQuery != state.query || appliedSequence != state.sequenceId
-                        val prepended = state.sequenceId != null && appliedSequence == state.sequenceId && adapter.currentList.firstOrNull()?.id?.let { first ->
-                            first != state.items.firstOrNull()?.id
-                        } == true
-                        val wanted = model.focusedId
-                        appliedQuery = state.query; appliedSequence = state.sequenceId
-                        adapter.submitList(state.items) {
-                            if (!isFinishing && !isDestroyed && appliedQuery == state.query && model.query.value == state.query &&
-                                appliedSequence == state.sequenceId && model.state.value.sequenceId == state.sequenceId &&
-                                model.state.value.sourceId == state.sourceId) {
-                                displayedBrowse = Triple(state.sourceId, state.query, state.sequenceId)
-                                if (queryChanged || prepended || state.items.none { it.id == wanted })
-                                    placePosition(if (prepended && !queryChanged) model.focusedId ?: wanted else wanted)
-                            }
-                        }
-                    }
+                    if (state.query == model.query.value)
+                        carousel.render(state)
+                    updatePlayback()
                     binding.progress.isVisible = busy || state.loading || state.loadingMore
                     binding.message.isVisible = state.error || (!state.loading && state.items.isEmpty())
                     binding.message.setText(if (state.error) {
@@ -289,7 +256,8 @@ class PickerActivity : AppCompatActivity() {
                 launch { NativeBridgeRegistry.sessions.collect { renderDock() } }
                 launch { NativeBridgeRegistry.statuses.collect { renderDock() } }
                 launch { model.selection.collect {
-                    adapter.selectedId = it?.id
+                    resultsCarousel.adapter.selectedId = it?.id
+                    sequenceCarousel.adapter.selectedId = it?.id
                     if (target == MessagingTarget.INSTAGRAM) refreshCapability()
                     renderDock()
                 } }
@@ -320,7 +288,7 @@ class PickerActivity : AppCompatActivity() {
         super.onStart()
         model.pickerVisible(!isFinishing)
         refreshCapability()
-        adapter.playing = !compactEditing && !binding.targetList.isVisible && !binding.sourcePanel.isVisible && !searchController.visible
+        updatePlayback()
     }
     override fun finish() {
         super.finish()
@@ -331,42 +299,29 @@ class PickerActivity : AppCompatActivity() {
         // The retained ViewModel keeps one owner during recreation, so the icon never flashes.
         // Backgrounding/covering a picker still releases it through the ordinary lifecycle.
         if (!isChangingConfigurations) model.pickerVisible(false)
-        cancelPickerGesture(); adapter.cancelGestures(); recordFocus(); model.rememberBrowsing(); adapter.playing = false
+        cancelPickerGesture(); recordFocus(); model.rememberBrowsing(); resultsCarousel.pause(); sequenceCarousel.pause()
         super.onStop()
     }
     override fun onSaveInstanceState(outState: Bundle) {
         recordFocus(); model.rememberBrowsing()
         super.onSaveInstanceState(outState)
     }
-    override fun onDestroy() { sourceGesture.dispose(); searchController.dispose(); adapter.close(); binding.mediaGrid.adapter = null; super.onDestroy() }
+    override fun onDestroy() { sourceGesture.dispose(); searchController.dispose(); resultsCarousel.close(); sequenceCarousel.close(); super.onDestroy() }
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         cancelPickerGesture()
         super.onConfigurationChanged(newConfig); metrics = windowManager.maximumWindowMetrics; resize(0)
     }
-    private fun recordFocus() {
-        if (placingPosition || appliedQuery != model.query.value || appliedSequence != model.state.value.sequenceId ||
-            !isCurrentBrowseDisplayed() || !binding.mediaGrid.isAttachedToWindow || !binding.mediaGrid.isShown) return
-        if (binding.mediaGrid.isLayoutRequested || binding.mediaGrid.isComputingLayout) {
-            // A layout-driven scroll can arrive before the carousel's keylines are ready.
-            // Record it once the layout completes instead of losing the final focal item.
-            if (!focusRecordPending) {
-                focusRecordPending = true
-                binding.mediaGrid.doOnNextLayout { binding.mediaGrid.post {
-                    focusRecordPending = false
-                    if (!isFinishing && !isDestroyed) recordFocus()
-                } }
-            }
-            return
-        }
-        val manager = binding.mediaGrid.layoutManager as CarouselLayoutManager
-        val focal = snap.findSnapView(manager) ?: return
-        val id = adapter.currentList.getOrNull(manager.getPosition(focal))?.id ?: return
-        adapter.focusedId = id; model.focus(id); model.loadMore(manager.getPosition(focal))
+    private fun recordFocus() = carousel.recordFocus()
+    private fun updatePlayback() {
+        val playing = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && !compactEditing &&
+            !binding.targetList.isVisible && !binding.sourcePanel.isVisible && !searchController.visible
+        resultsCarousel.adapter.playing = playing && renderedSequence == null
+        sequenceCarousel.adapter.playing = playing && renderedSequence != null
     }
-    private fun isCurrentBrowseDisplayed(): Boolean {
-        val displayed = displayedBrowse ?: return false
-        val current = model.state.value
-        return displayed.first == current.sourceId && displayed.second == model.query.value && displayed.third == current.sequenceId
+    private fun showCarousels() {
+        val visible = !searchController.visible && !binding.sourcePanel.isVisible && !binding.targetList.isVisible
+        binding.mediaGrid.isVisible = visible && renderedSequence == null
+        binding.sequenceGrid.isVisible = visible && renderedSequence != null
     }
     private fun syncQueryViews(query: MediaQuery) {
         syncingQuery = true
@@ -377,18 +332,6 @@ class PickerActivity : AppCompatActivity() {
         }
         syncingQuery = false
         searchController.renderQuery()
-    }
-    private fun placePosition(wanted: String?) {
-        val position = adapter.currentList.indexOfFirst { it.id == wanted }.coerceAtLeast(0)
-        val id = adapter.currentList.getOrNull(position)?.id
-        adapter.focusedId = id; model.focus(id)
-        val version = ++positionVersion
-        placingPosition = true
-        binding.mediaGrid.stopScroll()
-        binding.mediaGrid.doOnNextLayout {
-            if (!isFinishing && !isDestroyed && version == positionVersion) { placingPosition = false; recordFocus(); model.rememberBrowsing() }
-        }
-        binding.mediaGrid.scrollToPosition(position)
     }
     private fun expandSearch() {
         sourceGesture.cancel()
@@ -537,14 +480,14 @@ class PickerActivity : AppCompatActivity() {
     }
     private fun showTargets(show: Boolean) {
         if (show) { sourceGesture.cancel(); searchController.close(); binding.sourcePanel.isVisible = false }
-        binding.targetList.isVisible = show; binding.mediaGrid.isVisible = !show && !binding.sourcePanel.isVisible
-        adapter.playing = !show && !binding.sourcePanel.isVisible && !searchController.visible
+        binding.targetList.isVisible = show; showCarousels()
+        updatePlayback()
         if (show) binding.message.isVisible = false
     }
     private fun showSource(show: Boolean) {
         if (show) { sourceGesture.cancel(); searchController.close(); binding.targetList.isVisible = false }
-        binding.sourcePanel.isVisible = show; binding.mediaGrid.isVisible = !show && !binding.targetList.isVisible
-        adapter.playing = !show && !binding.targetList.isVisible && !compactEditing && !searchController.visible
+        binding.sourcePanel.isVisible = show; showCarousels()
+        updatePlayback()
         binding.message.isVisible = !show && !binding.targetList.isVisible && !searchController.visible &&
             (model.state.value.error || (!model.state.value.loading && model.state.value.items.isEmpty()))
     }
@@ -612,18 +555,10 @@ class PickerActivity : AppCompatActivity() {
         binding.sequenceBack.isVisible = model.state.value.sequenceId != null && !searchPanel && !binding.sourcePanel.isVisible && !binding.targetList.isVisible
         binding.selectionRow.isVisible = !searchPanel && !compactEditing && !compactSequence
         binding.carouselArea.isVisible = searchPanel || !compactEditing
-        adapter.playing = !compactEditing && !binding.targetList.isVisible && !binding.sourcePanel.isVisible && !searchController.visible
+        updatePlayback()
         binding.capabilityHint.isVisible = !searchController.visible && !compactEditing && !compactSequence && binding.capabilityHint.text.isNotEmpty()
         val useFullScreen = imeHeight > 0 || shortViewport || largeText
-        if (useFullScreen != fullScreenCarousel) {
-            fullScreenCarousel = useFullScreen
-            // Reattach so Material initializes the new strategy's themed size constraints.
-            binding.mediaGrid.layoutManager = CarouselLayoutManager(
-                if (useFullScreen) FullScreenCarouselStrategy() else HeroCarouselStrategy()).apply {
-                carouselAlignment = CarouselLayoutManager.ALIGNMENT_CENTER
-            }
-            if (isCurrentBrowseDisplayed()) placePosition(model.focusedId ?: adapter.focusedId)
-        }
+        carousel.useFullScreen(useFullScreen)
         val twoRows = largeText && width < 560 * density && !tight
         binding.capabilityHint.maxLines = if (shortViewport || largeText) 1 else 3
         binding.capabilityHint.ellipsize = android.text.TextUtils.TruncateAt.END

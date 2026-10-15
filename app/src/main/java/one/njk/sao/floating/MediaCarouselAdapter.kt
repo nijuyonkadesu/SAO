@@ -188,7 +188,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
                 .also { uploadFormatter = it }
             formatter.format(java.time.Instant.parse(raw))
         }.getOrNull() }
-        return date?.let { view.context.getString(one.njk.sao.R.string.sequence_uploaded_at, it) }
+        return date
             ?: view.context.getString(one.njk.sao.R.string.sequence_upload_unknown)
     }
     fun cancelGestures() { attached.forEach { it.hold?.cancel() } }
