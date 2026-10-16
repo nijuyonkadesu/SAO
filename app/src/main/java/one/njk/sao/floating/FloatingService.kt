@@ -237,6 +237,9 @@ class FloatingService : Service() {
             positionBubble(); if (attached) windowManager.updateViewLayout(bubble, params)
             syncBubble(); if (attached && !idleTucked) scheduleIdle()
         }
+        // Android retains the requested lifetime across process death. Recents removal keeps
+        // it running; stopSelf()/stopService() cancels recovery after an explicit dismissal.
+        // Do not restart from onDestroy/onTaskRemoved or schedule a polling watchdog.
         return START_STICKY
     }
 

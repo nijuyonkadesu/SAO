@@ -673,3 +673,11 @@ fixtures return metadata in a deliberately different order from the timeline.
 References: [Photos defaults](https://github.com/immich-app/immich/blob/main/web/src/lib/managers/timeline-manager/timeline-manager.svelte.ts),
 [timeline contract](https://github.com/immich-app/immich/blob/main/server/src/dtos/time-bucket.dto.ts),
 [timeline ordering](https://github.com/immich-app/immich/blob/main/server/src/repositories/asset.repository.ts).
+
+## Background reliability
+
+The floating service explicitly uses `stopWithTask="false"` and `START_STICKY`: removing SAO's main task keeps the icon running, and Android can recreate it after process death. Android owns the requested service lifetime; icon dismissal, drag-to-dismiss, settings Stop and notification Stop cancel it through `stopSelf()`/`stopService()`. Cleanup never schedules a restart. No watchdog, alarm, periodic job or extra run-state preference is needed. Native editor leases remain process-local.
+
+The inline **Background reliability** controls show the real battery-optimization exemption and open Android's optimization list or SAO's app details. Status is read once on settings resume, on IO, and cancelled on pause/view destruction. Manufacturer background/auto-launch controls remain user-managed; a Doze exemption does not establish their state. Force stop and manufacturer restrictions can prevent recovery. See [sticky service semantics](https://developer.android.com/reference/android/app/Service#START_STICKY), [Doze exemptions](https://developer.android.com/training/monitoring-device-state/doze-standby) and [Android 15 stopped-state behavior](https://developer.android.com/about/versions/15/behavior-changes-all#stopped-state).
+
+Device tests remove the actual task, verify dismissal, refresh exemption status after returning from settings, and check public settings intents and large-text layouts. With the debug APK installed and **Show icon on app launch** enabled, run `python3 tools/test-floating-recovery.py --serial emulator-5554` for cross-process checks: SIGKILL with SAO in the background, recovery, real icon dismissal followed by process death, and Force stop. The driver refuses physical devices, restores overlay access, and leaves the app stopped.

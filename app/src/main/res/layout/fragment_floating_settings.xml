@@ -54,8 +54,6 @@
             android:text="@string/floating_settings_preview"
             android:contentDescription="@string/floating_preview" />
     </com.google.android.material.chip.ChipGroup>
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:orientation="vertical" android:layout_marginBottom="20dp">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
             <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
                 android:layout_marginEnd="12dp" android:text="@string/floating_show_on_launch" android:textAppearance="?attr/textAppearanceTitleMedium" />
@@ -63,8 +61,7 @@
                 android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/enabled" />
         </LinearLayout>
         <TextView android:id="@+id/show_on_launch_description" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="@string/floating_show_on_launch_description" android:textAppearance="?attr/textAppearanceBodyMedium" />
-    </LinearLayout>
+            android:layout_marginBottom="20dp" android:text="@string/floating_show_on_launch_description" android:textAppearance="?attr/textAppearanceBodyMedium" />
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -417,10 +414,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginVertical="24dp" />
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/floating_settings_native"
+    <include android:id="@+id/background_reliability" layout="@layout/view_floating_reliability" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/floating_settings_native"
         android:textAppearance="?attr/textAppearanceTitleLarge"
         android:accessibilityHeading="true"
         android:textColor="?attr/colorPrimary" />

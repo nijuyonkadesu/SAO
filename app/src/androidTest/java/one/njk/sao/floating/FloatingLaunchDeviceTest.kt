@@ -99,6 +99,36 @@ class FloatingLaunchDeviceTest {
         }
     }
 
+    @Test fun removingTheMainTaskKeepsTheExistingIconAndService() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            await("Opening SAO must show the icon") { FloatingSession.active.value && icon() != null }
+            var original: FloatingActionButton? = null
+            var taskId = -1
+            scenario.onActivity { activity ->
+                original = icon(); taskId = activity.taskId
+                activity.finishAndRemoveTask()
+            }
+            scenario.moveToState(Lifecycle.State.DESTROYED)
+            await("Removing the main task must leave the same icon alive") {
+                FloatingSession.active.value && icon() === original
+            }
+            assertFalse(app.getSystemService(android.app.ActivityManager::class.java).appTasks.any { it.taskInfo?.taskId == taskId })
+            SystemClock.sleep(400)
+            instrumentation.runOnMainSync { assertSame(original, icon()); assertTrue(FloatingSession.active.value) }
+        }
+    }
+
+    @Test fun removingTheTaskAfterManualDismissalDoesNotRestartTheIcon() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            await("Opening SAO must show the icon") { FloatingSession.active.value && icon() != null }
+            instrumentation.runOnMainSync { icon()!!.performLongClick() }
+            await("Dismissing must stop the service") { !FloatingSession.active.value && icon() == null }
+            scenario.onActivity { it.finishAndRemoveTask() }
+            scenario.moveToState(Lifecycle.State.DESTROYED)
+            assertStopped()
+        }
+    }
+
     @Test fun missingOverlayAccessDoesNotLaunchPermissionScreensAndGrantingItAllowsStartup() {
         overlay("ignore")
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
@@ -21,6 +22,7 @@ import com.google.android.material.chip.Chip
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
 import one.njk.sao.R
 import one.njk.sao.databinding.FragmentFloatingSettingsBinding
 import one.njk.sao.floating.nativebridge.NativeBridgeRegistry
@@ -37,6 +39,7 @@ class FloatingSettingsFragment : Fragment() {
     private var pendingStart = false
     private var updating = false
     private var draggingHoldDelay = false
+    private var batteryStatusJob: Job? = null
     private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { startFloating() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,6 +102,8 @@ class FloatingSettingsFragment : Fragment() {
             overlayPermission.setOnClickListener { openSettings(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, true) }
             usagePermission.setOnClickListener { openSettings(Settings.ACTION_USAGE_ACCESS_SETTINGS) }
             accessibilityPermission.setOnClickListener { openSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS) }
+            backgroundReliability.batteryOptimization.setOnClickListener { openBatterySettings() }
+            backgroundReliability.backgroundSettings.setOnClickListener { openSettings(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, true) }
             preferStickers.setOnCheckedChangeListener { _, checked ->
                 if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.preferStickers(checked) }
             }
@@ -146,6 +151,7 @@ class FloatingSettingsFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        batteryStatusJob?.cancel(); batteryStatusJob = null
         draggingHoldDelay = false
         _binding = null
         super.onDestroyView()
@@ -157,9 +163,36 @@ class FloatingSettingsFragment : Fragment() {
         renderPermission(binding.overlayPermission, Settings.canDrawOverlays(requireContext()), R.string.floating_overlay_permission)
         renderPermission(binding.usagePermission, detector.hasAccess(), R.string.floating_usage_permission)
         renderPermission(binding.accessibilityPermission, PasteAssistService.connected(), R.string.floating_settings_accessibility)
+        refreshBatteryStatus()
         if (pendingStart) {
             pendingStart = false
             if (Settings.canDrawOverlays(requireContext())) startWithNotificationPermission()
+        }
+    }
+
+    private fun refreshBatteryStatus() {
+        val context = requireContext().applicationContext
+        batteryStatusJob?.cancel()
+        batteryStatusJob = viewLifecycleOwner.lifecycleScope.launch {
+            val exempt = withContext(dispatchers.io) {
+                context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+            }
+            val chip = _binding?.backgroundReliability?.batteryOptimization ?: return@launch
+            val label = getString(if (exempt) R.string.floating_battery_exempt else R.string.floating_battery_optimized)
+            chip.text = label
+            chip.contentDescription = "${getString(R.string.floating_battery_optimization)}: $label"
+        }
+    }
+
+    override fun onPause() {
+        batteryStatusJob?.cancel(); batteryStatusJob = null
+        super.onPause()
+    }
+
+    private fun openBatterySettings() {
+        try { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+        catch (_: android.content.ActivityNotFoundException) {
+            openSettings(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, true)
         }
     }
 

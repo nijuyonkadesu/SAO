@@ -45,7 +45,7 @@
             android:theme="@style/Theme.SAO.Picker" android:taskAffinity="${applicationId}.picker"
             android:excludeFromRecents="true" android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize" />
-        <service android:name=".floating.FloatingService" android:exported="false" android:foregroundServiceType="specialUse">
+        <service android:name=".floating.FloatingService" android:exported="false" android:foregroundServiceType="specialUse" android:stopWithTask="false">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="User-started persistent floating media picker, visible over messaging apps, with explicit Stop controls" />
         </service>

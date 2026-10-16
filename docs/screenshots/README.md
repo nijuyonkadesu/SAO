@@ -8,6 +8,10 @@ Captured on the Android 15 emulator using bundled samples and a localhost Immich
 
 Opening SAO shows the floating icon automatically once overlay access is granted. The inline “Show icon on app launch” setting is enabled by default; Stop or dismissal ends the current session.
 
+Background reliability shows battery-optimization status and system shortcuts for battery and background access. Android restores the running service after process death; dismissal and Stop cancel recovery.
+
+<img src="floating-background-reliability.png" width="280" alt="Inline background reliability controls with battery status and a shortcut to SAO system app settings" />
+
 The optional sequence view follows Immich's Photos ordering and labels each card with its upload time. The shared hold delay and sequence toggle are inline in settings.
 
 | Sequence and upload time | Sequence and shared hold settings |
