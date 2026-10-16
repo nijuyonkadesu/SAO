@@ -490,6 +490,47 @@ class SequenceBrowseDeviceTest {
                 .getJSONObject("filter").getJSONObject("albumIds").getJSONArray("any").getString(0))
         }
     }
+    @Test fun holdingInsideSequenceDoesNothingAndTapStillCopies() {
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
+            val picker = ready(scenario)
+            val anchor = picker.state.value.items.first()
+            scenario.onActivity { picker.browseSequence(anchor) }
+            await("Sequence must settle around its anchor") {
+                var ready = false
+                scenario.onActivity { ready = picker.state.value.sequenceId != null && !picker.state.value.loading &&
+                    !picker.state.value.loadingMore && focal(grid(it))?.item?.id == anchor.id }
+                ready
+            }
+            val before = picker.state.value
+            val focus = picker.focusedId
+            var beforeClip = 0L
+            scenario.onActivity { beforeClip = it.getSystemService(ClipboardManager::class.java).primaryClipDescription?.timestamp ?: 0 }
+            val reads = requests.count { it.requestUrl!!.encodedPath.startsWith("/api/timeline/") || it.requestUrl!!.encodedPath.startsWith("/api/search/") }
+            lateinit var activity: PickerActivity
+            lateinit var card: View
+            lateinit var originalGrid: RecyclerView
+            scenario.onActivity { activity = it; originalGrid = grid(it); card = focal(originalGrid)!!.itemView }
+            val touch = Touch(activity, card)
+            SystemClock.sleep(300); touch.send(MotionEvent.ACTION_UP)
+            scenario.onActivity {
+                card.performLongClick() // Accessibility/native long-click must also be a no-op.
+                picker.browseSequence(before.items.first { item -> item.id != anchor.id })
+            }
+            SystemClock.sleep(250)
+            assertEquals(before.sequenceId, picker.state.value.sequenceId)
+            assertSame(before.items, picker.state.value.items)
+            assertEquals(focus, picker.focusedId)
+            assertEquals(reads, requests.count { it.requestUrl!!.encodedPath.startsWith("/api/timeline/") || it.requestUrl!!.encodedPath.startsWith("/api/search/") })
+            scenario.onActivity {
+                assertSame(originalGrid, grid(it))
+                assertEquals(anchor.id, focal(grid(it))?.item?.id)
+                assertEquals(beforeClip, it.getSystemService(ClipboardManager::class.java).primaryClipDescription?.timestamp ?: 0)
+                card.performClick()
+            }
+            await("Ordinary taps in the sequence still copy") { picker.selection.value?.id == anchor.id &&
+                picker.copyStatus.value in setOf(R.string.picker_copied, R.string.picker_media_fallback) }
+        }
+    }
     @Test fun sharedDelayControlsResultsAndAllThreeSelectors() {
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
             val picker = ready(scenario)

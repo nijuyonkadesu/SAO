@@ -181,6 +181,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
             nearby.newer != null || nearby.older != null, nearby.sourceId, nearby.id)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PickerState())
     fun browseSequence(item: MediaItem) {
+        if (currentSequenceId != null) return
         val current = state.value
         if (!pickerShowing || !session.ownsSequence(visibilityOwner) || !options.value.browseSequence || !canBrowseSequence.value || current.loading || current.loadingMore ||
             current.query != query.value || current.items.none { it.id == item.id }) return

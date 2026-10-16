@@ -73,7 +73,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = Holder(
         ItemFloatingMediaBinding.inflate(LayoutInflater.from(parent.context), parent, false)).also { holder ->
         holder.hold = ResultHoldAction(holder.binding.root, { canHold() && holder.item != null }, holdDelay,
-            { holder.item?.let(select) }, { holder.item?.let(held) })
+            { holder.item?.let(select) }, { holder.item?.let(held) }, ignoreHold = { showUploadTime })
     }
     override fun onBindViewHolder(holder: Holder, position: Int) {
         holder.hold?.cancel()

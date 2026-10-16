@@ -110,7 +110,7 @@ class PickerActivity : AppCompatActivity() {
                 if (!sequence && model.currentSequenceId == null && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
                     view.isShown && !compactEditing) model.loadMore(position)
             }, holdDelay = { options.longPressMs.toLong() },
-                canHold = { options.browseSequence && model.canBrowseSequence.value && !busy &&
+                canHold = { !sequence && model.currentSequenceId == null && options.browseSequence && model.canBrowseSequence.value && !busy &&
                     !model.state.value.loading && !model.state.value.loadingMore && model.state.value.query == model.query.value }, held = { item ->
                     recordFocus(); collapseSearch(); model.browseSequence(item)
                 }) { item ->
