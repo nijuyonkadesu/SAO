@@ -675,7 +675,9 @@ class FloatingDeviceTest {
             val second = centered(scenario)!!
             scenario.onActivity { activity ->
                 assertEquals(first.id, androidx.lifecycle.ViewModelProvider(activity)[PickerViewModel::class.java].selection.value?.id)
-                assertEquals("", activity.findViewById<android.widget.TextView>(R.id.selection_status).text.toString())
+                val copied = activity.getString(androidx.lifecycle.ViewModelProvider(activity)[PickerViewModel::class.java].copyStatus.value)
+                assertFalse("The previous item's copy feedback must not remain",
+                    activity.findViewById<android.widget.TextView>(R.id.selection_message).text.startsWith(copied))
             }
             assertEquals("Browsing must not copy", lastCopy, clip(scenario))
             scenario.onActivity { it.findViewById<android.view.View>(R.id.copy_action).performClick() }

@@ -12,8 +12,9 @@ The optional sequence view follows Immich's Photos ordering and labels each card
 | --- | --- |
 | <img src="floating-sequence.png" width="280" alt="Chronological neighbors with upload date and time and a Back to results action" /> | <img src="floating-sequence-settings.png" width="280" alt="Browse sequence toggle and configurable 160 millisecond hold delay" /> |
 
-Dock messages sit below the title and above the action buttons. Text rows reserve space when
-empty; overflowing labels pause for 1.5 seconds before scrolling. Opening search selects the
+The title and one supporting message line form a compact block centered beside the
+Sticker/Media chip. Copy feedback and guidance share that line, which reserves space
+when empty; overflowing labels pause for 1.5 seconds before scrolling. Opening search selects the
 whole existing query, and Lucky's icon follows the Material light/dark theme.
 
 | Dock text above actions | Search selection in dark mode | Accessibility instructions |

@@ -82,7 +82,7 @@ class PickerActivity : AppCompatActivity() {
         readContext()
         binding = ActivityPickerBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        dockMarquees = PickerMarquees(lifecycleScope, binding.selectionTitle, binding.selectionStatus, binding.capabilityHint)
+        dockMarquees = PickerMarquees(lifecycleScope, binding.selectionTitle, binding.selectionMessage)
         window.setLayout(-1, -1)
         metrics = windowManager.maximumWindowMetrics
         binding.root.setOnClickListener { finish() }
@@ -318,11 +318,11 @@ class PickerActivity : AppCompatActivity() {
     }
     private fun recordFocus() = carousel.recordFocus()
     internal fun dockMarquee(active: Boolean) = dockMarquees.setEnabled(active)
-    private fun updateHintVisibility() {
+    private fun updateMessageVisibility() {
         // Invisible reserves one font-scaled line; only a different UI mode removes the row.
-        binding.capabilityHint.visibility = when {
+        binding.selectionMessage.visibility = when {
             searchController.visible || compactEditing || compactSequence -> View.GONE
-            binding.capabilityHint.text.isEmpty() -> View.INVISIBLE
+            binding.selectionMessage.text.isEmpty() -> View.INVISIBLE
             else -> View.VISIBLE
         }
         dockMarquees.refresh()
@@ -438,9 +438,7 @@ class PickerActivity : AppCompatActivity() {
         val status = if (item == null || model.selection.value?.id != item.id || model.copyStatus.value == R.string.picker_choose)
             "" else getString(model.copyStatus.value)
         dockMarquees.text(binding.selectionTitle, title)
-        dockMarquees.text(binding.selectionStatus, status)
         binding.selectionTitle.contentDescription = title
-        binding.selectionStatus.contentDescription = status
         binding.copyAction.isEnabled = item != null && !busy
         val nativeRendition = nativePasteRendition(item)
         val nativePaste = nativeRendition != null
@@ -478,8 +476,14 @@ class PickerActivity : AppCompatActivity() {
             !binding.pasteAction.isEnabled -> getString(R.string.picker_assist_hint)
             else -> ""
         }
-        dockMarquees.text(binding.capabilityHint, hint)
-        updateHintVisibility()
+        val message = when {
+            status.isEmpty() -> hint
+            hint.isEmpty() -> status
+            else -> getString(R.string.picker_dock_message, status, hint)
+        }
+        dockMarquees.text(binding.selectionMessage, message)
+        binding.selectionMessage.contentDescription = message
+        updateMessageVisibility()
         if (target != MessagingTarget.OTHER && binding.targetList.isVisible) showTargets(false)
         updateActionAccessibility()
     }
@@ -587,7 +591,7 @@ class PickerActivity : AppCompatActivity() {
         binding.selectionRow.isVisible = !searchPanel && !compactEditing && !compactSequence
         binding.carouselArea.isVisible = searchPanel || !compactEditing
         updatePlayback()
-        updateHintVisibility()
+        updateMessageVisibility()
         val useFullScreen = imeHeight > 0 || shortViewport || largeText
         carousel.useFullScreen(useFullScreen)
         val twoRows = largeText && width < 560 * density && !tight

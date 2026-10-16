@@ -164,7 +164,7 @@ class LiveImmichDeviceTest {
                 scenario.onActivity {
                     assertTrue(it.findViewById<RecyclerView>(R.id.media_grid).findViewHolderForAdapterPosition(0)!!.itemView.performClick())
                 }
-                await(scenario, "Selecting a live image must copy immediately") { it.findViewById<TextView>(R.id.selection_status).text.toString() == it.getString(R.string.picker_telegram_sticker_copied) }
+                await(scenario, "Selecting a live image must copy immediately") { it.findViewById<TextView>(R.id.selection_message).text.toString().startsWith(it.getString(R.string.picker_telegram_sticker_copied)) }
                 var stamp = 0L; var clipUri = ""
                 scenario.onActivity {
                     val clip = it.getSystemService(ClipboardManager::class.java).primaryClip!!
@@ -208,7 +208,7 @@ class LiveImmichDeviceTest {
                     val header = ByteArray(6); stream.read(header) == 6 && header.toString(Charsets.US_ASCII).startsWith("GIF8") })
                 ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, "nu.gpu.nagramx", null)).use { scenario ->
                     scenario.onActivity { model(it).select(gif, MessagingTarget.TELEGRAM) }
-                    await(scenario, "Real GIF must copy without flattening") { it.findViewById<TextView>(R.id.selection_status).text.toString() == it.getString(R.string.picker_gif_copied) }
+                    await(scenario, "Real GIF must copy without flattening") { it.findViewById<TextView>(R.id.selection_message).text.toString().startsWith(it.getString(R.string.picker_gif_copied)) }
                     scenario.onActivity {
                         val clip = it.getSystemService(ClipboardManager::class.java).primaryClip!!
                         assertTrue(clip.description.hasMimeType("image/gif"))

@@ -260,7 +260,7 @@ class PasteAssistDeviceTest {
                         var value = emptyList<Int>()
                         onPicker { activity ->
                             value = listOf(one.njk.sao.R.id.carousel_area, one.njk.sao.R.id.selection_row,
-                                one.njk.sao.R.id.capability_hint, one.njk.sao.R.id.dock_surface).flatMap { id ->
+                                one.njk.sao.R.id.selection_message, one.njk.sao.R.id.dock_surface).flatMap { id ->
                                 activity.findViewById<View>(id).let { listOf(it.top, it.height) }
                             }
                         }; return value
@@ -284,53 +284,67 @@ class PasteAssistDeviceTest {
                         onPicker { activity ->
                             val grid = activity.findViewById<androidx.recyclerview.widget.RecyclerView>(one.njk.sao.R.id.media_grid)
                             ready = grid.adapter!!.itemCount == 4 && !grid.isLayoutRequested &&
+                                (grid.findViewHolderForAdapterPosition(0) as? MediaCarouselAdapter.Holder)?.binding?.preview?.drawable != null &&
                                 activity.findViewById<View>(one.njk.sao.R.id.paste_action).isEnabled &&
                                 activity.findViewById<android.widget.TextView>(one.njk.sao.R.id.selection_title).text.startsWith("Amazing reaction") &&
-                                activity.findViewById<android.widget.TextView>(one.njk.sao.R.id.capability_hint).text.isEmpty()
+                                activity.findViewById<android.widget.TextView>(one.njk.sao.R.id.selection_message).text.isEmpty()
                         }; ready
                     }
                     SystemClock.sleep(150)
                     val empty = geometry(); screenshot("empty")
                     onPicker { it.findViewById<View>(one.njk.sao.R.id.copy_action).performClick() }
-                    await("Copy status must appear") { text(one.njk.sao.R.id.selection_status).isNotEmpty() }
+                    await("Copy status must appear") { text(one.njk.sao.R.id.selection_message).isNotEmpty() }
                     SystemClock.sleep(150)
                     val copied = geometry(); screenshot("copied")
                     onPicker { it.findViewById<androidx.recyclerview.widget.RecyclerView>(one.njk.sao.R.id.media_grid).smoothScrollToPosition(1) }
                     var trace = ""
                     try {
                         await("Centering a GIF must show its tip and clear the old copy status") {
-                            val hint = text(one.njk.sao.R.id.capability_hint)
-                            val status = text(one.njk.sao.R.id.selection_status)
+                            val hint = text(one.njk.sao.R.id.selection_message)
                             onPicker {
                                 val model = ViewModelProvider(it)[PickerViewModel::class.java]
                                 val grid = it.findViewById<androidx.recyclerview.widget.RecyclerView>(one.njk.sao.R.id.media_grid)
                                 val snap = (grid.onFlingListener as com.google.android.material.carousel.CarouselSnapHelper).findSnapView(grid.layoutManager!!)
-                                trace = "focus=${model.state.value.items.indexOfFirst { item -> item.id == model.focusedId }}, snap=${snap?.let { grid.getChildAdapterPosition(it) }}, layout=${grid.isLayoutRequested}, computing=${grid.isComputingLayout}, hint=$hint, status=$status"
+                                trace = "focus=${model.state.value.items.indexOfFirst { item -> item.id == model.focusedId }}, snap=${snap?.let { grid.getChildAdapterPosition(it) }}, layout=${grid.isLayoutRequested}, computing=${grid.isComputingLayout}, message=$hint"
                             }
-                            hint.contains("GIF") && status.isEmpty()
+                            hint == app.getString(one.njk.sao.R.string.picker_gif_hint)
                         }
                     } catch (failure: AssertionError) { screenshot("failure"); throw AssertionError(trace, failure) }
                     SystemClock.sleep(150)
                     val motion = geometry(); screenshot("tip")
                     assertEquals("Copy status must not move the carousel or dock", empty, copied)
                     assertEquals("An appearing tip must not move the carousel or dock", empty, motion)
+                    onPicker { it.findViewById<View>(one.njk.sao.R.id.copy_action).performClick() }
+                    await("Copy feedback and the hint must both fit in the supporting line") {
+                        val message = text(one.njk.sao.R.id.selection_message)
+                        message.startsWith(app.getString(one.njk.sao.R.string.picker_gif_copied)) &&
+                            message.endsWith(app.getString(one.njk.sao.R.string.picker_gif_hint))
+                    }
+                    SystemClock.sleep(150)
+                    assertEquals("Combined feedback must not move the carousel or dock", empty, geometry())
+                    screenshot("copied-tip")
                     assertEquals(1, searches.size); assertEquals("amazing", searches.single().getString("query"))
                     onPicker { activity ->
                         val title = activity.findViewById<View>(one.njk.sao.R.id.selection_title)
-                        val hint = activity.findViewById<View>(one.njk.sao.R.id.capability_hint)
+                        val hint = activity.findViewById<View>(one.njk.sao.R.id.selection_message)
                         val dock = activity.findViewById<View>(one.njk.sao.R.id.dock_surface)
                         assertSame("The tip belongs below the title", title.parent, hint.parent)
-                        assertTrue(title.bottom <= hint.top)
+                        val gap = hint.top - title.bottom
+                        assertTrue("The message must sit directly beneath the title, gap=$gap", gap in 0..2)
+                        val textBlock = activity.findViewById<View>(one.njk.sao.R.id.selection_text)
+                        val chip = activity.findViewById<View>(one.njk.sao.R.id.prefer_stickers)
+                        assertEquals("The two-line text block and mode chip must share a vertical center",
+                            (textBlock.top + textBlock.bottom) / 2f, (chip.top + chip.bottom) / 2f, 1f)
                         val background = dock.background as com.google.android.material.shape.MaterialShapeDrawable
                         assertEquals("The toolbar must not tint the panel behind the buttons", 0,
                             android.graphics.Color.alpha(background.fillColor!!.defaultColor))
                         marquees.animate(activity)
                     }
                     val titleBefore = pixels(one.njk.sao.R.id.selection_title)
-                    val tipBefore = pixels(one.njk.sao.R.id.capability_hint)
+                    val tipBefore = pixels(one.njk.sao.R.id.selection_message)
                     SystemClock.sleep(1_000)
                     val titlePaused = pixels(one.njk.sao.R.id.selection_title)
-                    val tipPaused = pixels(one.njk.sao.R.id.capability_hint)
+                    val tipPaused = pixels(one.njk.sao.R.id.selection_message)
                     try {
                         assertTrue("The title must stay still for a reading pause", titleBefore.sameAs(titlePaused))
                         assertTrue("The tip must stay still for a reading pause", tipBefore.sameAs(tipPaused))
@@ -338,7 +352,7 @@ class PasteAssistDeviceTest {
                     SystemClock.sleep(1_000)
                     screenshot("scrolling")
                     val titleAfter = pixels(one.njk.sao.R.id.selection_title)
-                    val tipAfter = pixels(one.njk.sao.R.id.capability_hint)
+                    val tipAfter = pixels(one.njk.sao.R.id.selection_message)
                     try {
                         assertFalse("An overflowing title must visibly scroll", titleBefore.sameAs(titleAfter))
                         assertFalse("An overflowing tip must visibly scroll", tipBefore.sameAs(tipAfter))

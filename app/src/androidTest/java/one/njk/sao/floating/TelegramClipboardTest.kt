@@ -36,7 +36,7 @@ class TelegramClipboardTest {
                 await(scenario) { it.findViewById<Chip>(R.id.prefer_stickers).text == it.getString(R.string.picker_sticker) }
                 val item = LocalMediaSource(app).all().first { !it.animated }
                 scenario.onActivity { ViewModelProvider(it)[PickerViewModel::class.java].select(item, MessagingTarget.TELEGRAM) }
-                await(scenario) { it.findViewById<TextView>(R.id.selection_status).text.toString() == it.getString(R.string.picker_telegram_sticker_copied) }
+                await(scenario) { it.findViewById<TextView>(R.id.selection_message).text.toString().startsWith(it.getString(R.string.picker_telegram_sticker_copied)) }
                 scenario.onActivity { activity ->
                     val clip = activity.getSystemService(ClipboardManager::class.java).primaryClip!!
                     assertTrue(clip.description.hasMimeType("image/webp")); assertTrue(clip.getItemAt(0).uri.toString().endsWith(".webp"))
@@ -69,7 +69,7 @@ class TelegramClipboardTest {
             ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, "nu.gpu.nagramx", null)).use { scenario ->
                 await(scenario) { it.findViewById<Chip>(R.id.prefer_stickers).text == it.getString(R.string.picker_sticker) }
                 scenario.onActivity { ViewModelProvider(it)[PickerViewModel::class.java].select(item, MessagingTarget.TELEGRAM) }
-                await(scenario) { it.findViewById<TextView>(R.id.selection_status).text.toString() == it.getString(R.string.picker_telegram_sticker_copied) }
+                await(scenario) { it.findViewById<TextView>(R.id.selection_message).text.toString().startsWith(it.getString(R.string.picker_telegram_sticker_copied)) }
                 SystemClock.sleep(100)
                 var stamp = 0L; var uri = ""; var chipWidth = 0; var carouselHeight = 0; var footerHeight = 0
                 scenario.onActivity {
@@ -90,8 +90,8 @@ class TelegramClipboardTest {
                         assertEquals(carouselHeight, it.findViewById<android.view.View>(R.id.carousel_area).height)
                         assertEquals(footerHeight, it.findViewById<android.view.View>(R.id.selection_row).height)
                         assertEquals(1, it.findViewById<TextView>(R.id.selection_title).lineCount)
-                        assertEquals(1, it.findViewById<TextView>(R.id.selection_status).lineCount)
-                        assertEquals(it.getString(R.string.picker_telegram_sticker_copied), it.findViewById<TextView>(R.id.selection_status).text.toString())
+                        assertEquals(1, it.findViewById<TextView>(R.id.selection_message).lineCount)
+                        assertTrue(it.findViewById<TextView>(R.id.selection_message).text.toString().startsWith(it.getString(R.string.picker_telegram_sticker_copied)))
                     }
                 }
             }

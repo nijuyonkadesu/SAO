@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 /** Installed Instagram receiver checks and local fixture transport; no account or DM send. */
 class InstagramDeviceTest {
+    @get:org.junit.Rule val marquees = PickerMarqueeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app = instrumentation.targetContext
     private val access get() = EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java)
@@ -104,7 +105,7 @@ class InstagramDeviceTest {
             await(scenario) { it.findViewById<View>(R.id.media_action).isEnabled }
             scenario.onActivity {
                 assertEquals("DM", it.findViewById<TextView>(R.id.media_action).text.toString())
-                assertEquals(it.getString(R.string.picker_instagram_hint), it.findViewById<TextView>(R.id.capability_hint).text.toString())
+                assertTrue(it.findViewById<TextView>(R.id.selection_message).text.toString().endsWith(it.getString(R.string.picker_instagram_hint)))
                 assertFalse(it.findViewById<View>(R.id.paste_action).isEnabled)
                 assertFalse(it.findViewById<View>(R.id.sticker_action).isEnabled)
             }
@@ -137,7 +138,7 @@ class InstagramDeviceTest {
                     assertTrue(it.findViewById<View>(R.id.copy_action).isEnabled)
                     assertFalse(it.findViewById<View>(R.id.media_action).isEnabled)
                     assertFalse(it.findViewById<View>(R.id.paste_action).isEnabled)
-                    assertEquals(it.getString(R.string.picker_instagram_unavailable), it.findViewById<TextView>(R.id.capability_hint).text.toString())
+                    assertTrue(it.findViewById<TextView>(R.id.selection_message).text.toString().endsWith(it.getString(R.string.picker_instagram_unavailable)))
                 }
             }
         } finally { change(if (state == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) "default-state" else "enable") }
@@ -158,7 +159,7 @@ class InstagramDeviceTest {
             val manager = activity.getSystemService(ClipboardManager::class.java)
             manager.primaryClipDescription?.hasMimeType("image/gif") == true &&
                 manager.primaryClip?.getItemAt(0)?.uri?.toString()?.contains(gif.id) == true &&
-                activity.findViewById<TextView>(R.id.selection_status).text.toString() == activity.getString(R.string.picker_gif_copied)
+                activity.findViewById<TextView>(R.id.selection_message).text.toString().startsWith(activity.getString(R.string.picker_gif_copied))
         }
         scenario.onActivity {
             val uri = it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).uri

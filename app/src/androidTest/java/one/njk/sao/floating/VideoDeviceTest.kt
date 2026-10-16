@@ -114,7 +114,7 @@ class VideoDeviceTest {
                     }
                     if (videoEnabled) {
                         await(scenario, "Native-video guidance must describe the direct send") {
-                            it.findViewById<android.widget.TextView>(R.id.capability_hint).text.contains("video directly")
+                            it.findViewById<android.widget.TextView>(R.id.selection_message).text.contains("video directly")
                         }
                         if (InstrumentationRegistry.getArguments().containsKey("dockShots")) {
                             SystemClock.sleep(800)

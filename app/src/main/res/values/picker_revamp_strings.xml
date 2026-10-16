@@ -1,5 +1,6 @@
 <resources>
     <string name="picker_choose">Tap a reaction to copy</string>
+    <string name="picker_dock_message">%1$s · %2$s</string>
     <string name="picker_copy">Copy</string><string name="picker_paste">Paste</string><string name="picker_sticker">Sticker</string><string name="picker_media">Media</string><string name="picker_gif">GIF</string>
     <string name="picker_copying">Copying…</string><string name="picker_copied">Image copied</string><string name="picker_gif_copied">GIF copied</string><string name="picker_sticker_copied">Sticker image copied</string><string name="picker_copy_failed">Copy failed · tap Copy to retry</string>
     <string name="picker_media_fallback">Copied as media · sticker unavailable</string>

@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 @androidx.annotation.OptIn(UnstableApi::class)
 class DiscordDeviceTest {
+    @get:org.junit.Rule val marquees = PickerMarqueeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app = instrumentation.targetContext
     private val access get() = EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java)
@@ -156,7 +157,7 @@ class DiscordDeviceTest {
                 assertTrue(it.findViewById<View>(R.id.media_action).isEnabled)
                 assertFalse(it.findViewById<View>(R.id.paste_action).isEnabled)
                 assertFalse(it.findViewById<View>(R.id.sticker_action).isEnabled)
-                assertEquals(it.getString(R.string.picker_discord_motion_hint), it.findViewById<TextView>(R.id.capability_hint).text.toString())
+                assertTrue(it.findViewById<TextView>(R.id.selection_message).text.toString().endsWith(it.getString(R.string.picker_discord_motion_hint)))
             }
         }
     }
@@ -186,7 +187,7 @@ class DiscordDeviceTest {
             while (!copied && SystemClock.elapsedRealtime() < deadline) {
                 scenario.onActivity {
                     copied = it.getSystemService(ClipboardManager::class.java).primaryClipDescription?.hasMimeType("image/gif") == true &&
-                        it.findViewById<TextView>(R.id.selection_status).text.toString() == it.getString(R.string.picker_gif_copied)
+                        it.findViewById<TextView>(R.id.selection_message).text.toString().startsWith(it.getString(R.string.picker_gif_copied))
                 }
                 SystemClock.sleep(40)
             }
@@ -195,7 +196,7 @@ class DiscordDeviceTest {
                 val uri = it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).uri
                 assertArrayEquals(app.assets.open(gif.asset).use { stream -> stream.readBytes() },
                     it.contentResolver.openInputStream(uri)!!.use { stream -> stream.readBytes() })
-                assertEquals(it.getString(R.string.picker_discord_paste_inactive), it.findViewById<TextView>(R.id.capability_hint).text.toString())
+                assertTrue(it.findViewById<TextView>(R.id.selection_message).text.toString().endsWith(it.getString(R.string.picker_discord_paste_inactive)))
                 assertFalse(it.findViewById<View>(R.id.sticker_action).isEnabled)
                 assertTrue(it.findViewById<View>(R.id.media_action).isEnabled)
                 // Launching without an editor lease must not silently paste into another chat.
