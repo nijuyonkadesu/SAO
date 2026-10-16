@@ -69,7 +69,7 @@ class FloatingSettingsDeviceTest {
                     }
                     ready
                 }
-                for (id in listOf(R.id.auto_hide, R.id.prefer_stickers, R.id.overlay_permission, R.id.accessibility_permission)) {
+                for (id in listOf(R.id.show_on_launch, R.id.auto_hide, R.id.prefer_stickers, R.id.overlay_permission, R.id.accessibility_permission)) {
                     onView(withId(id)).perform(scrollTo())
                     scenario.onActivity { activity ->
                         val chip = activity.findViewById<Chip>(id)

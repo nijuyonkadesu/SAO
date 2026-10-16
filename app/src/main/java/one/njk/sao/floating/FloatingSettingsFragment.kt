@@ -61,6 +61,7 @@ class FloatingSettingsFragment : Fragment() {
             telegramApps.setOnClickListener { startActivity(Intent(requireContext(), TelegramAppsActivity::class.java)) }
             immichSettings.setOnClickListener { startActivity(Intent(requireContext(), SourceSettingsActivity::class.java)) }
             autoHide.setOnCheckedChangeListener { _, checked -> if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.autoHide(checked) } }
+            showOnLaunch.setOnCheckedChangeListener { _, checked -> if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.showOnLaunch(checked) } }
             browseSequence.setOnCheckedChangeListener { _, checked -> if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.browseSequence(checked) } }
             longPressDelay.setLabelFormatter { getString(R.string.sequence_hold_value, it.toInt()) }
             longPressDelay.addOnSliderTouchListener(object : com.google.android.material.slider.Slider.OnSliderTouchListener {
@@ -112,6 +113,7 @@ class FloatingSettingsFragment : Fragment() {
                     renderToggle(binding.preferStickers, options.preferStickers, R.string.floating_prefer_stickers)
                     renderToggle(binding.pasteAssistance, options.pasteAssistance, R.string.floating_paste_assistance)
                     renderToggle(binding.autoHide, options.autoHide, R.string.floating_auto_hide)
+                    renderToggle(binding.showOnLaunch, options.showOnLaunch, R.string.floating_show_on_launch)
                     renderToggle(binding.browseSequence, options.browseSequence, R.string.sequence_setting)
                     if (!draggingHoldDelay) binding.longPressValue.text = getString(R.string.sequence_hold_value, options.longPressMs)
                     if (!draggingHoldDelay) binding.longPressDelay.value = options.longPressMs.toFloat()
