@@ -1,0 +1,7 @@
+<resources>
+    <!-- The shared card supplies secondaryContainer; inherit matching foreground,
+         ripple and disabled states from the official M3 tonal button. -->
+    <style name="Widget.SAO.Picker.TonalAction" parent="Widget.Material3.Button.TonalButton">
+        <item name="backgroundTint">@android:color/transparent</item>
+    </style>
+</resources>

@@ -173,15 +173,12 @@ also disable actions. The title follows the center, and an earlier item's copy
 status is not shown under a different item. Instagram receiver discovery reruns
 on media MIME changes, not on every scroll frame or every photo.
 
-Title, copy status and delivery tips each reserve one line at the current font
-size. An empty tip stays invisible while retaining its space, so image/GIF
-transitions do not resize the carousel. Long text uses the platform TextView
-marquee with the full text available to accessibility; it stops when the picker
-stops. Unchanged tips are not reassigned during capability refreshes, preserving
-the scroll animation. The Context **amazing** regression uses a local Immich
-fixture to compare exact carousel/dock bounds across empty, copied and GIF-tip
-states, and pixel comparisons verify that overflowing titles and tips scroll
-at normal and 200% text sizes.
+The title and SAO's feedback form a two-line block with a fixed 2 dp gap, centered beside the Sticker/Media chip. The gap comes from the block's existing vertical padding, preserving the row height and neighboring alignment. Each line reserves its height at the current font size; empty feedback stays invisible without removing its space. Long text uses the platform TextView marquee after a 1.5-second reading pause. The Context **amazing** localhost regression checks stable carousel/dock bounds across empty, copied and GIF-tip states at normal and 200% text sizes.
+
+The embedded dock follows its action row's measured height instead of reserving the standalone toolbar's 64 dp minimum. This removes 16 dp of empty bottom space at normal text size while retaining the panel's 12 dp inset and the buttons' standard touch targets.
+
+Colors follow [Material 3's roles](https://m3.material.io/styles/color/the-color-system): low/high surface containers for the panel/cards, on-surface titles, and on-surface-variant supporting text. Copy/Paste inherit the official tonal button's on-secondary-container foreground, ripple and disabled states against their shared secondary container. Motion badges have an opaque surface container behind their text; selector labels use their semantic foreground without extra alpha fading. Activity dynamic color and DayNight theming resolve these roles for the current wallpaper and theme.
+
 Screenshots: [empty tip](screenshots/floating-dock-empty.png),
 [overflowing title and tip](screenshots/floating-dock-marquee.png).
 

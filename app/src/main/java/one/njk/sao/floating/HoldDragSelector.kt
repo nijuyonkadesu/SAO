@@ -157,7 +157,6 @@ internal class HoldDragSelector<T>(private val anchor: View, private val host: F
                 maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
                 val focal = index == (visibleRows + 2) / 2
                 setTextColor(if (focal) onSelected else onSurface)
-                alpha = if (focal) 1f else .65f
                 setTypeface(null, if (focal) Typeface.BOLD else Typeface.NORMAL)
                 view.holdChoiceRows.addView(this, LinearLayout.LayoutParams(-1, rowHeight))
             }

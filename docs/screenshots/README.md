@@ -2,9 +2,9 @@
 
 Captured on the Android 15 emulator using bundled samples and a localhost Immich fixture. The emulator has no native hook framework; native delivery was checked separately with recording APK probes and on the user's phone.
 
-| Carousel and automatic copy | Context search selector | Inline floating settings |
+| Carousel in light mode | Carousel in dark mode | Context search selector |
 | --- | --- | --- |
-| <img src="floating-carousel.png" width="260" alt="Sample carousel with a highlighted image, clipboard status and bottom action dock" /> | <img src="floating-search.png" width="260" alt="Expanded Context selector with looping drag choices during text and emoji search" /> | <img src="floating-settings.png" width="260" alt="Floating picker controls below the existing main settings" /> |
+| <img src="floating-carousel.png" width="260" alt="Light picker with balanced bottom spacing, tonal actions and aligned title and feedback" /> | <img src="floating-carousel-dark.png" width="260" alt="Dark picker using matching Material foreground and container roles" /> | <img src="floating-search.png" width="260" alt="Expanded Context selector with looping drag choices during text and emoji search" /> |
 
 Opening SAO shows the floating icon automatically once overlay access is granted. The inline “Show icon on app launch” setting is enabled by default; Stop or dismissal ends the current session.
 
@@ -18,10 +18,7 @@ The optional sequence view follows Immich's Photos ordering and labels each card
 | --- | --- |
 | <img src="floating-sequence.png" width="280" alt="Chronological neighbors with upload date and time and a Back to results action" /> | <img src="floating-sequence-settings.png" width="280" alt="Browse sequence toggle and configurable 160 millisecond hold delay" /> |
 
-The title and one supporting message line form a compact block centered beside the
-Sticker/Media chip. Copy feedback and guidance share that line, which reserves space
-when empty; overflowing labels pause for 1.5 seconds before scrolling. Opening search selects the
-whole existing query, and Lucky's icon follows the Material light/dark theme.
+The title and supporting message have a subtle 2 dp gap taken from existing padding, keeping their block aligned with the Sticker/Media chip. Empty messages reserve the same space; overflowing labels pause for 1.5 seconds before scrolling. The action row has the same 12 dp panel inset as the sides. Tonal actions, supporting labels and motion badges follow Material light/dark color roles. Opening search selects the whole existing query, and Lucky's icon follows the theme.
 
 | Dock text above actions | Search selection in dark mode | Accessibility instructions |
 | --- | --- | --- |

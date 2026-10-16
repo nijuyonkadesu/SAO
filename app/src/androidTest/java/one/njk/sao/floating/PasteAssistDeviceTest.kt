@@ -330,7 +330,8 @@ class PasteAssistDeviceTest {
                         val dock = activity.findViewById<View>(one.njk.sao.R.id.dock_surface)
                         assertSame("The tip belongs below the title", title.parent, hint.parent)
                         val gap = hint.top - title.bottom
-                        assertTrue("The message must sit directly beneath the title, gap=$gap", gap in 0..2)
+                        val density = activity.resources.displayMetrics.density
+                        assertTrue("The message needs a small gap beneath the title, gap=$gap", gap in density.toInt()..(3 * density).toInt())
                         val textBlock = activity.findViewById<View>(one.njk.sao.R.id.selection_text)
                         val chip = activity.findViewById<View>(one.njk.sao.R.id.prefer_stickers)
                         assertEquals("The two-line text block and mode chip must share a vertical center",

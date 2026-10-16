@@ -605,7 +605,6 @@ class PickerActivity : AppCompatActivity() {
             binding.pickerPanel.radius = (if (tight) 16 else 28) * density
             binding.pickerHeader.layoutParams = LinearLayout.LayoutParams(if (tight) 0 else -1, if (tight) -1 else -2, if (tight) 1f else 0f)
             binding.dockSurface.layoutParams = LinearLayout.LayoutParams(if (tight) (192 * density).toInt() else -1, if (tight) -1 else -2)
-            binding.dockSurface.minimumHeight = if (tight) 0 else (64 * density).toInt()
             binding.actionDock.orientation = if (twoRows) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
             binding.actionDock.gravity = Gravity.CENTER_VERTICAL
             for (i in 0 until binding.actionDock.childCount) binding.actionDock.getChildAt(i).layoutParams =
