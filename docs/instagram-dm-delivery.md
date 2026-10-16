@@ -44,10 +44,45 @@ invokes it, and it works without SAO's accessibility Paste assistance or changin
 keyboards. Instagram decides whether the request actually uploads/delivers.
 
 The inspected keyboard callback accepts PNG/JPEG and explicitly rejects GIFs. SAO
-advertises only the supported static-image capabilities and exports JPEG for this
-route. **Paste** stays disabled for GIF/video; **DM** remains their attachment
-path. Instagram Sticker remains disabled. A connected module without a validated
+advertises only the supported static-image capabilities for this keyboard route
+and exports JPEG. A separate versioned gallery adapter enables MP4 Paste as described
+below. GIF/WebM still use **DM**. Instagram Sticker remains disabled. A connected module without a validated
 editor lease also leaves Paste disabled.
+
+### Native MP4 Paste
+
+On **451.0.0.53.80**, a verified gallery sender adds `video/mp4` to the session.
+Explicit Paste sends the selected MP4 directly to the original DM through that sender,
+without opening the recipient picker. It does not pass a video to the bitmap keyboard
+handler. No video is sent by selecting, copying or browsing. Upload/server acceptance
+still belongs to Instagram; authenticated video delivery through Vector needs a phone
+check. Other versions and formats keep the DM attachment route.
+
+`InstagramGalleryContract` isolates the inspected build's obfuscated gallery contract
+from the structural keyboard-photo adapter. It checks the controller's sender field,
+method/constructor signatures and selected-media model. The controller must still own
+the leased editor and the same verified thread identity. Missing or changed contracts
+do not advertise MP4. Videos do not become stickers.
+
+The host's Binder worker copies the granted URI into Instagram-owned cache and reads
+its real MP4 duration, dimensions and rotation. The original bytes are preserved.
+Preparation rejects Main, malformed/non-MP4 files, clips over 512 MiB, a 30-second copy
+deadline or a full 2 GiB adapter cache. Old adapter files are cleaned only during an
+explicit Paste; recent submitted files remain available to Instagram's asynchronous
+uploader. Unsubmitted/invalid files are deleted. There is no background cleanup job.
+
+The host verifies the lease before preparation, revalidates it on Main afterward,
+and consumes it before invoking the gallery sender once. A changed chat, editor,
+activity, capability, expired lease or stopped bridge aborts dispatch. A single in-flight
+host insertion prevents concurrent preparation; unknown/rejected sends are never retried.
+
+Instagram performs further asynchronous clip processing after initial dispatch. SAO creates
+a request-owned native gallery sender with a guarded delegate, leaving the app's original
+sender untouched. Immediately before the native video send callback, it checks the original
+binding/thread again. A changed/detached chat or stopped bridge drops the callback, and the
+guard consumes it even on rejection. A late duplicate cannot send a second message. Gallery
+contract discovery also runs on the host IO executor; late capability updates need no
+fabricated or restarted keyboard connection.
 
 ### Adapter and session validation
 
@@ -119,8 +154,8 @@ preparation on IO, correct video metadata and validation of the original chat ag
 after preparation. It must preserve the one-use dispatch and no-retry behavior.
 The selected-media wrapper and sender entry points are obfuscated and differ from
 the keyboard contract, so unsupported versions or formats must keep the current
-DM fallback. No video hook or additional advertised capability was enabled by
-this investigation, and no authenticated sending listener was invoked.
+DM fallback. This investigation led to the versioned MP4 adapter above. The isolated
+probe still never invokes an authenticated sending listener.
 
 ## Verification and limits
 
@@ -128,15 +163,17 @@ The production adapter was compiled directly into the reproducible
 [isolated probe](../tools/instagram-native-probe/README.md). With real Instagram classes
 and synthetic controller/key metadata it verified the DM role, native controller
 binding, mutable thread changes in the same editor, replaced-editor rejection,
-cleared-listener rejection and PNG/JPEG-only capabilities. An unmodified native
+cleared-listener rejection and PNG/JPEG keyboard capabilities. Gallery checks verify
+MP4 capability, unknown-build/missing-sender rejection and real selected-video objects
+with matching duration and dimensions. An unmodified native
 InputConnection delivered one `commitContent` callback to a recording listener.
 The probe never invokes Instagram's actual sending listener.
 
 Device instrumentation covers one-use leases, wrong authority/MIME, paused windows,
 chat swaps, expiry, detached editors, IME reconnects, ambiguous controllers, empty keys,
 UID enforcement, exact-MIME dispatch and no retry after rejection. Picker tests check
-that verified native still-photo sessions enable Paste independently of accessibility,
-while highlight/copy and motion selections do not send. Existing receiver tests verify
+that verified native photo/MP4 sessions enable Paste independently of accessibility;
+highlight/copy never sends, and unadvertised motion formats stay disabled. Existing receiver tests verify
 JPEG/GIF/MP4/WebM routing and actual byte hashes under another receiving UID.
 
 These checks validate SAO's adapter, safeguards, UI and transport. Framework injection

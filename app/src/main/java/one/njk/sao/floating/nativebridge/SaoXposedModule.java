@@ -174,7 +174,7 @@ public final class SaoXposedModule extends XposedModule {
         try {
             Class<?> composer;
             if (processName.equals("com.instagram.android")) {
-                InstagramComposerPolicy instagram = new InstagramComposerPolicy(loader);
+                InstagramComposerPolicy instagram = new InstagramComposerPolicy(loader, () -> hostVersion, bridgeIo);
                 policy = instagram;
                 editorSession = new NativeEditorSession(policy, modulePackage);
                 composer = Class.forName("com.instagram.ui.widget.textview.ComposerAutoCompleteTextView", false, loader);
@@ -372,6 +372,7 @@ public final class SaoXposedModule extends XposedModule {
             throw new SecurityException("Unexpected native caller");
     }
     private final class HostClient extends INativeStickerClient.Stub {
+        private final AtomicBoolean inserting = new AtomicBoolean();
         @Override public Bundle snapshot(boolean beginSelection) {
             enforceCaller();
             // Binder never waits for the UI thread. Coalesced refreshes validate in-place DM changes.
@@ -385,12 +386,33 @@ public final class SaoXposedModule extends XposedModule {
         @Override public boolean insert(Uri uri, String mimeType, String expected, long requestId) {
             enforceCaller();
             if (!nativeActive || uri == null || !"content".equals(uri.getScheme()) || !(modulePackage + ".fileprovider").equals(uri.getAuthority())) return false;
+            if (!inserting.compareAndSet(false, true)) return false;
+            try {
+                ComposerPolicy[] selected = new ComposerPolicy[1];
+                Context[] context = new Context[1];
+                if (!onMain(() -> {
+                    Activity current = activity.get();
+                    if (current == null || editorSession == null ||
+                        !editorSession.accepts(current, resumed, uri, mimeType, expected, requestId)) return false;
+                    selected[0] = policy; context[0] = current.getApplicationContext();
+                    return selected[0] != null;
+                })) return false;
+                // Binder worker: copying and metadata extraction never block the host UI.
+                try (PreparedNativeContent content = selected[0].prepareContent(context[0], uri, mimeType)) {
+                    if (content == null) return false;
+                    return onMain(() -> editorSession != null && policy == selected[0] &&
+                        editorSession.insert(activity.get(), resumed, uri, mimeType, expected, requestId, content));
+                }
+            } catch (Exception | LinkageError error) { warn("Native media preparation rejected insertion"); return false; }
+            finally { inserting.set(false); }
+        }
+        private boolean onMain(java.util.function.BooleanSupplier operation) {
             boolean[] accepted = {false};
             AtomicBoolean expired = new AtomicBoolean(false);
             CountDownLatch ready = new CountDownLatch(1);
             main.post(() -> {
                 try {
-                    if (nativeActive && !expired.get() && editorSession != null) accepted[0] = editorSession.insert(activity.get(), resumed, uri, mimeType, expected, requestId);
+                    if (nativeActive && !expired.get()) accepted[0] = operation.getAsBoolean();
                 } catch (RuntimeException error) { warn("Native content handler rejected insertion"); }
                 finally { publishState(); ready.countDown(); }
             });

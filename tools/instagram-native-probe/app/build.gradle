@@ -11,14 +11,18 @@ android {
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
     sourceSets.main.java.srcDir 'build/generated/production-adapter'
+    sourceSets.main.assets.srcDir '../../../app/src/androidTest/assets'
 }
-// Generate only the three production adapter sources, avoiding javac's implicit compilation
+// Generate only the production adapter sources, avoiding javac's implicit compilation
 // of the rest of SAO's package. Sync runs on every source change before compilation.
 def adapterSources = tasks.register('syncProductionAdapter', Sync) {
     from '../../../app/src/main/java'
     include 'one/njk/sao/floating/nativebridge/ComposerPolicy.java'
     include 'one/njk/sao/floating/nativebridge/InstagramComposerPolicy.java'
     include 'one/njk/sao/floating/nativebridge/InstagramThreadBinding.java'
+    include 'one/njk/sao/floating/nativebridge/PreparedNativeContent.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramGalleryContract.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramVideoFile.java'
     into layout.buildDirectory.dir('generated/production-adapter')
 }
 tasks.named('preBuild').configure { dependsOn adapterSources }

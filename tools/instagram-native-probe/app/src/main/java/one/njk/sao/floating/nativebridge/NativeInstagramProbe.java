@@ -30,6 +30,9 @@ public final class NativeInstagramProbe extends Instrumentation {
             Field singleton = unsafeType.getDeclaredField("theUnsafe"); singleton.setAccessible(true);
             unsafe = singleton.get(null); allocate = unsafeType.getMethod("allocateInstance", Class.class);
             Activity host = startActivitySync(new Intent(getTargetContext(), ProbeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            File fixture = new File(getTargetContext().getCacheDir(), "native-video-fixture.mp4");
+            try (java.io.InputStream input = getTargetContext().getAssets().open("preview-video.mp4");
+                 java.io.OutputStream output = new java.io.FileOutputStream(fixture)) { input.transferTo(output); }
             runOnMainSync(() -> {
                 try {
                     Context ig = host.createPackageContext("com.instagram.android", Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY);
@@ -58,6 +61,7 @@ public final class NativeInstagramProbe extends Instrumentation {
                     Object controller = blank(loader,"X.01TL"); set(controller,"A03",delegate);
                     Object sender = blank(loader,"X.01Yw"); set(sender,"A01",new WeakReference<>(controller));
                     Object listener = blank(loader,"X.01ZC");
+                    Object gallerySender = blank(loader,"X.01TL"); set(owner,"A14",gallerySender);
                     boolean senderLinked=false;
                     for(Field f:listener.getClass().getDeclaredFields()) if(f.getType()==sender.getClass()) {f.setAccessible(true);f.set(listener,sender);senderLinked=true;}
                     if(!senderLinked) throw new IllegalStateException("Native listener sender shape changed");
@@ -70,6 +74,51 @@ public final class NativeInstagramProbe extends Instrumentation {
                     report.put("dm_resource_verified",policy.isComposer(view));
                     report.put("native_controller_binding",original!=null);
                     if(original==null)throw new IllegalStateException("Production adapter could not bind real Instagram metadata");
+                    InstagramGalleryContract gallery = InstagramGalleryContract.load(loader);
+                    if (gallery == null) throw new IllegalStateException("Native gallery contract changed");
+                    report.put("native_gallery_sender_owned", gallery.sender(owner) == gallerySender);
+                    set(gallerySender, "A01", host.getApplicationContext());
+                    set(gallerySender, "A05", blank(loader, "X.01Ti"));
+                    Field delegateField = gallerySender.getClass().getField("A03");
+                    delegateField.setAccessible(true);
+                    java.util.concurrent.atomic.AtomicInteger videoCallbacks = new java.util.concurrent.atomic.AtomicInteger();
+                    Object recordingVideoDelegate = Proxy.newProxyInstance(loader, new Class<?>[]{delegateField.getType()}, (p,m,a) -> {
+                        if (m.getName().equals("GUG")) videoCallbacks.incrementAndGet();
+                        return m.getReturnType() == boolean.class ? false : null;
+                    });
+                    delegateField.set(gallerySender, recordingVideoDelegate);
+                    boolean[] permitted = {true};
+                    Object guardedSender = gallery.guardedSender(gallerySender, () -> permitted[0]);
+                    Object guardedDelegate = delegateField.get(guardedSender);
+                    Method videoCallback = null;
+                    for (Method method : delegateField.getType().getMethods()) if (method.getName().equals("GUG")) videoCallback = method;
+                    Object[] callbackArgs = {null, null, null, null, null, "synthetic-video", null, 1, false};
+                    videoCallback.invoke(guardedDelegate, callbackArgs);
+                    videoCallback.invoke(guardedDelegate, callbackArgs);
+                    report.put("native_video_callback_once", videoCallbacks.get() == 1);
+                    permitted[0] = false;
+                    Object cancelled = gallery.guardedSender(gallerySender, () -> permitted[0]);
+                    videoCallback.invoke(delegateField.get(cancelled), callbackArgs);
+                    permitted[0] = true;
+                    videoCallback.invoke(delegateField.get(cancelled), callbackArgs);
+                    report.put("changed_chat_callback_dropped_without_retry", videoCallbacks.get() == 1);
+                    report.put("original_native_gallery_unchanged", delegateField.get(gallerySender) == recordingVideoDelegate && guardedSender != gallerySender);
+                    String[] version = { InstagramGalleryContract.VERSION };
+                    InstagramComposerPolicy videos = new InstagramComposerPolicy(loader, () -> version[0]);
+                    videos.configured(view, listener, configure.getParameterTypes()[1]);
+                    report.put("native_video_capability", new org.json.JSONArray(videos.additionalMimeTypes(view)));
+                    set(listener, "A04", true);
+                    report.put("native_media_invite_limit_respected", videos.additionalMimeTypes(view).length == 0);
+                    set(listener, "A04", false);
+                    version[0] = "unsupported-build";
+                    report.put("unknown_video_build_disabled", videos.additionalMimeTypes(view).length == 0);
+                    version[0] = InstagramGalleryContract.VERSION;
+                    set(owner, "A14", null);
+                    report.put("missing_video_sender_disabled", videos.additionalMimeTypes(view).length == 0);
+                    set(owner, "A14", gallerySender);
+                    // Construct the real native gallery item only. Never invoke the sender.
+                    // File IO and metadata extraction run outside this Main callback below.
+                    report.put("gallery_contract_verified", true);
                     key[0]=keyType.getConstructor(String.class,java.util.List.class).newInstance("synthetic-thread-b",null);
                     report.put("same_editor_chat_change_detected", !original.equals(policy.identity(host,view)));
                     set(container,"A0N",null); set(container,"A0O",null);
@@ -102,6 +151,21 @@ public final class NativeInstagramProbe extends Instrumentation {
                     try {report.put("error",cause.toString());java.io.StringWriter trace=new java.io.StringWriter();cause.printStackTrace(new java.io.PrintWriter(trace));report.put("stack",trace.toString());} catch(Exception ignored){}
                 }
             });
+            if (!report.has("error")) {
+                File clip = new File(getTargetContext().getCacheDir(), "native-video-fixture.mp4");
+                try (InstagramVideoFile video = InstagramVideoFile.prepare(getTargetContext(), android.net.Uri.fromFile(clip))) {
+                    runOnMainSync(() -> {
+                        try {
+                            ClassLoader loader = host.createPackageContext("com.instagram.android", Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY).getClassLoader();
+                            Object selected = InstagramGalleryContract.load(loader).selectedVideo(video);
+                            Object medium = selected.getClass().getField("A00").get(selected);
+                            report.put("native_gallery_item_is_video", medium.getClass().getMethod("Eeo").invoke(medium));
+                            report.put("native_gallery_duration_matches", medium.getClass().getMethod("getDuration").invoke(medium).equals(video.durationMs));
+                            report.put("native_gallery_dimensions_match", medium.getClass().getField("A0D").getInt(medium) == video.width && medium.getClass().getField("A05").getInt(medium) == video.height);
+                        } catch (Exception error) { try { report.put("error", error.toString()); } catch (Exception ignored) { } }
+                    });
+                } finally { clip.delete(); }
+            }
             host.finish(); Files.write(new File(getTargetContext().getFilesDir(),"native-report.json").toPath(),report.toString(2).getBytes());
             result.putString("report",report.toString());finish(report.has("error")?Activity.RESULT_CANCELED:Activity.RESULT_OK,result);
         }catch(Throwable error){result.putString("error",error.toString());finish(Activity.RESULT_CANCELED,result);}

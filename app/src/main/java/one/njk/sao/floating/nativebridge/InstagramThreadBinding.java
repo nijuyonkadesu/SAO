@@ -126,14 +126,18 @@ final class InstagramThreadBinding {
         }
         return result;
     }
-    String identity(EditText view) {
+    Object controller(EditText view) {
         Object current = owner.get(); if (current == null) return null;
-        Parcel parcel = Parcel.obtain();
         try {
             Object container = containerField.get(current); if (container == null) return null;
-            boolean owns = false;
-            for (Field field : editorFields) if (field.get(container) == view) owns = true;
-            if (!owns) return null;
+            for (Field field : editorFields) if (field.get(container) == view) return current;
+        } catch (ReflectiveOperationException | RuntimeException ignored) { }
+        return null;
+    }
+    String identity(EditText view) {
+        Object current = controller(view); if (current == null) return null;
+        Parcel parcel = Parcel.obtain();
+        try {
             Object key = keyReader.invoke(null, current);
             if (key == null || key.getClass() != keyType || !(key instanceof Parcelable)) return null;
             ((Parcelable) key).writeToParcel(parcel, 0);

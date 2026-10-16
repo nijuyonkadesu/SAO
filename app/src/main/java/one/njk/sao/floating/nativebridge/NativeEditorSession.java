@@ -25,6 +25,7 @@ final class NativeEditorSession {
     private String identity;
     private String session;
     private String[] mimeTypes = new String[0];
+    private String[] baseMimeTypes = new String[0];
     private long created;
     private long lastRequest;
     private String status = "waiting_editor";
@@ -37,7 +38,7 @@ final class NativeEditorSession {
     }
     boolean owns(EditText view) { return editor.get() == view; }
     void clear() {
-        input = null; receiveContent = false; session = null; identity = null; mimeTypes = new String[0];
+        input = null; receiveContent = false; session = null; identity = null; mimeTypes = new String[0]; baseMimeTypes = new String[0];
         editor.clear(); activity.clear(); status = "waiting_editor";
     }
     void captureView(Activity current, EditText view) {
@@ -51,6 +52,8 @@ final class NativeEditorSession {
         capture(current, view, connection, receiver ? types : policy.mimeTypes(info), receiver);
     }
     private void capture(Activity current, EditText view, InputConnection connection, String[] types, boolean receiver) {
+        String[] base = types;
+        types = combinedTypes(types, policy.additionalMimeTypes(view));
         String nextIdentity = policy.isComposer(view) ? policy.identity(current, view) : null;
         if ((!receiver && connection == null) || !policy.isComposer(view) || types.length == 0) { clear(); status = "unsupported_mime"; return; }
         // Retain the naturally created wrapper while the host finishes loading its metadata.
@@ -58,13 +61,15 @@ final class NativeEditorSession {
         // still clears the wrapper and cannot reuse an old conversation selection.
         if (activity.get() != current || editor.get() != view || nextIdentity == null || !nextIdentity.equals(identity) || !Arrays.equals(types, mimeTypes) || receiveContent != receiver) session = null;
         activity = new WeakReference<>(current); editor = new WeakReference<>(view);
-        input = connection; receiveContent = receiver; identity = nextIdentity; mimeTypes = types.clone();
+        input = connection; receiveContent = receiver; identity = nextIdentity; baseMimeTypes = base.clone(); mimeTypes = types.clone();
     }
     Bundle snapshot(Activity current, boolean resumed) {
         Bundle state = new Bundle();
         EditText view = editor.get();
         if (input == null && !receiveContent) { state.putString("status", status); return state; }
         if (!sameEditor(current, view)) { clear(); state.putString("status", status); return state; }
+        String[] supported = combinedTypes(baseMimeTypes, policy.additionalMimeTypes(view));
+        if (!Arrays.equals(supported, mimeTypes)) { mimeTypes = supported; session = null; }
         String actual = policy.identity(current, view);
         boolean ready = resumed && (view.hasFocus() || receiveContent) && current.hasWindowFocus();
         if (identity == null) {
@@ -89,7 +94,7 @@ final class NativeEditorSession {
     }
     private boolean sameEditor(Activity current, EditText view) {
         return current != null && activity.get() == current && view != null && view.isAttachedToWindow() && view.isShown() && (input != null || receiveContent) && view.isEnabled() &&
-            view.getRootView() == current.getWindow().getDecorView().getRootView() && policy.isComposer(view) && (!receiveContent || Arrays.equals(mimeTypes, policy.viewMimeTypes(view)));
+            view.getRootView() == current.getWindow().getDecorView().getRootView() && policy.isComposer(view) && (!receiveContent || Arrays.equals(baseMimeTypes, policy.viewMimeTypes(view)));
     }
     private boolean validEditor(Activity current, EditText view) {
         if (!sameEditor(current, view) || identity == null) return false;
@@ -97,16 +102,29 @@ final class NativeEditorSession {
         return actual != null && actual.equals(identity);
     }
     boolean insert(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId) {
+        return insert(current, resumed, uri, mimeType, expected, requestId,
+            (view, connection) -> policy.insertContent(view, connection, uri, mimeType));
+    }
+    boolean accepts(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId) {
         if (uri == null || !"content".equals(uri.getScheme()) || !authority.equals(uri.getAuthority()) ||
             !Arrays.asList(mimeTypes).contains(mimeType)) return false;
         EditText view = editor.get();
         if (!validEditor(current, view)) { clear(); return false; }
         if (!resumed || !current.hasWindowFocus() || (!view.hasFocus() && !receiveContent) || expected == null || !expected.equals(session) ||
             requestId <= lastRequest || clock.getAsLong() - created > MAX_AGE_MS) return false;
+        return Arrays.asList(combinedTypes(baseMimeTypes, policy.additionalMimeTypes(view))).contains(mimeType);
+    }
+    boolean insert(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId, PreparedNativeContent content) {
+        if (!accepts(current, resumed, uri, mimeType, expected, requestId)) return false;
         lastRequest = requestId;
         session = null; // Consume before dispatch; a false/unknown host result must never be replayed.
         // SAO grants URI access explicitly. The policy chooses the host's existing IME
         // wrapper or its verified native receive-content view; there is no fabricated token.
-        return policy.insertContent(view, input, uri, mimeType);
+        return content.insert(editor.get(), input);
+    }
+    private static String[] combinedTypes(String[] base, String[] extra) {
+        java.util.LinkedHashSet<String> result = new java.util.LinkedHashSet<>(Arrays.asList(base));
+        result.addAll(Arrays.asList(extra));
+        return result.toArray(new String[0]);
     }
 }

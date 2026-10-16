@@ -1,6 +1,7 @@
 package one.njk.sao.floating.nativebridge;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.ClipDescription;
 import android.net.Uri;
 import android.view.inputmethod.InputConnection;
@@ -13,6 +14,10 @@ interface ComposerPolicy {
     boolean isComposer(EditText view);
     String identity(Activity activity, EditText view);
     String[] mimeTypes(EditorInfo info);
+    default String[] additionalMimeTypes(EditText view) { return new String[0]; }
+    default PreparedNativeContent prepareContent(Context context, Uri uri, String mimeType) throws Exception {
+        return (view, input) -> insertContent(view, input, uri, mimeType);
+    }
     // A verified native receive-content view can remain usable after its IME closes.
     default String[] viewMimeTypes(EditText view) { return new String[0]; }
     default boolean insertContent(EditText view, InputConnection input, Uri uri, String mimeType) {

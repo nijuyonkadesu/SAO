@@ -23,6 +23,7 @@ import one.njk.sao.R
 
 @androidx.annotation.OptIn(UnstableApi::class)
 class VideoDeviceTest {
+    @get:org.junit.Rule val marquees = PickerMarqueeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app = instrumentation.targetContext
     private val access get() = EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java)
@@ -78,6 +79,57 @@ class VideoDeviceTest {
             try { MediaExports(app, source).prepare(item, kind); fail("Video was flattened into a sticker") }
             catch (_: IllegalArgumentException) { }
         }
+    }
+    @Test fun instagramPasteUsesVideoCapabilityAndOriginalBytesWithoutARecipientPicker() = runBlocking {
+        val registry = one.njk.sao.floating.nativebridge.NativeBridgeRegistry
+        val beforeActive = FloatingSession.active.value
+        val preferences = FloatingPreferences(app); val before = preferences.current()
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        try {
+            FloatingSession.active(true); preferences.pasteAssistance(false)
+            for (videoEnabled in listOf(false, true)) {
+                registry.register("com.instagram.android", object : one.njk.sao.floating.nativebridge.INativeStickerClient.Stub() {
+                    override fun setActive(active: Boolean, generation: Long) = Unit
+                    override fun snapshot(beginSelection: Boolean) = android.os.Bundle().apply {
+                        putString("session", "video-ui"); putLong("created", SystemClock.elapsedRealtime())
+                        putStringArray("mime_types", if (videoEnabled) arrayOf("image/jpeg", "video/mp4") else arrayOf("image/jpeg"))
+                        putBoolean("resumed", true)
+                    }
+                    override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Boolean {
+                        assertEquals("video/mp4", mimeType)
+                        assertArrayEquals(bytes, app.contentResolver.openInputStream(uri)!!.use { it.readBytes() })
+                        calls.incrementAndGet(); return true
+                    }
+                })
+                ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, "com.instagram.android", null, "video-ui")).use { scenario ->
+                    await(scenario, "The centered video must expose exactly the host's supported action") {
+                        holder(it)?.item?.isVideo == true &&
+                            registry.supports("com.instagram.android", "video-ui", "image/jpeg") &&
+                            it.findViewById<View>(R.id.paste_action).isEnabled == videoEnabled
+                    }
+                    scenario.onActivity {
+                        assertFalse(it.findViewById<View>(R.id.sticker_action).isEnabled)
+                        assertEquals(0, calls.get())
+                        assertNull(ViewModelProvider(it)[PickerViewModel::class.java].selection.value)
+                    }
+                    if (videoEnabled) {
+                        await(scenario, "Native-video guidance must describe the direct send") {
+                            it.findViewById<android.widget.TextView>(R.id.capability_hint).text.contains("video directly")
+                        }
+                        if (InstrumentationRegistry.getArguments().containsKey("dockShots")) {
+                            SystemClock.sleep(800)
+                            val bitmap = instrumentation.uiAutomation.takeScreenshot()
+                            java.io.File(app.filesDir, "instagram-video-paste.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                            bitmap.recycle()
+                        }
+                        scenario.onActivity { it.findViewById<View>(R.id.paste_action).performClick() }
+                        kotlinx.coroutines.withTimeout(5_000) { while (calls.get() == 0) kotlinx.coroutines.delay(20) }
+                        assertEquals(1, calls.get())
+                    }
+                }
+                registry.clear()
+            }
+        } finally { registry.clear(); FloatingSession.active(beforeActive); preferences.pasteAssistance(before.pasteAssistance) }
     }
     @Test fun focusedVideoLoopsMutedAndReleasesWhenHiddenStoppedOrBrowsedAway(): Unit = runBlocking {
         val prefs = FloatingPreferences(app); val preferred = prefs.current().preferStickers; prefs.preferStickers(true)

@@ -1,6 +1,7 @@
 package one.njk.sao.floating.nativebridge;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.ClipDescription;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
@@ -11,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.function.Supplier;
 
 /** Evidence from Instagram 451: keyboard images enter the DM handler; GIF is rejected. */
 final class InstagramComposerPolicy implements ComposerPolicy {
@@ -24,11 +26,21 @@ final class InstagramComposerPolicy implements ComposerPolicy {
     }
     private final Class<?> composerType;
     private final Class<?> keyType;
+    private volatile InstagramGalleryContract gallery;
+    private final Supplier<String> version;
     private final Map<EditText, Binding> bindings = new WeakHashMap<>();
 
     InstagramComposerPolicy(ClassLoader loader) throws ClassNotFoundException {
+        this(loader, () -> "");
+    }
+    InstagramComposerPolicy(ClassLoader loader, Supplier<String> version) throws ClassNotFoundException {
+        this(loader, version, Runnable::run);
+    }
+    InstagramComposerPolicy(ClassLoader loader, Supplier<String> version, java.util.concurrent.Executor io) throws ClassNotFoundException {
         composerType = Class.forName("com.instagram.ui.widget.textview.ComposerAutoCompleteTextView", false, loader);
         keyType = Class.forName("com.instagram.model.direct.DirectThreadKey", false, loader);
+        this.version = version;
+        io.execute(() -> gallery = InstagramGalleryContract.load(loader));
     }
     @Override public boolean isComposer(EditText view) {
         if (!composerType.isInstance(view)) return false;
@@ -104,5 +116,41 @@ final class InstagramComposerPolicy implements ComposerPolicy {
         }
         // Explicitly exclude GIF/video, even if a future/broad editor declaration includes them.
         return result.toArray(new String[0]);
+    }
+    private Object videoSender(EditText view) {
+        if (gallery == null || !InstagramGalleryContract.VERSION.equals(version.get())) return null;
+        Binding binding = bindings.get(view);
+        return binding == null || binding.thread == null || !gallery.acceptsMedia(binding.listener.get()) ? null : gallery.sender(binding.thread.controller(view));
+    }
+    @Override public String[] additionalMimeTypes(EditText view) {
+        return videoSender(view) == null ? new String[0] : new String[]{"video/mp4"};
+    }
+    @Override public PreparedNativeContent prepareContent(Context context, android.net.Uri uri, String mimeType) throws Exception {
+        if (!"video/mp4".equals(mimeType)) return ComposerPolicy.super.prepareContent(context, uri, mimeType);
+        if (gallery == null || !InstagramGalleryContract.VERSION.equals(version.get())) return null;
+        InstagramVideoFile video = InstagramVideoFile.prepare(context, uri);
+        return new PreparedNativeContent() {
+            @Override public boolean insert(EditText view, android.view.inputmethod.InputConnection input) {
+                Object sender = videoSender(view);
+                if (sender == null) return false;
+                Binding originalBinding = bindings.get(view);
+                String originalIdentity = identity(null, view);
+                WeakReference<EditText> originalEditor = new WeakReference<>(view);
+                if (originalBinding == null || originalIdentity == null) return false;
+                try {
+                    // Once dispatch begins, a false/unknown result is never retried or cleaned
+                    // out from under an upload which the host may already have scheduled.
+                    video.submitted();
+                    Object selected = gallery.selectedVideo(video);
+                    gallery.send(sender, selected, () -> {
+                        EditText current = originalEditor.get();
+                        return current != null && current.isAttachedToWindow() && current.isShown() &&
+                            bindings.get(current) == originalBinding && originalIdentity.equals(identity(null, current)) && videoSender(current) == sender;
+                    });
+                    return true;
+                } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { return false; }
+            }
+            @Override public void close() { video.close(); }
+        };
     }
 }

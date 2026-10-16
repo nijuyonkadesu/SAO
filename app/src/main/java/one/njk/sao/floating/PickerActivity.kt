@@ -424,7 +424,7 @@ class PickerActivity : AppCompatActivity() {
         return getString(R.string.picker_native_diagnostic, status?.version.orEmpty().ifEmpty { "—" }, reason)
     }
     private fun nativePasteRendition(item: MediaItem?): Rendition? {
-        if (item == null || item.isVideo) return null
+        if (item == null || item.isVideo && target != MessagingTarget.INSTAGRAM) return null
         if (target.isWhatsapp && options.preferStickers && !item.hasMotion &&
             NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")) return Rendition.STICKER_WEBP
         val mime = if (item.hasMotion) item.mimeType else "image/jpeg"
@@ -444,7 +444,7 @@ class PickerActivity : AppCompatActivity() {
         binding.copyAction.isEnabled = item != null && !busy
         val nativeRendition = nativePasteRendition(item)
         val nativePaste = nativeRendition != null
-        val nativePhoto = nativePaste && target == MessagingTarget.INSTAGRAM
+        val nativePhoto = nativePaste && target == MessagingTarget.INSTAGRAM && item?.isVideo != true
         binding.pasteAction.isEnabled = !busy && (nativePaste || item != null &&
             DeliveryPolicy.supportsPaste(item, target) && target != MessagingTarget.OTHER &&
             FloatingSession.active.value && options.pasteAssistance && pasteAnchor != null && PasteAssistService.connected())
@@ -459,6 +459,7 @@ class PickerActivity : AppCompatActivity() {
         })
         if (binding.mediaAction.text.toString() != mediaLabel) binding.mediaAction.text = mediaLabel
         val hint = when {
+            nativePaste && target == MessagingTarget.INSTAGRAM && item?.isVideo == true -> getString(R.string.picker_instagram_native_video_hint)
             nativePhoto -> getString(R.string.picker_instagram_native_hint)
             target.isWhatsapp && nativeRendition == Rendition.STICKER_WEBP -> getString(R.string.picker_whatsapp_native_paste_hint)
             nativePaste -> getString(R.string.picker_native_image_hint)
@@ -671,6 +672,7 @@ class PickerActivity : AppCompatActivity() {
             val accepted = NativeBridgeRegistry.insert(context, pkg, media.uri, mime, session)
             Toast.makeText(context, when {
                 !accepted -> R.string.floating_native_rejected
+                instagram && item.isVideo -> R.string.picker_instagram_native_video_accepted
                 instagram -> R.string.picker_instagram_native_accepted
                 discord -> R.string.picker_discord_native_accepted
                 rendition == Rendition.STICKER_WEBP -> R.string.floating_native_accepted

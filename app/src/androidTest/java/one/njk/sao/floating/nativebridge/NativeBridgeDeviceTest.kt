@@ -311,6 +311,59 @@ class NativeBridgeDeviceTest {
             }
         } finally { preferences.preferStickers(before.preferStickers); preferences.pasteAssistance(before.pasteAssistance) }
     }
+    @Test fun preparedVideoRechecksChatCapabilitiesAndOneUseDispatch() {
+        withHost { activity, editor ->
+            var videoAvailable = true
+            val policy = object : Policy() {
+                override fun additionalMimeTypes(view: EditText) = if (videoAvailable) arrayOf("video/mp4") else emptyArray()
+            }
+            val session = NativeEditorSession(policy, app.packageName)
+            val info = EditorInfo().apply { contentMimeTypes = arrayOf("image/jpeg") }
+            val input = Recorder(editor)
+            val uri = Uri.parse("content://${app.packageName}.fileprovider/floating_exports/clip.mp4")
+            session.capture(activity, editor, input, info)
+            val original = session.snapshot(activity, true).getString("session")!!
+            assertTrue(session.accepts(activity, true, uri, "video/mp4", original, 1))
+            policy.identity = "another-chat" // Changed while video preparation was running on IO.
+            var calls = 0
+            val prepared = PreparedNativeContent { _, _ -> calls++; false }
+            assertFalse(session.insert(activity, true, uri, "video/mp4", original, 1, prepared))
+            assertEquals(0, calls)
+            session.capture(activity, editor, input, info)
+            val next = session.snapshot(activity, true).getString("session")!!
+            videoAvailable = false
+            assertFalse(session.insert(activity, true, uri, "video/mp4", next, 2, prepared))
+            assertEquals(0, calls)
+            videoAvailable = true
+            assertFalse(session.insert(activity, true, uri, "video/mp4", next, 3, prepared))
+            assertEquals(1, calls)
+            assertFalse(session.insert(activity, true, uri, "video/mp4", next, 4, prepared))
+            assertEquals("An unknown native result must never replay a video", 1, calls)
+            assertEquals("Gallery video must bypass keyboard-image commitContent", 0, input.calls)
+        }
+    }
+    @Test fun lateVideoCapabilityRefreshesTheLeaseWithoutAnotherKeyboardConnection() {
+        withHost { activity, editor ->
+            var available = false
+            val policy = object : Policy() {
+                override fun additionalMimeTypes(view: EditText) = if (available) arrayOf("video/mp4") else emptyArray()
+            }
+            val input = Recorder(editor)
+            val session = NativeEditorSession(policy, app.packageName)
+            session.capture(activity, editor, input, EditorInfo().apply { contentMimeTypes = arrayOf("image/jpeg") })
+            val old = session.snapshot(activity, true).getString("session")!!
+            available = true // Gallery contract finished loading on the host IO worker.
+            val state = session.snapshot(activity, true)
+            val next = state.getString("session")!!
+            assertNotEquals(old, next)
+            assertArrayEquals(arrayOf("image/jpeg", "video/mp4"), state.getStringArray("mime_types"))
+            val uri = Uri.parse("content://${app.packageName}.fileprovider/floating_exports/clip.mp4")
+            val prepared = PreparedNativeContent { _, connection -> assertSame(input, connection); true }
+            assertFalse(session.insert(activity, true, uri, "video/mp4", old, 1, prepared))
+            assertTrue(session.insert(activity, true, uri, "video/mp4", next, 2, prepared))
+            assertEquals(0, input.calls)
+        }
+    }
     @Test fun discordNativeGifStagesDraftOnceWithoutAccessibility() = runBlocking {
         val preferences = FloatingPreferences(app); val before = preferences.current()
         try {
