@@ -160,6 +160,66 @@ class FloatingDeviceTest {
         }
     }
 
+    @Test fun searchSelectsTheWholeQueryAndLuckyHasContrastInBothThemes() = runBlocking {
+        val access = dagger.hilt.EntryPoints.get(app.applicationContext, FloatingTestAccess::class.java)
+        val previousSource = access.sources().current()
+        val previousNightMode = androidx.appcompat.app.AppCompatDelegate.getDefaultNightMode()
+        try {
+            access.sources().select(null)
+            for ((label, mode) in listOf("light" to androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO,
+                "dark" to androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES)) {
+                instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(mode) }
+                ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
+                    scenario.onActivity { activity ->
+                        activity.findViewById<android.view.View>(R.id.search_toggle).performClick()
+                        activity.findViewById<android.widget.EditText>(R.id.search).apply {
+                            setText("happy 😂")
+                            onEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH)
+                        }
+                    }
+                    var ready = false
+                    val deadline = SystemClock.elapsedRealtime() + 5_000
+                    while (!ready && SystemClock.elapsedRealtime() < deadline) {
+                        scenario.onActivity { activity ->
+                            ready = !activity.findViewById<android.view.View>(R.id.search_field).isShown &&
+                                activity.findViewById<com.google.android.material.chip.Chip>(R.id.search_lucky).isEnabled
+                        }
+                        SystemClock.sleep(40)
+                    }
+                    assertTrue(ready)
+                    scenario.onActivity { it.findViewById<android.view.View>(R.id.search_toggle).performClick() }
+                    SystemClock.sleep(600) // Also check selection after the IME opens.
+                    scenario.onActivity { activity ->
+                        val search = activity.findViewById<android.widget.EditText>(R.id.search)
+                        assertTrue(search.hasFocus())
+                        assertEquals(0, search.selectionStart)
+                        assertEquals(search.text.length, search.selectionEnd)
+                        val lucky = activity.findViewById<com.google.android.material.chip.Chip>(R.id.search_lucky)
+                        assertTrue("Lucky must be visible in $label mode", lucky.isShown)
+                        val tint = lucky.chipIconTint!!.getColorForState(lucky.drawableState, Color.TRANSPARENT)
+                        val surface = com.google.android.material.color.MaterialColors.getColor(lucky,
+                            com.google.android.material.R.attr.colorSurfaceContainerLow)
+                        assertTrue("Lucky's icon needs 3:1 contrast in $label mode",
+                            androidx.core.graphics.ColorUtils.calculateContrast(tint, surface) >= 3.0)
+                    }
+                    if (InstrumentationRegistry.getArguments().containsKey("dockShots")) {
+                        SystemClock.sleep(1_000) // Let the async preview and keyboard finish presenting.
+                        val bitmap = instrumentation.uiAutomation.takeScreenshot()
+                        java.io.File(app.filesDir, "search-selected-$label.png").outputStream().use {
+                            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                        }
+                        bitmap.recycle()
+                    }
+                    instrumentation.sendStringSync("love")
+                    scenario.onActivity { assertEquals("love", it.findViewById<android.widget.EditText>(R.id.search).text.toString()) }
+                }
+            }
+        } finally {
+            instrumentation.runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(previousNightMode) }
+            access.sources().restore(previousSource); access.browseSession().reset()
+        }
+    }
+
     @Test fun userStartedBubbleHidesForThePickerAndStopsOnHold() {
         fun shell(command: String) {
             instrumentation.uiAutomation.executeShellCommand(command).use { descriptor ->

@@ -106,9 +106,13 @@ class FloatingSettingsDeviceTest {
                         ready = activity.findViewById<Chip>(R.id.auto_hide)?.let { !it.isChecked && it.text == activity.getString(R.string.disabled) } == true
                         assertNotNull(activity.findViewById<View>(R.id.nsfw_toggle))
                         assertNotNull(activity.findViewById<View>(R.id.overlay_permission))
+                        assertEquals(activity.getString(R.string.floating_settings_accessibility_description),
+                            activity.findViewById<TextView>(R.id.accessibility_description).text.toString())
                     }
                     ready
                 }
+                onView(withId(R.id.accessibility_description)).perform(scrollTo())
+                if (InstrumentationRegistry.getArguments().containsKey("dockShots")) screenshot("inline-settings-accessibility.png")
                 onView(withId(R.id.auto_hide)).perform(scrollTo(), click())
                 await("Inline dim toggle must persist") { runBlocking { preferences.current().autoHide } }
                 onView(withId(R.id.delay_five)).perform(scrollTo(), click())

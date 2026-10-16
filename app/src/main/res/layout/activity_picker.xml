@@ -36,7 +36,7 @@
                 <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center_vertical">
                 <com.google.android.material.chip.Chip android:id="@+id/query_mode" style="@style/Widget.Material3.Chip.Assist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/search_mode_context" />
                 <com.google.android.material.chip.Chip android:id="@+id/search_filters" style="@style/Widget.Material3.Chip.Assist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="@string/search_filters" />
-                <com.google.android.material.chip.Chip android:id="@+id/search_lucky" style="@style/Widget.Material3.Chip.Assist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="@string/search_lucky_short" android:contentDescription="@string/search_lucky" app:chipIcon="@drawable/ic_picker_shuffle" app:chipIconVisible="true" />
+                <com.google.android.material.chip.Chip android:id="@+id/search_lucky" style="@style/Widget.Material3.Chip.Assist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="@string/search_lucky_short" android:contentDescription="@string/search_lucky" app:chipIcon="@drawable/ic_picker_shuffle" app:chipIconTint="@color/picker_assist_icon_tint" app:chipIconVisible="true" />
                 <com.google.android.material.button.MaterialButton android:id="@+id/clear_search_filters" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="48dp" android:minWidth="0dp" android:text="@string/search_reset" android:visibility="gone" />
             </LinearLayout>
             </HorizontalScrollView>
@@ -66,11 +66,12 @@
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingVertical="8dp">
                     <TextView android:id="@+id/selection_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:lines="1" android:singleLine="true" android:ellipsize="marquee" android:marqueeRepeatLimit="marquee_forever" android:text="@string/picker_choose" android:textAppearance="?attr/textAppearanceBodyMedium" />
                     <TextView android:id="@+id/selection_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:lines="1" android:singleLine="true" android:ellipsize="marquee" android:marqueeRepeatLimit="marquee_forever" android:accessibilityLiveRegion="polite" android:textAppearance="?attr/textAppearanceLabelMedium" />
+                    <TextView android:id="@+id/capability_hint" android:layout_width="match_parent" android:layout_height="wrap_content" android:lines="1" android:singleLine="true" android:ellipsize="marquee" android:marqueeRepeatLimit="marquee_forever" android:textAppearance="?attr/textAppearanceLabelSmall" android:textColor="?attr/colorOnSurfaceVariant" android:accessibilityLiveRegion="polite" />
                 </LinearLayout>
                 <com.google.android.material.chip.Chip android:id="@+id/prefer_stickers" style="@style/Widget.Material3.Chip.Filter"
                     android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/picker_sticker" android:contentDescription="@string/floating_prefer_stickers" />
             </LinearLayout>
-            <com.google.android.material.dockedtoolbar.DockedToolbarLayout android:id="@+id/dock_surface" style="@style/Widget.Material3.DockedToolbar" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="0dp" android:paddingEnd="0dp" android:fitsSystemWindows="false" app:paddingTopSystemWindowInsets="false" app:paddingBottomSystemWindowInsets="false">
+            <com.google.android.material.dockedtoolbar.DockedToolbarLayout android:id="@+id/dock_surface" style="@style/Widget.Material3.DockedToolbar" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingStart="0dp" android:paddingEnd="0dp" android:fitsSystemWindows="false" app:backgroundTint="@android:color/transparent" app:paddingTopSystemWindowInsets="false" app:paddingBottomSystemWindowInsets="false">
             <LinearLayout android:id="@+id/action_dock" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
                 <com.google.android.material.card.MaterialCardView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" app:cardCornerRadius="28dp" app:cardBackgroundColor="?attr/colorSecondaryContainer" app:strokeWidth="0dp" app:cardElevation="0dp">
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
@@ -84,7 +85,6 @@
                 </LinearLayout>
             </LinearLayout>
             </com.google.android.material.dockedtoolbar.DockedToolbarLayout>
-            <TextView android:id="@+id/capability_hint" android:layout_width="match_parent" android:layout_height="wrap_content" android:lines="1" android:singleLine="true" android:ellipsize="marquee" android:marqueeRepeatLimit="marquee_forever" android:textAppearance="?attr/textAppearanceLabelSmall" android:accessibilityLiveRegion="polite" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 </FrameLayout>

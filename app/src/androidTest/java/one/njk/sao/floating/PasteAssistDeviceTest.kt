@@ -253,7 +253,6 @@ class PasteAssistDeviceTest {
                 // A running marquee is deliberately not idle; dispatch on Main without waiting for it.
                 fun onPicker(action: (PickerActivity) -> Unit) = scenario.onMainActivity(action)
                 try {
-                    onPicker { marquees.animate(it) }
                     fun text(id: Int): String {
                         var value = ""; onPicker { value = it.findViewById<android.widget.TextView>(id).text.toString() }; return value
                     }
@@ -316,9 +315,27 @@ class PasteAssistDeviceTest {
                     assertEquals("Copy status must not move the carousel or dock", empty, copied)
                     assertEquals("An appearing tip must not move the carousel or dock", empty, motion)
                     assertEquals(1, searches.size); assertEquals("amazing", searches.single().getString("query"))
+                    onPicker { activity ->
+                        val title = activity.findViewById<View>(one.njk.sao.R.id.selection_title)
+                        val hint = activity.findViewById<View>(one.njk.sao.R.id.capability_hint)
+                        val dock = activity.findViewById<View>(one.njk.sao.R.id.dock_surface)
+                        assertSame("The tip belongs below the title", title.parent, hint.parent)
+                        assertTrue(title.bottom <= hint.top)
+                        val background = dock.background as com.google.android.material.shape.MaterialShapeDrawable
+                        assertEquals("The toolbar must not tint the panel behind the buttons", 0,
+                            android.graphics.Color.alpha(background.fillColor!!.defaultColor))
+                        marquees.animate(activity)
+                    }
                     val titleBefore = pixels(one.njk.sao.R.id.selection_title)
                     val tipBefore = pixels(one.njk.sao.R.id.capability_hint)
-                    SystemClock.sleep(1800)
+                    SystemClock.sleep(1_000)
+                    val titlePaused = pixels(one.njk.sao.R.id.selection_title)
+                    val tipPaused = pixels(one.njk.sao.R.id.capability_hint)
+                    try {
+                        assertTrue("The title must stay still for a reading pause", titleBefore.sameAs(titlePaused))
+                        assertTrue("The tip must stay still for a reading pause", tipBefore.sameAs(tipPaused))
+                    } finally { titlePaused.recycle(); tipPaused.recycle() }
+                    SystemClock.sleep(1_000)
                     screenshot("scrolling")
                     val titleAfter = pixels(one.njk.sao.R.id.selection_title)
                     val tipAfter = pixels(one.njk.sao.R.id.capability_hint)

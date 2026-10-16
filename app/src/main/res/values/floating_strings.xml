@@ -10,6 +10,7 @@
     <string name="floating_settings_sample_pack_description">Add SAO’s fixed sample pack to WhatsApp’s sticker menu.</string>
     <string name="floating_settings_permissions">Permissions</string>
     <string name="floating_settings_accessibility">Accessibility access</string>
+    <string name="floating_settings_accessibility_description">In Android Accessibility settings, find “Paste assistance” and turn it on.</string>
     <string name="floating_settings_native">Native insertion</string>
     <string name="floating_open_picker">Open SAO picker</string>
     <string name="floating_start">Show floating icon</string>
@@ -24,7 +25,7 @@
     <string name="floating_paste_assistance">Paste assistance</string>
     <string name="floating_paste_description">Optionally request Paste in your messaging app after a selection. You stay in control of sending.</string>
     <string name="floating_accessibility_settings">Enable Paste assistance</string>
-    <string name="floating_accessibility_description">SAO requests Paste only after you choose Insert in the floating picker. It does not read conversation text or press Send.</string>
+    <string name="floating_accessibility_description">SAO requests Paste only after you choose Paste in the floating picker. It does not read conversation text or press Send.</string>
     <string name="floating_permission_granted">Granted</string>
     <string name="floating_permission_not_granted">Not granted</string>
     <string name="floating_running">Floating icon is active</string>

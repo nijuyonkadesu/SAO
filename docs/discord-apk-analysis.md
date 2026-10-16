@@ -91,6 +91,18 @@ result path or reliable current-channel capture plus the targeted share route. N
 has been implemented or validated in an authenticated client. The API-102 SAO bridge now also scopes Discord for native PNG/JPEG/GIF
 draft insertion. Native video insertion remains unimplemented.
 
+## Native stickers (2026-10-16)
+
+Discord's message API sends stickers using existing `sticker_ids`; a file attachment is a
+separate field. Those IDs can refer to custom server stickers as well as Discord's standard
+stickers. Custom server stickers must first be uploaded into Discord, and using them in DMs
+requires Nitro. Pasting a local PNG/WebP/GIF through the clipboard or native receive-content
+handler stages an attachment; it does not register or send a native sticker. SAO therefore
+keeps its Sticker action disabled for Discord, including with Vector enabled.
+
+References: [Create Message](https://docs.discord.com/developers/resources/message#create-message),
+[Custom Stickers FAQ](https://support.discord.com/hc/en-us/articles/4403089981975-Custom-Stickers-FAQ).
+
 References: [Google Play](https://play.google.com/store/apps/details?id=com.discord),
 [Android receive-content API](https://developer.android.com/develop/ui/views/receive-rich-content),
 [Android image-keyboard API](https://developer.android.com/develop/ui/views/touch-and-input/image-keyboard),

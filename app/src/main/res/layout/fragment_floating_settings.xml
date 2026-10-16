@@ -395,6 +395,12 @@
                 android:layout_height="wrap_content"
                 android:checkable="false" />
         </LinearLayout>
+        <TextView
+            android:id="@+id/accessibility_description"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/floating_settings_accessibility_description"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
     </LinearLayout>
     <com.google.android.material.divider.MaterialDivider
         android:layout_width="match_parent"

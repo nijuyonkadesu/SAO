@@ -48,6 +48,7 @@ class PickerActivity : AppCompatActivity() {
     private lateinit var sourceGesture: HoldDragSelector<SourceGestureChoice>
     private var imeHeight = 0
     private lateinit var binding: ActivityPickerBinding
+    private lateinit var dockMarquees: PickerMarquees
     private lateinit var resultsCarousel: PickerCarousel
     private lateinit var sequenceCarousel: PickerCarousel
     private val carousel get() = if (renderedSequence == null) resultsCarousel else sequenceCarousel
@@ -81,6 +82,7 @@ class PickerActivity : AppCompatActivity() {
         readContext()
         binding = ActivityPickerBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        dockMarquees = PickerMarquees(lifecycleScope, binding.selectionTitle, binding.selectionStatus, binding.capabilityHint)
         window.setLayout(-1, -1)
         metrics = windowManager.maximumWindowMetrics
         binding.root.setOnClickListener { finish() }
@@ -287,6 +289,7 @@ class PickerActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         dockMarquee(true)
+        binding.root.post { dockMarquees.refresh() }
         model.pickerVisible(!isFinishing)
         refreshCapability()
         updatePlayback()
@@ -314,9 +317,7 @@ class PickerActivity : AppCompatActivity() {
         super.onConfigurationChanged(newConfig); metrics = windowManager.maximumWindowMetrics; resize(0)
     }
     private fun recordFocus() = carousel.recordFocus()
-    private fun dockMarquee(active: Boolean) {
-        listOf(binding.selectionTitle, binding.selectionStatus, binding.capabilityHint).forEach { it.isSelected = active }
-    }
+    internal fun dockMarquee(active: Boolean) = dockMarquees.setEnabled(active)
     private fun updateHintVisibility() {
         // Invisible reserves one font-scaled line; only a different UI mode removes the row.
         binding.capabilityHint.visibility = when {
@@ -324,6 +325,7 @@ class PickerActivity : AppCompatActivity() {
             binding.capabilityHint.text.isEmpty() -> View.INVISIBLE
             else -> View.VISIBLE
         }
+        dockMarquees.refresh()
     }
     private fun centerChanged() {
         val mime = carousel.centeredItem?.mimeType
@@ -364,7 +366,7 @@ class PickerActivity : AppCompatActivity() {
         showSource(false); showTargets(false); binding.sourceToggle.isVisible = false
         editing = true; binding.targetLabel.isVisible = false; binding.searchField.isVisible = true
         renderHeader(); resize(imeHeight)
-        binding.search.requestFocus(); binding.search.setSelection(binding.search.text?.length ?: 0)
+        binding.search.requestFocus(); binding.search.selectAll()
         WindowCompat.getInsetsController(window, binding.search).show(WindowInsetsCompat.Type.ime())
     }
     private fun collapseSearch() {
@@ -435,8 +437,8 @@ class PickerActivity : AppCompatActivity() {
         val title = item?.title ?: getString(R.string.picker_choose)
         val status = if (item == null || model.selection.value?.id != item.id || model.copyStatus.value == R.string.picker_choose)
             "" else getString(model.copyStatus.value)
-        if (binding.selectionTitle.text.toString() != title) binding.selectionTitle.text = title
-        if (binding.selectionStatus.text.toString() != status) binding.selectionStatus.text = status
+        dockMarquees.text(binding.selectionTitle, title)
+        dockMarquees.text(binding.selectionStatus, status)
         binding.selectionTitle.contentDescription = title
         binding.selectionStatus.contentDescription = status
         binding.copyAction.isEnabled = item != null && !busy
@@ -475,7 +477,7 @@ class PickerActivity : AppCompatActivity() {
             !binding.pasteAction.isEnabled -> getString(R.string.picker_assist_hint)
             else -> ""
         }
-        if (binding.capabilityHint.text.toString() != hint) binding.capabilityHint.text = hint
+        dockMarquees.text(binding.capabilityHint, hint)
         updateHintVisibility()
         if (target != MessagingTarget.OTHER && binding.targetList.isVisible) showTargets(false)
         updateActionAccessibility()
