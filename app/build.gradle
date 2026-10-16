@@ -54,6 +54,32 @@ java {
     }
 }
 
+// Opt in per development machine, without imposing a Samba path on other contributors.
+def debugApkShareDir = providers.gradleProperty('sao.debugApkShareDir')
+androidComponents {
+    onVariants(selector().withBuildType('debug')) { variant ->
+        if (debugApkShareDir.isPresent()) {
+            def variantTaskName = variant.name.capitalize()
+            def sourceApk = variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.APK.INSTANCE)
+                .map { it.file('app-debug.apk') }
+            def sharedApk = debugApkShareDir.map { new File(it, 'app-debug.apk') }
+            def publishApk = tasks.register("copy${variantTaskName}ApkToShare") {
+                inputs.file(sourceApk)
+                // Track this file only; never traverse or snapshot the rest of the user's share.
+                outputs.file(sharedApk)
+                outputs.upToDateWhen { false }
+                doLast {
+                    java.nio.file.Files.copy(sourceApk.get().asFile.toPath(), sharedApk.get().toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                }
+            }
+            tasks.matching { it.name == "package${variantTaskName}" || it.name == "assemble${variantTaskName}" }.configureEach {
+                finalizedBy(publishApk)
+            }
+        }
+    }
+}
+
 dependencies {
     implementation project(':immich')
     // Supplied by LSPosed in the scoped process; never bundled into ordinary SAO.

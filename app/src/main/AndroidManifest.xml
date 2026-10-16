@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <queries>
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
@@ -55,6 +56,12 @@
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/paste_assistance" />
         </service>
         <service android:name=".floating.nativebridge.NativeBridgeService" android:exported="true" />
+        <receiver android:name=".floating.FloatingRecoveryReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <provider android:name=".floating.SampleStickerProvider" android:authorities="${applicationId}.stickers"
             android:exported="true" android:readPermission="com.whatsapp.sticker.READ" />
         <activity

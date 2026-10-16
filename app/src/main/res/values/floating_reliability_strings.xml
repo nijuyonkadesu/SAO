@@ -1,12 +1,20 @@
 <resources>
     <string name="floating_reliability_title">Background reliability</string>
-    <string name="floating_reliability_description">The icon stays active after removing SAO from Recents. Android can restore it after a system kill. Dismiss or Stop cancels recovery.</string>
+    <string name="floating_reliability_description">Android can restore the icon after a system kill, restart or app update. Enabling Paste assistance in Accessibility also lets SAO restore it when Android reconnects. Dismiss or Stop cancels recovery.</string>
     <string name="floating_battery_optimization">Battery optimization</string>
     <string name="floating_battery_optimized">Optimized</string>
     <string name="floating_battery_exempt">Not optimized</string>
     <string name="floating_battery_checking">Checking…</string>
     <string name="floating_battery_description">Find SAO in battery settings and choose Don’t optimize or Unrestricted.</string>
     <string name="floating_background_settings">Background activity</string>
-    <string name="floating_background_description">Allow background activity and auto-launch where available. On OxygenOS, check Battery usage or App battery management.</string>
+    <string name="floating_background_description">Allow background activity and auto-launch where available. OxygenOS and ColorOS may also require locking SAO in Recents to protect it from Clear all.</string>
     <string name="floating_reliability_limits">Force stop and some manufacturer restrictions prevent automatic recovery until you open SAO again.</string>
+    <string name="floating_exit_detail">Last app exit: %1$s · %2$s</string>
+    <string name="floating_exit_stopped">user or manufacturer stop</string>
+    <string name="floating_exit_memory">low memory</string>
+    <string name="floating_exit_crash">crash</string>
+    <string name="floating_exit_anr">app not responding</string>
+    <string name="floating_exit_signal">process signal</string>
+    <string name="floating_exit_update">app update</string>
+    <string name="floating_exit_other">other system reason</string>
 </resources>

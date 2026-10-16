@@ -23,6 +23,7 @@ import javax.inject.Inject
 class PasteAssistService : AccessibilityService() {
     @Inject lateinit var preferences: FloatingPreferences
     @Inject lateinit var dispatchers: FloatingDispatchers
+    @Inject lateinit var runtime: FloatingRuntime
     private lateinit var scope: CoroutineScope
     private val events = Channel<Unit>(Channel.CONFLATED)
     private val operations = Mutex()
@@ -37,6 +38,11 @@ class PasteAssistService : AccessibilityService() {
     data class Result(val token: String, val packageName: String, val outcome: PasteOutcome)
 
     override fun onServiceConnected() {
+        // Android can reconnect this genuine system-bound service after an OEM clears the
+        // started-service record. Restore once, using durable user intent, not editor events.
+        runtime.restore()
+        if (::scope.isInitialized) scope.cancel()
+        cached = null; lease.set(null); pending?.cancel()
         scope = CoroutineScope(SupervisorJob() + dispatchers.assistance)
         instance = WeakReference(this)
         val enabledEvents = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_VIEW_FOCUSED

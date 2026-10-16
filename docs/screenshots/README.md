@@ -8,7 +8,7 @@ Captured on the Android 15 emulator using bundled samples and a localhost Immich
 
 Opening SAO shows the floating icon automatically once overlay access is granted. The inline “Show icon on app launch” setting is enabled by default; Stop or dismissal ends the current session.
 
-Background reliability shows battery-optimization status and system shortcuts for battery and background access. Android restores the running service after process death; dismissal and Stop cancel recovery.
+Background reliability shows battery status, system settings shortcuts and the last app-exit reason. System reconnect, restart and app-update recovery respect manual dismissal; no wake locks or periodic watchdogs are used.
 
 <img src="floating-background-reliability.png" width="280" alt="Inline background reliability controls with battery status and a shortcut to SAO system app settings" />
 

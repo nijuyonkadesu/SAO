@@ -60,6 +60,7 @@ class FloatingService : Service() {
     @Inject lateinit var preferences: FloatingPreferences
     @Inject lateinit var dispatchers: FloatingDispatchers
     @Inject lateinit var detector: ForegroundAppDetector
+    @Inject lateinit var runtime: FloatingRuntime
     private lateinit var scope: CoroutineScope
     private lateinit var windowContext: Context
     private lateinit var windowManager: WindowManager
@@ -171,7 +172,7 @@ class FloatingService : Service() {
             setImageResource(R.drawable.ic_floating_picker)
             contentDescription = getString(R.string.floating_open_picker)
             setOnClickListener { openPicker() }
-            setOnLongClickListener { stopSelf(); true }
+            setOnLongClickListener { runtime.stop(); true }
             addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
                 if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) scheduleGeometryUpdate()
             }
@@ -203,7 +204,7 @@ class FloatingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP || !Settings.canDrawOverlays(this)) {
-            stopSelf(); return START_NOT_STICKY
+            runtime.stop(); return START_NOT_STICKY
         }
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL, getString(R.string.floating_notification_channel), NotificationManager.IMPORTANCE_LOW))
@@ -222,29 +223,30 @@ class FloatingService : Service() {
             .addAction(0, getString(R.string.floating_stop), stop).build()
         ServiceCompat.startForeground(this, 21, notification,
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
-        if (!FloatingSession.active.value) {
-            FloatingSession.active(true)
-            scope.launch {
-                NativeBridgeVisibility.prepare(applicationContext)
-                NativeBridgeVisibility.notifyActive(applicationContext, true)
-            }
-        }
-        cancelIdle()
-        wantsVisible = true
         scope.launch {
+            // Reject stale sticky restarts after a dismissal committed in another callback.
+            if (!runtime.isRequested()) { stopSelf(); return@launch }
+            if (!FloatingSession.active.value) {
+                FloatingSession.active(true)
+                scope.launch {
+                    NativeBridgeVisibility.prepare(applicationContext)
+                    NativeBridgeVisibility.notifyActive(applicationContext, true)
+                }
+            }
+            cancelIdle()
+            wantsVisible = true
             options = preferences.current()
-            idleTucked = intent == null && options.autoHide
+            idleTucked = intent?.action != ACTION_SHOW && options.autoHide
             positionBubble(); if (attached) windowManager.updateViewLayout(bubble, params)
             syncBubble(); if (attached && !idleTucked) scheduleIdle()
         }
-        // Android retains the requested lifetime across process death. Recents removal keeps
-        // it running; stopSelf()/stopService() cancels recovery after an explicit dismissal.
-        // Do not restart from onDestroy/onTaskRemoved or schedule a polling watchdog.
+        // Prefer system sticky recovery. Genuine system reconnect/update/boot callbacks also
+        // recover when a vendor discarded the started-service record. No timer or watchdog.
         return START_STICKY
     }
 
     private fun syncBubble() {
-        if (!Settings.canDrawOverlays(this)) { stopSelf(); return }
+        if (!Settings.canDrawOverlays(this)) { runtime.stop(); return }
         if (FloatingSession.pickerVisible) {
             if (attached || opening) hiddenForPicker = true
             opening = false; cancelIdle(restore = false); removeBubble(); FloatingSession.icon(FloatingSession.IconState.PICKER); return
@@ -258,7 +260,7 @@ class FloatingService : Service() {
             positionBubble(); bubble?.alpha = if (idleTucked) IDLE_ALPHA else 1f; windowManager.addView(bubble, params); attached = true
             FloatingSession.icon(if (idleTucked) FloatingSession.IconState.TUCKED else FloatingSession.IconState.VISIBLE)
             if (!idleTucked) scheduleIdle()
-        } catch (_: SecurityException) { stopSelf() }
+        } catch (_: SecurityException) { runtime.stop() }
     }
     private fun cacheGeometry() {
         val metrics = windowManager.currentWindowMetrics
@@ -361,7 +363,7 @@ class FloatingService : Service() {
                     if (dragged) move(event)
                     val dismiss = dragged && dismissTarget.hovered
                     cancelDrag()
-                    if (dismiss) { stopSelf(); return@setOnTouchListener true }
+                    if (dismiss) { runtime.stop(); return@setOnTouchListener true }
                     if (!dragged && !held) view.performClick() else if (dragged) {
                         val top = safeInsets.top + dp(8)
                         val range = maxOf(1, bounds.height() - safeInsets.bottom - bubbleHeight() - dp(16) - top)
@@ -457,6 +459,7 @@ class FloatingService : Service() {
         private const val IDLE_ALPHA = .35f
         private const val CHANNEL = "floating_picker"
         const val ACTION_SHOW = "one.njk.sao.floating.SHOW"
+        const val ACTION_RESTORE = "one.njk.sao.floating.RESTORE"
         const val ACTION_STOP = "one.njk.sao.floating.STOP"
     }
 }

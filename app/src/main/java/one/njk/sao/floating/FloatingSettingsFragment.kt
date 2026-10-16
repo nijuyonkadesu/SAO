@@ -34,6 +34,7 @@ class FloatingSettingsFragment : Fragment() {
     @Inject lateinit var preferences: FloatingPreferences
     @Inject lateinit var dispatchers: FloatingDispatchers
     @Inject lateinit var detector: ForegroundAppDetector
+    @Inject lateinit var runtime: FloatingRuntime
     private var _binding: FragmentFloatingSettingsBinding? = null
     private val binding get() = requireNotNull(_binding)
     private var pendingStart = false
@@ -60,7 +61,7 @@ class FloatingSettingsFragment : Fragment() {
                     pendingStart = true; openSettings(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, true)
                 } else startWithNotificationPermission()
             }
-            stopFloating.setOnClickListener { requireContext().stopService(Intent(requireContext(), FloatingService::class.java)) }
+            stopFloating.setOnClickListener { runtime.stop() }
             telegramApps.setOnClickListener { startActivity(Intent(requireContext(), TelegramAppsActivity::class.java)) }
             immichSettings.setOnClickListener { startActivity(Intent(requireContext(), SourceSettingsActivity::class.java)) }
             autoHide.setOnCheckedChangeListener { _, checked -> if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.autoHide(checked) } }
@@ -174,13 +175,18 @@ class FloatingSettingsFragment : Fragment() {
         val context = requireContext().applicationContext
         batteryStatusJob?.cancel()
         batteryStatusJob = viewLifecycleOwner.lifecycleScope.launch {
-            val exempt = withContext(dispatchers.io) {
-                context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+            val (exempt, lastExit) = withContext(dispatchers.io) {
+                context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName) to
+                    FloatingExitInfo.read(context)
             }
             val chip = _binding?.backgroundReliability?.batteryOptimization ?: return@launch
             val label = getString(if (exempt) R.string.floating_battery_exempt else R.string.floating_battery_optimized)
             chip.text = label
             chip.contentDescription = "${getString(R.string.floating_battery_optimization)}: $label"
+            _binding?.backgroundReliability?.lastAppExit?.apply {
+                text = lastExit
+                visibility = if (lastExit == null) View.GONE else View.VISIBLE
+            }
         }
     }
 
@@ -210,7 +216,7 @@ class FloatingSettingsFragment : Fragment() {
         else startFloating()
     }
     private fun startFloating() {
-        if (Settings.canDrawOverlays(requireContext())) ContextCompat.startForegroundService(requireContext(), Intent(requireContext(), FloatingService::class.java).setAction(FloatingService.ACTION_SHOW))
+        if (Settings.canDrawOverlays(requireContext())) runtime.show()
     }
     private fun openSettings(action: String, packageData: Boolean = false) {
         try { startActivity(Intent(action).apply { if (packageData) data = "package:${requireContext().packageName}".toUri() }) }

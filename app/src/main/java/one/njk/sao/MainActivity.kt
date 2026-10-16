@@ -1,11 +1,9 @@
 package one.njk.sao
 
-import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
@@ -17,7 +15,7 @@ import kotlinx.coroutines.launch
 import one.njk.sao.databinding.ActivityMainBinding
 import one.njk.sao.floating.FloatingLaunchState
 import one.njk.sao.floating.FloatingPreferences
-import one.njk.sao.floating.FloatingService
+import one.njk.sao.floating.FloatingRuntime
 import one.njk.sao.floating.FloatingSession
 import javax.inject.Inject
 
@@ -27,6 +25,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var navController: NavController
     @Inject lateinit var floatingPreferences: FloatingPreferences
+    @Inject lateinit var floatingRuntime: FloatingRuntime
     private val floatingLaunchState by viewModels<FloatingLaunchState>()
     private var floatingStart: Job? = null
 
@@ -56,8 +55,7 @@ class MainActivity : AppCompatActivity() {
         floatingStart = lifecycleScope.launch {
             if (!floatingPreferences.current().showOnLaunch || FloatingSession.active.value ||
                 !Settings.canDrawOverlays(this@MainActivity)) return@launch
-            ContextCompat.startForegroundService(this@MainActivity,
-                Intent(this@MainActivity, FloatingService::class.java).setAction(FloatingService.ACTION_SHOW))
+            floatingRuntime.show()
         }
     }
 

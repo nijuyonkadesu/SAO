@@ -7,6 +7,7 @@ import dagger.hilt.components.SingletonComponent
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface FloatingTestAccess {
+    fun runtime(): FloatingRuntime
     fun browseSession(): PickerBrowseSession
     fun sources(): SourceProfiles
     fun mediaSource(): MediaSource
