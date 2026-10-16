@@ -95,6 +95,33 @@ verified that PNG/GIF/WebM/MP4 clipboard URIs are visible but context-menu Paste
 zero media callbacks. A keyboard `commitContent` call yields one callback. A successful
 accessibility Paste return therefore does not establish an inserted attachment.
 
+## Video Paste investigation (2026-10-16)
+
+Rechecked the installed 451.0.0.53.80 APK. The keyboard callback schedules a worker
+that reads the content URI into a `Bitmap`, draws it onto a white bitmap and passes
+that bitmap to the photo sender. This was confirmed in both decompiled Java and
+the corresponding DEX instructions. Adding `video/*` to SAO's current keyboard
+capabilities would still enter this bitmap path; it would not select Instagram's
+video upload pipeline. The current restriction is therefore intentional for that
+adapter, rather than proof that Vector cannot support videos.
+
+The same DM controller owns a separate gallery sender. Its selected-media objects
+wrap Instagram's named `com.instagram.common.gallery.Medium` model and distinguish
+images from videos. The video worker reads the local clip's metadata, constructs
+`ClipInfo`, applies the host's clip limits and forwards it to its native DM media
+pipeline. Its controller delegate leads back to the original composer controller
+that SAO already validates. This makes an original-chat video adapter plausible
+without opening the external DM recipient picker; authenticated delivery has not
+been established by this inspection.
+
+A video adapter would need its own verified gallery contract, host-readable clip
+preparation on IO, correct video metadata and validation of the original chat again
+after preparation. It must preserve the one-use dispatch and no-retry behavior.
+The selected-media wrapper and sender entry points are obfuscated and differ from
+the keyboard contract, so unsupported versions or formats must keep the current
+DM fallback. No video hook or additional advertised capability was enabled by
+this investigation, and no authenticated sending listener was invoked.
+
 ## Verification and limits
 
 The production adapter was compiled directly into the reproducible
