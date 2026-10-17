@@ -30,9 +30,6 @@ public final class NativeInstagramProbe extends Instrumentation {
             Field singleton = unsafeType.getDeclaredField("theUnsafe"); singleton.setAccessible(true);
             unsafe = singleton.get(null); allocate = unsafeType.getMethod("allocateInstance", Class.class);
             Activity host = startActivitySync(new Intent(getTargetContext(), ProbeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            File fixture = new File(getTargetContext().getCacheDir(), "native-video-fixture.mp4");
-            try (java.io.InputStream input = getTargetContext().getAssets().open("preview-video.mp4");
-                 java.io.OutputStream output = new java.io.FileOutputStream(fixture)) { input.transferTo(output); }
             runOnMainSync(() -> {
                 try {
                     Context ig = host.createPackageContext("com.instagram.android", Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY);
@@ -103,16 +100,13 @@ public final class NativeInstagramProbe extends Instrumentation {
                     videoCallback.invoke(delegateField.get(cancelled), callbackArgs);
                     report.put("changed_chat_callback_dropped_without_retry", videoCallbacks.get() == 1);
                     report.put("original_native_gallery_unchanged", delegateField.get(gallerySender) == recordingVideoDelegate && guardedSender != gallerySender);
-                    String[] version = { InstagramGalleryContract.VERSION };
-                    InstagramComposerPolicy videos = new InstagramComposerPolicy(loader, () -> version[0]);
+                    InstagramComposerPolicy videos = new InstagramComposerPolicy(loader);
                     videos.configured(view, listener, configure.getParameterTypes()[1]);
                     report.put("native_video_capability", new org.json.JSONArray(videos.additionalMimeTypes(view)));
                     set(listener, "A04", true);
                     report.put("native_media_invite_limit_respected", videos.additionalMimeTypes(view).length == 0);
                     set(listener, "A04", false);
-                    version[0] = "unsupported-build";
-                    report.put("unknown_video_build_disabled", videos.additionalMimeTypes(view).length == 0);
-                    version[0] = InstagramGalleryContract.VERSION;
+                    report.put("video_capability_without_version_gate", java.util.Arrays.asList(videos.additionalMimeTypes(view)).contains("video/mp4"));
                     set(owner, "A14", null);
                     report.put("missing_video_sender_disabled", videos.additionalMimeTypes(view).length == 0);
                     set(owner, "A14", gallerySender);
@@ -152,19 +146,23 @@ public final class NativeInstagramProbe extends Instrumentation {
                 }
             });
             if (!report.has("error")) {
-                File clip = new File(getTargetContext().getCacheDir(), "native-video-fixture.mp4");
-                try (InstagramVideoFile video = InstagramVideoFile.prepare(getTargetContext(), android.net.Uri.fromFile(clip))) {
-                    runOnMainSync(() -> {
-                        try {
-                            ClassLoader loader = host.createPackageContext("com.instagram.android", Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY).getClassLoader();
-                            Object selected = InstagramGalleryContract.load(loader).selectedVideo(video);
-                            Object medium = selected.getClass().getField("A00").get(selected);
-                            report.put("native_gallery_item_is_video", medium.getClass().getMethod("Eeo").invoke(medium));
-                            report.put("native_gallery_duration_matches", medium.getClass().getMethod("getDuration").invoke(medium).equals(video.durationMs));
-                            report.put("native_gallery_dimensions_match", medium.getClass().getField("A0D").getInt(medium) == video.width && medium.getClass().getField("A05").getInt(medium) == video.height);
-                        } catch (Exception error) { try { report.put("error", error.toString()); } catch (Exception ignored) { } }
-                    });
-                } finally { clip.delete(); }
+                for (String extension : java.util.List.of("mp4", "webm")) {
+                    File clip = new File(getTargetContext().getCacheDir(), "native-video-fixture." + extension);
+                    try (java.io.InputStream input = getTargetContext().getAssets().open("preview-video." + extension);
+                         java.io.OutputStream output = new java.io.FileOutputStream(clip)) { input.transferTo(output); }
+                    try (InstagramVideoFile video = InstagramVideoFile.prepare(getTargetContext(), android.net.Uri.fromFile(clip), "video/" + extension)) {
+                        runOnMainSync(() -> {
+                            try {
+                                ClassLoader loader = host.createPackageContext("com.instagram.android", Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY).getClassLoader();
+                                Object selected = InstagramGalleryContract.load(loader).selectedVideo(video);
+                                Object medium = selected.getClass().getField("A00").get(selected);
+                                report.put(extension + "_gallery_item_is_video", medium.getClass().getMethod("Eeo").invoke(medium));
+                                report.put(extension + "_gallery_duration_matches", medium.getClass().getMethod("getDuration").invoke(medium).equals(video.durationMs));
+                                report.put(extension + "_gallery_dimensions_match", medium.getClass().getField("A0D").getInt(medium) == video.width && medium.getClass().getField("A05").getInt(medium) == video.height);
+                            } catch (Exception error) { try { report.put("error", error.toString()); } catch (Exception ignored) { } }
+                        });
+                    } finally { clip.delete(); }
+                }
             }
             host.finish(); Files.write(new File(getTargetContext().getFilesDir(),"native-report.json").toPath(),report.toString(2).getBytes());
             result.putString("report",report.toString());finish(report.has("error")?Activity.RESULT_CANCELED:Activity.RESULT_OK,result);

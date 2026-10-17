@@ -41,13 +41,13 @@
 | --- | --- | --- |
 | Photo (JPEG/PNG) | ✓ | ✓ |
 | GIF | ✓ | ✓ |
-| MP4 | X — No video Paste handler | X — No native video adapter |
-| WebM | X — No video Paste handler | X — No native video adapter |
+| MP4 | X — No video Paste handler | ~ Native draft; phone check pending |
+| WebM | X — No video Paste handler | ~ Native draft; phone check pending |
 
 **Supported sticker medium by app:** ✓ PNG/APNG/GIF · ✓ Lottie (restricted upload) · X MP4/WebM (not sticker formats).
 
 > [!NOTE]
-> Paste stages a draft; **Attach** handles videos through the share flow. Discord stickers need existing sticker IDs; SAO sends attachments, not native Discord stickers.
+> With a valid Vector lease, **Paste** and **Attach** stage media in the original chat. Otherwise Attach opens the share flow. Discord stickers require existing sticker IDs.
 
 ## 4. Instagram DM
 
@@ -55,16 +55,16 @@
 | --- | --- | --- |
 | Photo (JPEG/PNG) | X — No media clipboard handler | ✓ |
 | GIF | X — No media clipboard handler | X — No GIF adapter |
-| MP4 | X — No video clipboard handler | ~ 451.0.0.53.80 only |
-| WebM | X — No video clipboard handler | X — No WebM adapter |
+| MP4 | X — No video clipboard handler | ~ Compatible gallery contract required |
+| WebM | X — No video clipboard handler | ~ Compatible gallery contract required |
 
 **Supported sticker medium by app:** ✓ In-app static stickers · ✓ In-app animated/GIF stickers.
 
 > [!NOTE]
-> Native Paste sends directly to the original DM. **DM** opens Instagram’s recipient picker. SAO has no native DM sticker insertion.
+> With a valid Vector lease, **Paste** and **DM** send supported media directly to the original conversation. Otherwise DM opens the recipient picker. No native sticker insertion.
 
 > [!WARNING]
-> Instagram MP4 passed APK/fixture checks; actual phone upload remains unverified.
+> Instagram and Discord video paths passed native contract/fixture checks; authenticated phone upload remains unverified. Instagram uses contract checks without an exact-version gate.
 
 ## Details
 
@@ -72,4 +72,4 @@ Tapping copies immediately; scrolling alone does not. Media-mode photos use JPEG
 
 Sticker specifications: [WhatsApp](https://github.com/WhatsApp/stickers/blob/main/Android/README.md#sticker-art-and-app-requirements), [Telegram](https://core.telegram.org/api/stickers), [Discord](https://docs.discord.com/developers/resources/sticker#sticker-format-types), [Instagram DM packs](https://about.fb.com/news/2024/11/new-ways-to-connect-through-dms/) and [GIF library](https://about.fb.com/news/2020/05/welcome-giphy/). Discord Lottie uploads require a verified/partnered server; custom server stickers in DMs require [Nitro](https://support.discord.com/hc/en-us/articles/4403089981975-Custom-Stickers-FAQ).
 
-Implementation/validation: [Instagram](instagram-dm-delivery.md), [Discord](discord-apk-analysis.md), [Telegram/Nagram](telegram-delivery.md). WhatsApp/Instagram photos and Discord drafts have phone confirmation; the Instagram video adapter has no authenticated upload confirmation.
+Implementation/validation: [Instagram](instagram-dm-delivery.md), [Discord](discord-apk-analysis.md), [Telegram/Nagram](telegram-delivery.md). WhatsApp/Instagram photos and Discord drafts have phone confirmation; the Instagram/Discord video adapters have no authenticated upload confirmation.

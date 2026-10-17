@@ -62,11 +62,31 @@ public class NativeDiscordProbe extends Instrumentation {
             for (String name : ProbeProvider.TYPES.keySet()) {
                 try (var stream = own.getAssets().open(name)) { Files.copy(stream, new File(own.getFilesDir(), name).toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING); }
             }
+            java.util.Map<String, NativeVideoMetadata> videos = new java.util.LinkedHashMap<>();
+            for (String name : List.of("motion.mp4", "motion.webm")) {
+                videos.put(name, NativeVideoMetadata.read(own, Uri.parse("content://one.njk.sao.discordprobe.fixtures/"+name), ProbeProvider.TYPES.get(name)));
+            }
             Activity activity = startActivitySync(new Intent(own,ProbeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             runOnMainSync(() -> {
                 try {
                     Context discord = activity.createPackageContext("com.discord", Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY);
                     ClassLoader loader = discord.getClassLoader();
+                    // The real application initializes its React native loader at startup.
+                    // This isolated UID needs the same loader before serializing native maps.
+                    Class<?> soLoader = loader.loadClass("com.facebook.soloader.SoLoader");
+                    Class<?> mappingType = loader.loadClass("com.facebook.react.soloader.OpenSourceMergedSoMapping");
+                    Object mapping = null;
+                    for (var field : mappingType.getFields())
+                        if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) && field.getType() == mappingType) mapping = field.get(null);
+                    if (mapping == null) throw new IllegalStateException("React merged-library mapping missing");
+                    int mappings = 0;
+                    for (var field : soLoader.getDeclaredFields()) {
+                        if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) && field.getType().isInterface() && field.getType().isInstance(mapping)) {
+                            field.setAccessible(true); field.set(null, mapping); mappings++;
+                        }
+                    }
+                    if (mappings != 1) throw new IllegalStateException("React merged-library mapping changed");
+                    soLoader.getMethod("init", Context.class, int.class).invoke(null, discord, 0);
                     int theme = discord.getApplicationInfo().theme;
                     Context themed = new ContextThemeWrapper(discord, theme);
                     // Populate RN's font cache using Discord's bundled font. No media code is changed.
@@ -116,6 +136,24 @@ public class NativeDiscordProbe extends Instrumentation {
                             .put("native_image_inserted",inserted.contains(uri.toString())));
                     }
                     report.put("native_receive_content",receives).put("send_callbacks",sends.get());
+                    DiscordAttachmentContract attachments = DiscordAttachmentContract.load(loader);
+                    if (attachments == null) throw new IllegalStateException("Video draft event contract changed");
+                    JSONArray events = new JSONArray();
+                    for (var video : videos.entrySet()) {
+                        Uri uri = Uri.parse("content://one.njk.sao.discordprobe.fixtures/"+video.getKey());
+                        Object event = attachments.event(7, 77, uri, ProbeProvider.TYPES.get(video.getKey()), video.getValue());
+                        Object data = event.getClass().getMethod("getEventData").invoke(event);
+                        Class<?> readable = loader.loadClass("com.facebook.react.bridge.ReadableMap");
+                        events.put(new JSONObject().put("file",video.getKey())
+                            .put("name",event.getClass().getMethod("getEventName").invoke(event))
+                            .put("tag",event.getClass().getMethod("getViewTag").invoke(event))
+                            .put("uri",readable.getMethod("getString",String.class).invoke(data,"url"))
+                            .put("mime",readable.getMethod("getString",String.class).invoke(data,"type"))
+                            .put("width",readable.getMethod("getInt",String.class).invoke(data,"width"))
+                            .put("height",readable.getMethod("getInt",String.class).invoke(data,"height")));
+                    }
+                    report.put("native_video_draft_events",events);
+                    report.put("non_react_context_cannot_advertise_video",policy.additionalMimeTypes(editor).length==0);
                     rootType.getMethod("setListener",listenerType).invoke(root, new Object[]{null});
                     report.put("missing_listener_rejected",policy.identity(activity,editor)==null);
                     rootType.getMethod("setListener",listenerType).invoke(root,listener);
@@ -148,7 +186,11 @@ public class NativeDiscordProbe extends Instrumentation {
                     report.put("probe_scope","Unmodified Discord native composer loaded in probe UID; React/JS upload and authenticated chat not exercised.");
                 } catch (Throwable e) {
                     Throwable cause=e; while(cause.getCause()!=null)cause=cause.getCause();
-                    try { report.put("error",cause.toString()); report.put("outer_error",e.toString()); } catch(Exception ignored){}
+                    try {
+                        report.put("error",cause.toString()); report.put("outer_error",e.toString());
+                        java.io.StringWriter trace = new java.io.StringWriter(); cause.printStackTrace(new java.io.PrintWriter(trace));
+                        report.put("stack",trace.toString());
+                    } catch(Exception ignored){}
                 }
             });
             activity.finish();

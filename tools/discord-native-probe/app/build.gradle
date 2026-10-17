@@ -13,6 +13,9 @@ def adapter = tasks.register('syncProductionAdapter', Sync) {
     include 'one/njk/sao/floating/nativebridge/ComposerPolicy.java'
     include 'one/njk/sao/floating/nativebridge/DiscordComposerPolicy.java'
     include 'one/njk/sao/floating/nativebridge/NativeEditorSession.java'
+    include 'one/njk/sao/floating/nativebridge/PreparedNativeContent.java'
+    include 'one/njk/sao/floating/nativebridge/DiscordAttachmentContract.java'
+    include 'one/njk/sao/floating/nativebridge/NativeVideoMetadata.java'
     into layout.buildDirectory.dir('generated/production-adapter')
 }
 def fixtures = tasks.register('syncFixtures', Sync) {

@@ -23,6 +23,7 @@ def adapterSources = tasks.register('syncProductionAdapter', Sync) {
     include 'one/njk/sao/floating/nativebridge/PreparedNativeContent.java'
     include 'one/njk/sao/floating/nativebridge/InstagramGalleryContract.java'
     include 'one/njk/sao/floating/nativebridge/InstagramVideoFile.java'
+    include 'one/njk/sao/floating/nativebridge/NativeVideoMetadata.java'
     into layout.buildDirectory.dir('generated/production-adapter')
 }
 tasks.named('preBuild').configure { dependsOn adapterSources }

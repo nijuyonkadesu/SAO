@@ -9,9 +9,8 @@ import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
-/** Versioned gallery contract, separate from the generic keyboard-photo adapter. */
+/** Inspected gallery contract, enabled by its shape rather than an app version string. */
 final class InstagramGalleryContract {
-    static final String VERSION = "451.0.0.53.80";
     private final Class<?> ownerType, senderType;
     private final Field senderField, widthField, heightField;
     private final Constructor<?> mediumConstructor, selectedConstructor;

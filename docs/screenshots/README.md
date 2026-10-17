@@ -36,8 +36,9 @@ The title and supporting message have a subtle 2 dp gap taken from existing padd
 | --- | --- | --- |
 | <img src="floating-dock-marquee.png" width="260" alt="Context amazing with a scrolling title and GIF tip above the transparent action dock" /> | <img src="floating-search-dark.png" width="260" alt="Selected text and emoji query with a contrasting Lucky icon in dark mode" /> | <img src="floating-accessibility-settings.png" width="260" alt="Accessibility access description directs users to find Paste assistance in Android settings" /> |
 
-<img src="floating-instagram-video.png" width="280" alt="Instagram target with an MP4 preview and enabled native Paste" />
+<img src="floating-instagram-video.png" width="280" alt="Instagram target with an MP4 preview and Paste/DM actions targeting the original conversation" />
 
 The MP4 preview uses a bundled test clip and a recording native client. It demonstrates
-capability gating and UI; authenticated Instagram video sending through Vector still
-requires phone validation. See the [delivery capability matrix](../media-capabilities.md).
+capability gating and UI. With a valid Vector lease, Paste/DM sends supported media
+to the original Instagram conversation, and Discord Paste/Attach stages it in the
+original draft. Both video paths still require authenticated phone validation. See the [delivery capability matrix](../media-capabilities.md).

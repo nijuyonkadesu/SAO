@@ -45,28 +45,31 @@ keyboards. Instagram decides whether the request actually uploads/delivers.
 
 The inspected keyboard callback accepts PNG/JPEG and explicitly rejects GIFs. SAO
 advertises only the supported static-image capabilities for this keyboard route
-and exports JPEG. A separate versioned gallery adapter enables MP4 Paste as described
-below. GIF/WebM still use **DM**. Instagram Sticker remains disabled. A connected module without a validated
+and exports JPEG. A separate gallery adapter enables MP4/WebM Paste as described
+below. GIF still uses **DM** recipient selection. Instagram Sticker remains disabled. A connected module without a validated
 editor lease also leaves Paste disabled.
 
-### Native MP4 Paste
+### Native video insertion
 
-On **451.0.0.53.80**, a verified gallery sender adds `video/mp4` to the session.
-Explicit Paste sends the selected MP4 directly to the original DM through that sender,
+A verified gallery sender adds `video/mp4` and `video/webm` to the session.
+Explicit **Paste** or **DM** sends the selected video directly to the original DM through that sender,
 without opening the recipient picker. It does not pass a video to the bitmap keyboard
 handler. No video is sent by selecting, copying or browsing. Upload/server acceptance
 still belongs to Instagram; authenticated video delivery through Vector needs a phone
-check. Other versions and formats keep the DM attachment route.
+check. Unsupported contracts and formats keep the DM recipient-picker route.
+There is no exact-version gate: class ownership and constructor/field/method shapes
+control availability. The inspected baseline remains 451.0.0.53.80; removing the gate
+does not make obfuscated names portable to every future build.
 
-`InstagramGalleryContract` isolates the inspected build's obfuscated gallery contract
+`InstagramGalleryContract` isolates the inspected obfuscated gallery contract
 from the structural keyboard-photo adapter. It checks the controller's sender field,
 method/constructor signatures and selected-media model. The controller must still own
 the leased editor and the same verified thread identity. Missing or changed contracts
-do not advertise MP4. Videos do not become stickers.
+do not advertise video. Videos do not become stickers.
 
 The host's Binder worker copies the granted URI into Instagram-owned cache and reads
-its real MP4 duration, dimensions and rotation. The original bytes are preserved.
-Preparation rejects Main, malformed/non-MP4 files, clips over 512 MiB, a 30-second copy
+its real MP4/WebM duration, dimensions and rotation. The original bytes are preserved.
+Preparation rejects Main, malformed or mislabeled files, clips over 512 MiB, a 30-second copy
 deadline or a full 2 GiB adapter cache. Old adapter files are cleaned only during an
 explicit Paste; recent submitted files remain available to Instagram's asynchronous
 uploader. Unsubmitted/invalid files are deleted. There is no background cleanup job.
@@ -164,7 +167,7 @@ The production adapter was compiled directly into the reproducible
 and synthetic controller/key metadata it verified the DM role, native controller
 binding, mutable thread changes in the same editor, replaced-editor rejection,
 cleared-listener rejection and PNG/JPEG keyboard capabilities. Gallery checks verify
-MP4 capability, unknown-build/missing-sender rejection and real selected-video objects
+MP4/WebM capability without a version-string gate, missing-sender/changed-contract rejection and real selected-video objects
 with matching duration and dimensions. An unmodified native
 InputConnection delivered one `commitContent` callback to a recording listener.
 The probe never invokes Instagram's actual sending listener.

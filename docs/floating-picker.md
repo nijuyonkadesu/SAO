@@ -163,9 +163,9 @@ See [gesture verification and screenshots](../diagnostics/picker-hold-drag/READM
 | Dock action | Payload and behavior |
 | --- | --- |
 | Copy | Copies the centered item: JPEG for ordinary static media, original GIF/video for animation, transparent 512 × 512 PNG for WhatsApp or WebP for Telegram with Sticker preference. Actual copy status is inline. |
-| Paste | Explicitly copies, closes, and requests `ACTION_PASTE` once in the verified original editor. Requires optional assistance. Discord accepts image URIs, including GIFs; video Paste is disabled. Instagram Paste is disabled because its keyboard insertion callback is not reached by clipboard Paste. Never presses Send. |
+| Paste | Explicitly copies, closes, and requests `ACTION_PASTE` once in the verified original editor. Requires optional assistance. Without Vector, Discord accepts image URIs including GIFs, while video and Instagram clipboard Paste remain unavailable. Never presses Send. |
 | Sticker | Telegram/fork: static 512 × 512 WebP of at most 100 KB sent through the client's document route to the exact originating/configured package. Provider MIME remains image/webp. WhatsApp: optional verified native LSPosed handler. Disabled for GIF/video or absent capability. |
-| Instagram Paste | Optional API-102 LSPosed bridge; enabled only for a verified original-DM editor lease and still image. Sends directly through the native keyboard handler on explicit press. GIF/video stay on DM attachments. |
+| Instagram Paste | Optional API-102 bridge; a verified original-DM lease sends photos through the keyboard handler and MP4/WebM through the compatible gallery handler. GIF retains the DM recipient picker. |
 | Media / Attach / DM | Ordinary media handoff to the exact supported app, or Android sharesheet when the target is unknown. Discord labels this action Attach and receives original GIF/video bytes with their MIME and a URI read grant. Instagram uses only its exported DM receiver, labeled DM; no Feed/Stories fallback. See [Instagram delivery](instagram-dm-delivery.md) for APK evidence and authenticated-client limits. |
 
 All dock actions use the actual centered card in the active carousel, including
@@ -253,7 +253,7 @@ retain the DM attachment flow. See [Instagram adapter and verification](instagra
 
 **Paste prefers a verified native handler** over accessibility assistance. In WhatsApp
 Sticker mode it uses `image/webp.wasticker`; Media mode uses the advertised image MIME.
-GIFs retain their real MIME and videos keep the attachment fallback. Selection still
+GIFs retain their real MIME; MP4/WebM use the verified native draft event when available. Selection still
 highlights/copies immediately; neither selecting nor toggling delivery mode invokes a
 native handler. A rejected native request is never retried through clipboard assistance.
 
@@ -497,7 +497,7 @@ original filename, including `video/webm`, rather than treating every video as M
 
 Discord documents mobile image/video/GIF attachments in its
 [File Attachments FAQ](https://support.discord.com/hc/en-us/articles/25444343291031-File-Attachments-FAQ).
-Clipboard paste depends on its editor; video Paste and all Sticker actions are disabled for
+Without Vector, clipboard paste depends on its editor; video Paste and all Sticker actions are disabled for
 Discord. Android API 35 tests verify exact SHA-256/length/MIME under a separate receiving UID,
 plus muted WebM playback and the Discord dock. These tests verify SAO's transport, not Discord's
 upload or rendering behavior. A logged-in Discord client is required to check that final step;
@@ -688,3 +688,14 @@ Inline **Background reliability** settings show the real battery-optimization ex
 Device tests cover actual task removal, durable dismissal, discarded-service restoration, duplicate restore events, isolation from browsing preferences, settings intents and large-text layouts. With the debug APK installed and **Show icon on app launch** enabled, run `python3 tools/test-floating-recovery.py --serial emulator-5554`. This emulator-only driver tests real process death, Android accessibility reconnect after discarding the service record, app replacement, manual Stop, device sleep/Doze without a SAO wake lock, and Force stop. It temporarily enables Paste assistance and overlay access, restores those settings and leaves SAO stopped. Emulator `su` is used only to discard the non-exported service record in the test fixture; the implementation needs no root.
 
 On development machines, setting `sao.debugApkShareDir=/srv/samba/share/` in `~/.gradle/gradle.properties` automatically copies `app-debug.apk` after debug packaging/assembly, including incremental builds. The task tracks only this APK and never scans the rest of the share.
+
+### Automatic current-chat attachments with Vector
+
+With a valid native lease, Discord **Paste**/**Attach** stage JPEG/PNG/GIF/MP4/WebM in
+the original draft. Instagram **Paste**/**DM** send photos or MP4/WebM directly through
+the leased controller; videos require its verified gallery contract without an exact
+app-version gate. Unsupported capabilities retain the ordinary Attach/DM recipient
+flow. Instagram GIF is not routed through its bitmap photo handler. Selection/copy
+never sends. File/metadata work runs off Main, the lease is rechecked after preparation,
+and native dispatch is consumed once without automatic send retries. See the
+[capability matrix](media-capabilities.md) for validation limits.

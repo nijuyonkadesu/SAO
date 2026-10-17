@@ -17,20 +17,25 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.ArrayList;
 
-/** Native receive-content insertion stages images/GIFs in Discord's focused draft; never Send. */
+/** Native content insertion stages attachments in the leased Discord draft; never Send. */
 final class DiscordComposerPolicy implements ComposerPolicy {
     private final Class<?> editorType;
     private final Class<?> rootType;
     private final Field editorField;
     private final Field revisionField;
     private final Method listenerGetter;
+    private volatile DiscordAttachmentContract attachments;
 
     DiscordComposerPolicy(ClassLoader loader) throws ReflectiveOperationException {
+        this(loader, Runnable::run);
+    }
+    DiscordComposerPolicy(ClassLoader loader, java.util.concurrent.Executor io) throws ReflectiveOperationException {
         editorType = Class.forName("com.discord.chat.input.views.DCDChatInput", false, loader);
         rootType = Class.forName("com.discord.chat.input.views.ChatInputRootView", false, loader);
         editorField = rootType.getDeclaredField("editText"); editorField.setAccessible(true);
         revisionField = rootType.getDeclaredField("lastEditId"); revisionField.setAccessible(true);
         listenerGetter = rootType.getMethod("getListener");
+        io.execute(() -> attachments = DiscordAttachmentContract.load(loader));
     }
     EditText configuredEditor(Object root) {
         try { return rootType.isInstance(root) ? (EditText) editorField.get(root) : null; }
@@ -59,6 +64,22 @@ final class DiscordComposerPolicy implements ComposerPolicy {
         } catch (Exception error) { return null; }
     }
     @Override public boolean renewFocusedDraft() { return true; }
+    @Override public String[] additionalMimeTypes(EditText view) {
+        return attachments != null && isComposer(view) && attachments.supports(view.getContext()) ?
+            new String[]{"video/mp4", "video/webm"} : new String[0];
+    }
+    @Override public PreparedNativeContent prepareContent(android.content.Context context, Uri uri, String mime) throws Exception {
+        if (!NativeVideoMetadata.supports(mime)) return ComposerPolicy.super.prepareContent(context, uri, mime);
+        DiscordAttachmentContract contract = attachments;
+        if (contract == null) return null;
+        NativeVideoMetadata metadata = NativeVideoMetadata.read(context, uri, mime);
+        return (view, input) -> {
+            Object root = owner(view);
+            if (!(root instanceof android.view.View) || !isComposer(view) || !contract.supports(view.getContext())) return false;
+            if (!view.hasFocus() && !view.requestFocus()) return false;
+            return contract.insert((android.view.View) root, uri, mime, metadata);
+        };
+    }
     @Override public String[] mimeTypes(EditorInfo info) { return supportedTypes(info.contentMimeTypes); }
     @Override public String[] viewMimeTypes(EditText view) {
         return Build.VERSION.SDK_INT >= 31 && isComposer(view) ? supportedTypes(view.getReceiveContentMimeTypes()) : new String[0];

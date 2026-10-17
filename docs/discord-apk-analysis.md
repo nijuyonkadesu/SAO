@@ -143,3 +143,30 @@ production policy; both trigger the image callback and zero Send callbacks. The 
 lease tests additionally cover a genuinely unfocused field, pause/resume, single dispatch,
 capability removal and hidden-view revocation. Native upload/server behavior remains a
 physical-client verification step. See [Android receive-content](https://developer.android.com/develop/ui/views/receive-rich-content).
+
+## Current-chat video draft adapter (2026-10-17)
+
+Vector now supports MP4/WebM through `DiscordAttachmentContract`. The ordinary
+receive-content listener remains image-only. Inspection of `ChatInputViewManager`,
+`ReactEvents` and `DispatchedEvent` establishes the native `onPasteImage` event contract.
+The bundled Hermes handler reads its URI, MIME and optional width/height, checks focus
+and upload permission, then invokes `addFile` using its own current channel. Despite
+its name, that JavaScript path builds a file attachment rather than restricting MIME
+to images. Supplying real video dimensions avoids its image-dimension fallback.
+
+The adapter uses Discord's own dispatcher/event class, scoped to the leased composer's
+React tag and surface. It supplies a fresh native payload on serialization; no channel
+IDs, recipient lists, JS injection, document-picker interception or UI automation are
+needed. Metadata is read off Main from the explicitly granted URI, checking its actual
+MP4/WebM container. The original file is unchanged. Focus is restored only on the leased
+editor immediately before dispatch. The shared one-use lease rechecks the draft after
+preparation; a stale chat or rejected/unknown dispatch is never retried. Selection alone
+never invokes it. **Paste** and **Attach** prefer this path when advertised, including
+without an accessibility anchor. Without it, Attach retains the ordinary share route.
+
+The isolated probe loads the production event contract from Discord 348.10 and checks
+both video payloads, dimensions, MIME, surface/tag and event name, without authenticated
+React upload. Device tests cover both actions/formats, original bytes, unavailable
+capabilities and one-use/chat-change guards using local fixtures. Authenticated staging,
+preview and upload through Vector still require a phone check. Changed native contracts
+disable the route. No new polling, background tasks or framework hooks were added.

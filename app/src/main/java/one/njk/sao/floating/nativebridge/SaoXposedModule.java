@@ -174,7 +174,7 @@ public final class SaoXposedModule extends XposedModule {
         try {
             Class<?> composer;
             if (processName.equals("com.instagram.android")) {
-                InstagramComposerPolicy instagram = new InstagramComposerPolicy(loader, () -> hostVersion, bridgeIo);
+                InstagramComposerPolicy instagram = new InstagramComposerPolicy(loader, bridgeIo);
                 policy = instagram;
                 editorSession = new NativeEditorSession(policy, modulePackage);
                 composer = Class.forName("com.instagram.ui.widget.textview.ComposerAutoCompleteTextView", false, loader);
@@ -193,7 +193,7 @@ public final class SaoXposedModule extends XposedModule {
                     });
                 }
             } else if (processName.equals("com.discord")) {
-                DiscordComposerPolicy discord = new DiscordComposerPolicy(loader);
+                DiscordComposerPolicy discord = new DiscordComposerPolicy(loader, bridgeIo);
                 policy = discord;
                 editorSession = new NativeEditorSession(policy, modulePackage);
                 Class<?> root = Class.forName("com.discord.chat.input.views.ChatInputRootView", false, loader);

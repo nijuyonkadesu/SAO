@@ -45,3 +45,9 @@ this probe only. Run the focused test with the repository debug and test APKs in
 
 Successful native callbacks establish the client's native receive-content contract,
 not React/server acceptance, animation after upload or Vector injection on the phone.
+
+The video extension prepares bundled MP4/WebM metadata off Main and constructs the
+production native draft event using Discord's real classes. It checks event name,
+surface/tag, original URI/MIME and supplied dimensions without dispatching to an
+account. A context outside React cannot advertise native video insertion. The normal
+image-only receiver and its rejected clipboard-video cases remain separate checks.

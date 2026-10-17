@@ -436,7 +436,7 @@ class PickerActivity : AppCompatActivity() {
         return getString(R.string.picker_native_diagnostic, status?.version.orEmpty().ifEmpty { "—" }, reason)
     }
     private fun nativePasteRendition(item: MediaItem?): Rendition? {
-        if (item == null || item.isVideo && target != MessagingTarget.INSTAGRAM) return null
+        if (item == null) return null
         if (target.isWhatsapp && options.preferStickers && !item.hasMotion &&
             NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")) return Rendition.STICKER_WEBP
         val mime = if (item.hasMotion) item.mimeType else "image/jpeg"
@@ -461,7 +461,7 @@ class PickerActivity : AppCompatActivity() {
         val native = NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")
         binding.stickerAction.isEnabled = item != null && !item.hasMotion && !busy &&
             (target == MessagingTarget.TELEGRAM && canShareSticker || target.isWhatsapp && native)
-        binding.mediaAction.isEnabled = item != null && !busy && (target != MessagingTarget.INSTAGRAM || canAttachInstagram)
+        binding.mediaAction.isEnabled = item != null && !busy && (nativePaste || target != MessagingTarget.INSTAGRAM || canAttachInstagram)
         val mediaLabel = getString(when (target) {
             MessagingTarget.DISCORD -> R.string.picker_attach
             MessagingTarget.INSTAGRAM -> R.string.picker_instagram_dm
@@ -472,6 +472,7 @@ class PickerActivity : AppCompatActivity() {
             nativePaste && target == MessagingTarget.INSTAGRAM && item?.isVideo == true -> getString(R.string.picker_instagram_native_video_hint)
             nativePhoto -> getString(R.string.picker_instagram_native_hint)
             target.isWhatsapp && nativeRendition == Rendition.STICKER_WEBP -> getString(R.string.picker_whatsapp_native_paste_hint)
+            nativePaste && target == MessagingTarget.DISCORD -> getString(R.string.picker_discord_native_hint)
             nativePaste -> getString(R.string.picker_native_image_hint)
             target == MessagingTarget.INSTAGRAM && item?.hasMotion == true && NativeBridgeRegistry.available(targetPackage) -> getString(R.string.picker_instagram_motion_hint)
             target == MessagingTarget.INSTAGRAM && !canAttachInstagram -> getString(R.string.picker_instagram_unavailable)
@@ -504,9 +505,12 @@ class PickerActivity : AppCompatActivity() {
         binding.pasteAction.contentDescription = getString(if (target == MessagingTarget.INSTAGRAM)
             R.string.picker_instagram_paste_description else R.string.picker_paste_description) + destination
         binding.stickerAction.contentDescription = getString(R.string.picker_send_sticker_description) + destination
-        binding.mediaAction.contentDescription = getString(when (target) {
-            MessagingTarget.DISCORD -> R.string.picker_discord_attach_description
-            MessagingTarget.INSTAGRAM -> R.string.picker_instagram_dm_description
+        val nativeMedia = nativePasteRendition(carousel.centeredItem) != null
+        binding.mediaAction.contentDescription = getString(when {
+            nativeMedia && target == MessagingTarget.INSTAGRAM -> R.string.picker_instagram_native_dm_description
+            nativeMedia && target == MessagingTarget.DISCORD -> R.string.picker_discord_native_attach_description
+            target == MessagingTarget.DISCORD -> R.string.picker_discord_attach_description
+            target == MessagingTarget.INSTAGRAM -> R.string.picker_instagram_dm_description
             else -> R.string.picker_share_media_description
         }) + destination
     }
@@ -657,6 +661,11 @@ class PickerActivity : AppCompatActivity() {
     }
     private fun inlineFailure(message: Int) { model.copyStatus.value = message }
     private suspend fun share(item: MediaItem, rendition: Rendition) {
+        if (rendition == Rendition.MEDIA && target in setOf(MessagingTarget.INSTAGRAM, MessagingTarget.DISCORD) &&
+            nativePasteRendition(item) != null) {
+            nativeInsert(item, Rendition.MEDIA)
+            return
+        }
         val media = exports.prepare(item, rendition)
         if (target == MessagingTarget.INSTAGRAM) {
             val receiver = withContext(dispatchers.io) { InstagramDelivery.receiver(packageManager, media.mimeType) }

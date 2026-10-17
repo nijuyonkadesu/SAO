@@ -18,7 +18,7 @@ The probe never calls Instagram's sending listener. It checks the production
 adapter's exact composer role, native controller binding, mutable thread key,
 editor replacement, listener clearing, inactive binding reset, recovery of a preconfigured
 listener across the native superclass hierarchy, and allowed PNG/JPEG keyboard MIME types.
-Gallery checks validate the owned native sender, MP4 capability, unknown-build/missing-sender
+Gallery checks validate the owned native sender, MP4 capability, missing-sender/changed-contract
 rejection and a real selected-video object with matching dimensions/duration. Its final
 `commitContent` call enters the unmodified native keyboard wrapper with a recording
 callback and synthetic content URI; that callback does not decode or upload media.

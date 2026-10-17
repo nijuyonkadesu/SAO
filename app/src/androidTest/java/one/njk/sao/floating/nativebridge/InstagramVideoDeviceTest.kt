@@ -52,4 +52,25 @@ class InstagramVideoDeviceTest {
             assertEquals(before, directory.list()?.toSet().orEmpty())
         } finally { invalid.delete(); webm.delete() }
     }
+    @Test fun preparesWebmWithoutChangingItsBytesAndRejectsMislabeledContainers() = runBlocking {
+        val original = fixture("preview-video.webm")
+        val uri = FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", original)
+        try {
+            val metadata = withContext(Dispatchers.IO) { NativeVideoMetadata.read(app, uri, "video/webm") }
+            assertTrue(metadata.width > 0 && metadata.height > 0 && metadata.durationMs > 0)
+            val video = withContext(Dispatchers.IO) { InstagramVideoFile.prepare(app, uri, "video/webm") }
+            try {
+                assertTrue(video.file.name.endsWith(".webm"))
+                assertArrayEquals(original.readBytes(), video.file.readBytes())
+                assertEquals(metadata.durationMs, video.durationMs)
+            } finally { video.close() }
+            assertFalse(video.file.exists())
+            try { withContext(Dispatchers.IO) { NativeVideoMetadata.read(app, uri, "video/mp4") }; fail("Mislabeled video accepted") }
+            catch (_: java.io.IOException) { }
+            instrumentation.runOnMainSync {
+                try { NativeVideoMetadata.read(app, uri, "video/webm"); fail("Metadata must reject Main") }
+                catch (_: IllegalStateException) { }
+            }
+        } finally { original.delete() }
+    }
 }

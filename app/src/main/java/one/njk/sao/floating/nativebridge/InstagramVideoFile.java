@@ -1,7 +1,6 @@
 package one.njk.sao.floating.nativebridge;
 
 import android.content.Context;
-import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -12,7 +11,7 @@ import java.io.InputStream;
 
 /** Instagram's video importer needs a local file, not another app's FileProvider path. */
 final class InstagramVideoFile implements AutoCloseable {
-    static final long MAX_BYTES = 512L * 1024 * 1024;
+    static final long MAX_BYTES = NativeVideoMetadata.MAX_BYTES;
     private static final long MAX_CACHE_BYTES = 2L * 1024 * 1024 * 1024;
     final File file;
     final int width, height, durationMs, rotation;
@@ -23,7 +22,11 @@ final class InstagramVideoFile implements AutoCloseable {
         this.durationMs = durationMs; this.rotation = rotation;
     }
     static InstagramVideoFile prepare(Context context, Uri uri) throws Exception {
+        return prepare(context, uri, "video/mp4");
+    }
+    static InstagramVideoFile prepare(Context context, Uri uri, String mime) throws Exception {
         if (Looper.myLooper() == Looper.getMainLooper()) throw new IllegalStateException("Video preparation must run on IO");
+        if (!NativeVideoMetadata.supports(mime)) throw new IOException("Unsupported video type");
         File directory = new File(context.getCacheDir(), "sao_dm_video");
         if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Video cache unavailable");
         long retained = 0;
@@ -36,7 +39,7 @@ final class InstagramVideoFile implements AutoCloseable {
         }
         long limit = Math.min(MAX_BYTES, MAX_CACHE_BYTES - retained);
         if (limit <= 0) throw new IOException("Video cache is full");
-        File file = File.createTempFile("clip-", ".mp4", directory);
+        File file = File.createTempFile("clip-", "video/webm".equals(mime) ? ".webm" : ".mp4", directory);
         try {
             long started = SystemClock.elapsedRealtime(), total = 0;
             try (InputStream input = context.getContentResolver().openInputStream(uri);
@@ -51,27 +54,13 @@ final class InstagramVideoFile implements AutoCloseable {
                     output.write(buffer, 0, count);
                 }
             }
-            try (MediaMetadataRetriever metadata = new MediaMetadataRetriever()) {
-                metadata.setDataSource(file.getAbsolutePath());
-                if (!"yes".equals(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO)) ||
-                    !"video/mp4".equals(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)))
-                    throw new IOException("Unsupported video container");
-                int width = positive(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
-                int height = positive(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
-                int duration = positive(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
-                String rotation = metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
-                return new InstagramVideoFile(file, width, height, duration, rotation == null ? 0 : Integer.parseInt(rotation));
-            }
+            NativeVideoMetadata metadata = NativeVideoMetadata.read(context, Uri.fromFile(file), mime);
+            return new InstagramVideoFile(file, metadata.width, metadata.height, metadata.durationMs, metadata.rotation);
         } catch (Exception error) {
             file.delete();
             if (error instanceof IOException) throw error;
             throw new IOException("Could not read video metadata", error);
         }
-    }
-    private static int positive(String value) throws IOException {
-        try { int number = Integer.parseInt(value); if (number > 0) return number; }
-        catch (NumberFormatException ignored) { }
-        throw new IOException("Video metadata unavailable");
     }
     void submitted() { submitted = true; }
     @Override public void close() { if (!submitted) file.delete(); }

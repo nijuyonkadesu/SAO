@@ -3,10 +3,11 @@
     <string name="picker_instagram_hint">DM opens Instagram’s recipient picker. Enable SAO for Instagram in an API-102 LSPosed framework to send photos directly.</string>
     <string name="picker_instagram_unavailable">Open Instagram once to enable DM attachments, then reopen this picker.</string>
     <string name="picker_instagram_dm_description">Attach this media in an Instagram direct message</string>
+    <string name="picker_instagram_native_dm_description">Send this media directly to the original Instagram conversation; sends immediately</string>
     <string name="picker_instagram_paste_description">Paste this media into the original Instagram conversation using LSPosed; sends immediately</string>
-    <string name="picker_instagram_native_hint">Paste sends the photo directly to the open DM. DM lets you choose a recipient.</string>
+    <string name="picker_instagram_native_hint">Paste or DM sends the photo directly to the original conversation.</string>
     <string name="picker_instagram_motion_hint">Use DM for GIFs or videos without a compatible native gallery handler.</string>
     <string name="picker_instagram_native_accepted">Instagram accepted the photo send request.</string>
-    <string name="picker_instagram_native_video_hint">Paste sends the video directly to the original DM through Instagram’s gallery handler.</string>
+    <string name="picker_instagram_native_video_hint">Paste or DM sends the video directly to the original conversation through Instagram’s gallery handler.</string>
     <string name="picker_instagram_native_video_accepted">Instagram accepted the video send request.</string>
 </resources>

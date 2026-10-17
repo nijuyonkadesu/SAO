@@ -44,6 +44,7 @@ class DiscordDeviceTest {
     private var previous = SourceCatalog()
     private lateinit var webm: ByteArray
     private lateinit var mp4: ByteArray
+    @Volatile private var mp4First = false
     private val webmId = "7da8d1d6-53d6-43e9-aed1-dbe12f5e14dc"
     private val mp4Id = "7da8d1d6-53d6-43e9-aed1-dbe12f5e14dd"
 
@@ -60,10 +61,13 @@ class DiscordDeviceTest {
                     request.path?.contains("/thumbnail") == true -> MockResponse().setHeader("Content-Type", "image/png").setBody(Buffer().write(poster))
                     request.path?.contains("/$webmId/original") == true -> MockResponse().setHeader("Content-Type", "video/webm").setBody(Buffer().write(webm))
                     request.path?.contains("/$mp4Id/original") == true -> MockResponse().setHeader("Content-Type", "video/mp4").setBody(Buffer().write(mp4))
-                    else -> MockResponse().setBody("""{"assets":{"items":[
-                        {"id":"$webmId","type":"VIDEO","originalFileName":"reaction.WEBM","originalMimeType":"application/octet-stream","updatedAt":"2026-10-10T00:00:00Z"},
-                        {"id":"$mp4Id","type":"VIDEO","originalFileName":"reaction.mp4","originalMimeType":"video/mp4; charset=binary","updatedAt":"2026-10-10T00:00:00Z"}
-                    ]}}""")
+                    else -> {
+                        val items = listOf(
+                            """{"id":"$webmId","type":"VIDEO","originalFileName":"reaction.WEBM","originalMimeType":"application/octet-stream","updatedAt":"2026-10-10T00:00:00Z"}""",
+                            """{"id":"$mp4Id","type":"VIDEO","originalFileName":"reaction.mp4","originalMimeType":"video/mp4; charset=binary","updatedAt":"2026-10-10T00:00:00Z"}""",
+                        ).let { if (mp4First) it.reversed() else it }
+                        MockResponse().setBody("""{"assets":{"items":[${items.joinToString(",")}]}}""")
+                    }
                 }
             }
             start()
@@ -73,6 +77,64 @@ class DiscordDeviceTest {
 
     @After fun cleanup() = runBlocking {
         access.sources().restore(previous); access.browseSession().reset(); server.shutdown()
+    }
+
+    @Test fun vectorPasteAndAttachmentActionsUseOriginalVideoAndChatWithoutRecipientSelection() = runBlocking {
+        val registry = one.njk.sao.floating.nativebridge.NativeBridgeRegistry
+        val beforeActive = FloatingSession.active.value
+        val preferences = FloatingPreferences(app); val before = preferences.current()
+        try {
+            FloatingSession.active(true); preferences.pasteAssistance(false)
+            for (pkg in listOf("com.discord", "com.instagram.android")) {
+                for ((position, mime, original) in listOf(Triple(0, "video/webm", webm), Triple(1, "video/mp4", mp4))) {
+                    for (action in listOf(R.id.paste_action, R.id.media_action)) {
+                        mp4First = position == 1
+                        access.browseSession().reset()
+                        val calls = java.util.concurrent.atomic.AtomicInteger()
+                        val delivered = AtomicReference<Triple<String, String, ByteArray>>()
+                        registry.register(pkg, object : one.njk.sao.floating.nativebridge.INativeStickerClient.Stub() {
+                            override fun setActive(active: Boolean, generation: Long) = Unit
+                            override fun snapshot(beginSelection: Boolean) = android.os.Bundle().apply {
+                                putString("session", "video-draft"); putLong("created", SystemClock.elapsedRealtime())
+                                putStringArray("mime_types", arrayOf("image/jpeg", "video/mp4", "video/webm")); putBoolean("resumed", true)
+                            }
+                            override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Boolean {
+                                delivered.set(Triple(session, mimeType, app.contentResolver.openInputStream(uri)!!.use { it.readBytes() }))
+                                calls.incrementAndGet(); return true
+                            }
+                        })
+                        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, pkg, null, "video-draft")).use { scenario ->
+                            val deadline = SystemClock.elapsedRealtime() + 10_000
+                            var ready = false
+                            while (!ready && SystemClock.elapsedRealtime() < deadline) {
+                                scenario.onMainActivity {
+                                    val grid = it.findViewById<RecyclerView>(R.id.media_grid)
+                                    val focal = (grid.onFlingListener as com.google.android.material.carousel.CarouselSnapHelper).findSnapView(grid.layoutManager!!)
+                                    val item = focal?.let { v -> (grid.getChildViewHolder(v) as MediaCarouselAdapter.Holder).item }
+                                    ready = item?.mimeType == mime && !grid.isLayoutRequested && !grid.isComputingLayout &&
+                                        (grid.adapter as MediaCarouselAdapter).focusedId == item.id &&
+                                        registry.supports(pkg, "video-draft", mime) && it.findViewById<View>(action).isEnabled
+                                }
+                                kotlinx.coroutines.delay(40)
+                            }
+                            assertTrue("$pkg $mime must expose the native action", ready)
+                            scenario.onMainActivity {
+                                assertNull(androidx.lifecycle.ViewModelProvider(it)[PickerViewModel::class.java].selection.value)
+                                assertEquals("Browsing must not dispatch", 0, calls.get())
+                                assertFalse(it.findViewById<View>(R.id.sticker_action).isEnabled)
+                                assertTrue(it.findViewById<View>(action).performClick())
+                            }
+                            kotlinx.coroutines.withTimeout(5_000) { while (calls.get() == 0) kotlinx.coroutines.delay(20) }
+                            assertEquals("Dispatch once into the original lease, including Attach/DM", 1, calls.get())
+                            assertEquals("video-draft", delivered.get().first)
+                            assertEquals(mime, delivered.get().second)
+                            assertArrayEquals(original, delivered.get().third)
+                        }
+                        registry.clear()
+                    }
+                }
+            }
+        } finally { registry.clear(); FloatingSession.active(beforeActive); preferences.pasteAssistance(before.pasteAssistance) }
     }
 
     @Test fun gifWebmAndMp4ArriveAsOriginalAttachmentsUnderAnotherUid() = runBlocking {
