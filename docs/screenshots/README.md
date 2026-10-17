@@ -6,7 +6,7 @@ Captured on the Android 15 emulator using bundled samples and a localhost Immich
 | --- | --- | --- |
 | <img src="floating-carousel.png" width="260" alt="Light picker with continuous selection border and rounded Material search, close and check icons" /> | <img src="floating-carousel-dark.png" width="260" alt="Dark picker with continuous selection border and matching icon foregrounds" /> | <img src="floating-search.png" width="260" alt="Expanded Context selector with looping drag choices during text and emoji search" /> |
 
-Enabled/selected settings, granted permissions and configured source/app controls share a filled Material secondary container. The floating icon follows the same dynamic theme as activities. Picker icons use Material Symbols Rounded; the selection outline follows the visible carousel mask, including narrow side cards. Visually checked in light/dark themes and at 200% text.
+Enabled/selected settings, granted permissions and configured Telegram-app controls share a filled Material secondary container. Media sources’ [Manage action stays outlined](floating-sources-manage.png) even when sources are configured. The floating icon follows the same dynamic theme as activities. Picker icons use Material Symbols Rounded; the selection outline follows the visible carousel mask, including narrow side cards. Visually checked in light/dark themes and at 200% text.
 
 | Configured settings | Floating icon in light mode | Floating icon in dark mode |
 | --- | --- | --- |

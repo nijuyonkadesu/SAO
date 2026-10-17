@@ -15,7 +15,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -36,7 +35,6 @@ class FloatingSettingsFragment : Fragment() {
     @Inject lateinit var dispatchers: FloatingDispatchers
     @Inject lateinit var detector: ForegroundAppDetector
     @Inject lateinit var runtime: FloatingRuntime
-    private val sources: SourceProfilesViewModel by viewModels()
     private var _binding: FragmentFloatingSettingsBinding? = null
     private val binding get() = requireNotNull(_binding)
     private var pendingStart = false
@@ -143,9 +141,6 @@ class FloatingSettingsFragment : Fragment() {
                 } }
                 launch { NativeBridgeRegistry.connected.collect { connected ->
                     binding.nativeStatus.setText(if (connected) R.string.floating_native_ready else R.string.floating_native_unavailable)
-                } }
-                launch { sources.state.collect { state ->
-                    binding.immichSettings.isActivated = state.loaded && !state.error && state.catalog.profiles.isNotEmpty()
                 } }
             }
         }
