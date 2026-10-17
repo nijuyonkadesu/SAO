@@ -342,7 +342,7 @@ class NativeBridgeDeviceTest {
             assertEquals("Gallery video must bypass keyboard-image commitContent", 0, input.calls)
         }
     }
-    @Test fun lateVideoCapabilityRefreshesTheLeaseWithoutAnotherKeyboardConnection() {
+    @Test fun lateVideoCapabilityUpdatesTheOriginalLeaseWithoutAnotherKeyboardConnection() {
         withHost { activity, editor ->
             var available = false
             val policy = object : Policy() {
@@ -355,14 +355,129 @@ class NativeBridgeDeviceTest {
             available = true // Gallery contract finished loading on the host IO worker.
             val state = session.snapshot(activity, true)
             val next = state.getString("session")!!
-            assertNotEquals(old, next)
+            assertEquals("A late MIME capability must not strand the picker on an obsolete token", old, next)
             assertArrayEquals(arrayOf("image/jpeg", "video/mp4"), state.getStringArray("mime_types"))
             val uri = Uri.parse("content://${app.packageName}.fileprovider/floating_exports/clip.mp4")
             val prepared = PreparedNativeContent { _, connection -> assertSame(input, connection); true }
-            assertFalse(session.insert(activity, true, uri, "video/mp4", old, 1, prepared))
-            assertTrue(session.insert(activity, true, uri, "video/mp4", next, 2, prepared))
+            assertTrue(session.insert(activity, true, uri, "video/mp4", old, 1, prepared))
+            assertFalse(session.insert(activity, true, uri, "video/mp4", next, 2, prepared))
             assertEquals(0, input.calls)
         }
+    }
+    @Test fun explicitSelectionRecoversRevokedDraftWithoutReconnectingOrReplaying() {
+        withHost { activity, editor ->
+            val policy = Policy().apply { draft = true }
+            val input = Recorder(editor)
+            val session = NativeEditorSession(policy, app.packageName)
+            session.capture(activity, editor, input, EditorInfo().apply { contentMimeTypes = arrayOf("image/jpeg") })
+            val original = session.beginSelection(activity, true).getString("session")!!
+            policy.identity = "draft-changed-while-picker-open"
+            assertNull(session.snapshot(activity, false).getString("session"))
+            assertNull("Foreground polling must not re-arm a revoked selection", session.snapshot(activity, true).getString("session"))
+            val uri = Uri.parse("content://${app.packageName}.fileprovider/floating_exports/fixture.jpg")
+            assertFalse(session.insert(activity, true, uri, "image/jpeg", original, 1))
+            val next = session.beginSelection(activity, true).getString("session")!!
+            assertNotEquals(original, next)
+            assertFalse(session.insert(activity, true, uri, "image/jpeg", original, 2))
+            input.accept = false
+            assertFalse(session.insert(activity, true, uri, "image/jpeg", next, 3))
+            assertFalse(session.insert(activity, true, uri, "image/jpeg", next, 4))
+            val recovered = session.beginSelection(activity, true).getString("session")!!
+            input.accept = true
+            assertTrue(session.insert(activity, true, uri, "image/jpeg", recovered, 5))
+            assertEquals("One failed action and one successful action, without a keyboard reconnect", 2, input.calls)
+        }
+    }
+    @Test fun nativeVideoAndNaturalKeyboardPhotoCapabilitiesCoexist() {
+        withHost { activity, editor ->
+            val policy = object : Policy() {
+                override fun viewMimeTypes(view: EditText) = arrayOf("video/mp4")
+            }
+            val input = Recorder(editor)
+            val session = NativeEditorSession(policy, app.packageName)
+            session.capture(activity, editor, input, EditorInfo().apply { contentMimeTypes = arrayOf("image/jpeg") })
+            val state = session.beginSelection(activity, true)
+            assertEquals(setOf("video/mp4", "image/jpeg"), state.getStringArray("mime_types")!!.toSet())
+            val uri = Uri.parse("content://${app.packageName}.fileprovider/floating_exports/fixture.jpg")
+            assertTrue(session.insert(activity, true, uri, "image/jpeg", state.getString("session"), 1))
+            assertEquals(1, input.calls)
+        }
+    }
+    @Test fun lateNativeViewRouteSurvivesBlurAndRemovalKeepsOnlyKeyboardTypes() {
+        withHost { activity, editor ->
+            var available = false
+            val policy = object : Policy() {
+                override fun viewMimeTypes(view: EditText) = if (available) arrayOf("video/mp4") else emptyArray()
+            }
+            val session = NativeEditorSession(policy, app.packageName)
+            session.capture(activity, editor, Recorder(editor), EditorInfo().apply { contentMimeTypes = arrayOf("image/jpeg") })
+            val token = session.snapshot(activity, true).getString("session")!!
+            (editor.parent as android.view.ViewGroup).removeView(editor)
+            val other = android.view.View(activity).apply { isFocusableInTouchMode = true }
+            activity.setContentView(android.widget.FrameLayout(activity).apply {
+                addView(editor); addView(other, android.widget.FrameLayout.LayoutParams(1, 1))
+            })
+            assertTrue(other.requestFocus()); assertFalse(editor.hasFocus())
+            available = true
+            val state = session.snapshot(activity, true)
+            assertEquals(token, state.getString("session")); assertTrue(state.getBoolean("resumed"))
+            assertEquals(setOf("image/jpeg", "video/mp4"), state.getStringArray("mime_types")!!.toSet())
+            available = false
+            val removed = session.snapshot(activity, true)
+            assertEquals(token, removed.getString("session")); assertFalse(removed.getBoolean("resumed"))
+            assertArrayEquals(arrayOf("image/jpeg"), removed.getStringArray("mime_types"))
+            assertFalse(session.accepts(activity, true,
+                Uri.parse("content://${app.packageName}.fileprovider/floating_exports/clip.mp4"), "video/mp4", token, 1))
+        }
+    }
+    @Test fun explicitSelectionRecoversClientFailureWithoutWaitingForPollingBackoff() = runBlocking {
+        val beginCalls = AtomicInteger(); val normalCalls = AtomicInteger()
+        val failing = java.util.concurrent.atomic.AtomicBoolean(true)
+        NativeBridgeRegistry.register("com.discord", object : INativeStickerClient.Stub() {
+            override fun setActive(active: Boolean, generation: Long) = Unit
+            override fun snapshot(beginSelection: Boolean): Bundle {
+                if (beginSelection) beginCalls.incrementAndGet() else normalCalls.incrementAndGet()
+                if (failing.get()) throw IllegalStateException("Synthetic host recreation")
+                return Bundle().apply {
+                    putString("session", "recovered"); putLong("created", SystemClock.elapsedRealtime())
+                    putBoolean("resumed", true); putStringArray("mime_types", arrayOf("video/mp4"))
+                }
+            }
+            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long) = false
+        })
+        withTimeout(5_000) { while (normalCalls.get() == 0) delay(20) }
+        assertEquals("Polling never begins a new selection", 0, beginCalls.get())
+        assertNull(NativeBridgeRegistry.beginSelection("com.discord"))
+        failing.set(false)
+        val selected = NativeBridgeRegistry.beginSelection("com.discord")!!
+        assertEquals("recovered", selected.session)
+        assertTrue(NativeBridgeRegistry.supports("com.discord", selected.session, "video/mp4"))
+        assertEquals(2, beginCalls.get())
+        withTimeout(5_000) { while (normalCalls.get() < 2) delay(20) }
+        assertEquals("Normal refreshes cannot rotate the explicit selection", 2, beginCalls.get())
+    }
+    @Test fun rejectedAttemptDoesNotRevokeTheFileAccessOfAnEarlierAttachment() = runBlocking {
+        val pkg = "com.discord"
+        val uid = app.packageManager.getPackageUid(pkg, 0)
+        val media = MediaExports(app, LocalMediaSource(app)).prepare(LocalMediaSource(app).all().first { !it.hasMotion }, Rendition.MEDIA)
+        val read = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+        val calls = AtomicInteger()
+        NativeBridgeRegistry.register(pkg, object : INativeStickerClient.Stub() {
+            override fun setActive(active: Boolean, generation: Long) = Unit
+            override fun snapshot(beginSelection: Boolean) = Bundle().apply {
+                putString("session", "grant-recovery"); putLong("created", SystemClock.elapsedRealtime())
+                putBoolean("resumed", true); putStringArray("mime_types", arrayOf(media.mimeType))
+            }
+            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long): Boolean { calls.incrementAndGet(); return false }
+        })
+        app.grantUriPermission(pkg, media.uri, read)
+        try {
+            assertEquals(android.content.pm.PackageManager.PERMISSION_GRANTED, app.checkUriPermission(media.uri, -1, uid, read))
+            assertFalse(NativeBridgeRegistry.insert(app, pkg, media.uri, media.mimeType, "grant-recovery"))
+            assertEquals(1, calls.get())
+            assertEquals("Failure must preserve access held by a previously staged attachment",
+                android.content.pm.PackageManager.PERMISSION_GRANTED, app.checkUriPermission(media.uri, -1, uid, read))
+        } finally { app.revokeUriPermission(pkg, media.uri, read) }
     }
     @Test fun discordNativeGifStagesDraftOnceWithoutAccessibility() = runBlocking {
         val preferences = FloatingPreferences(app); val before = preferences.current()

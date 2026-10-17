@@ -188,7 +188,11 @@ public final class SaoXposedModule extends XposedModule {
                         if (editorSession.owns(view)) editorSession.clear();
                         instagram.configured(view, chain.getArg(1), method.getParameterTypes()[1]);
                         publishState();
-                        if (chain.getArg(1) != null && instagram.isComposer(view)) reconnectFocused(view);
+                        if (chain.getArg(1) != null && instagram.isComposer(view)) {
+                            observeReceiver(view);
+                            if (view.isAttachedToWindow()) scanReceiverAfterLayout();
+                            reconnectFocused(view);
+                        }
                         return result;
                     });
                 }
@@ -324,6 +328,7 @@ public final class SaoXposedModule extends XposedModule {
     private void scanViews(View view, java.util.List<EditText> receivers) {
         if (view instanceof EditText && view.isShown() && view.isEnabled() && policy.isComposer((EditText) view)) {
             EditText editor = (EditText) view;
+            if (policy instanceof InstagramComposerPolicy) ((InstagramComposerPolicy) policy).configuredFromEditor(editor);
             if (policy.viewMimeTypes(editor).length > 0 && editor.getGlobalVisibleRect(new android.graphics.Rect())) {
                 receivers.add(editor); observeReceiver(editor);
             }
@@ -375,10 +380,32 @@ public final class SaoXposedModule extends XposedModule {
         private final AtomicBoolean inserting = new AtomicBoolean();
         @Override public Bundle snapshot(boolean beginSelection) {
             enforceCaller();
+            if (beginSelection) return freshSelection();
             // Binder never waits for the UI thread. Coalesced refreshes validate in-place DM changes.
             if (nativeActive && resumed && refreshQueued.compareAndSet(false, true))
                 main.post(() -> { try { publishState(); } finally { refreshQueued.set(false); } });
             return new Bundle(cachedState);
+        }
+        private Bundle freshSelection() {
+            Bundle[] state = {Bundle.EMPTY};
+            AtomicBoolean expired = new AtomicBoolean();
+            CountDownLatch ready = new CountDownLatch(1);
+            main.post(() -> {
+                try {
+                    Activity current = activity.get();
+                    if (!expired.get() && nativeActive && resumed && current != null && current.hasWindowFocus()) {
+                        scan(current.getWindow().getDecorView(), current);
+                        if (editorSession != null) editorSession.beginSelection(current, true);
+                        publishState(); state[0] = new Bundle(cachedState);
+                    }
+                } catch (RuntimeException | LinkageError error) {
+                    warn("Could not capture the current native editor");
+                } finally { ready.countDown(); }
+            });
+            try {
+                if (!ready.await(250, TimeUnit.MILLISECONDS)) { expired.set(true); return Bundle.EMPTY; }
+                return state[0];
+            } catch (InterruptedException error) { expired.set(true); Thread.currentThread().interrupt(); return Bundle.EMPTY; }
         }
         @Override public void setActive(boolean active, long generation) {
             enforceCaller(); main.post(() -> applyActive(active, generation));

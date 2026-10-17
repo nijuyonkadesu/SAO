@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/** Evidence from Instagram 451: keyboard images enter the DM handler; GIF is rejected. */
+/** Inspected Instagram 435/451: keyboard images enter the DM handler; GIF is rejected. */
 final class InstagramComposerPolicy implements ComposerPolicy {
     private static final class Binding {
         final WeakReference<Object> listener; final Field listenerField;
@@ -118,6 +118,11 @@ final class InstagramComposerPolicy implements ComposerPolicy {
     }
     @Override public String[] additionalMimeTypes(EditText view) {
         return videoSender(view) == null ? new String[0] : new String[]{"video/mp4", "video/webm"};
+    }
+    @Override public String[] viewMimeTypes(EditText view) {
+        // Gallery video delivery belongs to the verified DM controller, independently
+        // of keyboard focus. Still photos keep the naturally captured IME connection.
+        return isComposer(view) && identity(null, view) != null ? additionalMimeTypes(view) : new String[0];
     }
     @Override public PreparedNativeContent prepareContent(Context context, android.net.Uri uri, String mimeType) throws Exception {
         if (!NativeVideoMetadata.supports(mimeType)) return ComposerPolicy.super.prepareContent(context, uri, mimeType);

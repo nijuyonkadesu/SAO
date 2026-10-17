@@ -16,7 +16,8 @@ import one.njk.sao.floating.FloatingSession
 
 object NativeBridgeRegistry {
     data class Selection(val packageName: String, val session: String, val mimeTypes: Set<String>)
-    private data class Client(val remote: INativeStickerClient, val binder: IBinder, var death: IBinder.DeathRecipient? = null)
+    private data class Client(val remote: INativeStickerClient, val binder: IBinder, var death: IBinder.DeathRecipient? = null,
+        var failures: Int = 0, var retryAfter: Long = 0)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     private val operations = Mutex()
     private val cached = ConcurrentHashMap<String, Pair<Selection, Long>>()
@@ -83,10 +84,13 @@ object NativeBridgeRegistry {
                     val validated = mutableMapOf<String, Selection>()
                     val diagnostics = mutableMapOf<String, HostStatus>()
                     clients.forEach { (name, current) ->
-                        if (!FloatingSession.active.value) return@forEach
+                        if (!FloatingSession.active.value || SystemClock.elapsedRealtime() < current.retryAfter) return@forEach
                         try {
-                            val state = current.remote.snapshot(true)
+                            // Live selection is reserved for an explicit icon press. Background
+                            // refreshes only validate an existing lease and never retarget it.
+                            val state = current.remote.snapshot(false)
                             if (clients[name] !== current) return@forEach
+                            current.failures = 0; current.retryAfter = 0
                             diagnostics[name] = HostStatus(state.getString("status").orEmpty().takeIf {
                                 it in setOf("waiting_editor", "unsupported_mime", "pending_metadata", "editor_changed", "unfocused", "ready", "hooks_unavailable")
                             } ?: "waiting_editor", state.getString("host_version").orEmpty().take(40))
@@ -96,8 +100,9 @@ object NativeBridgeRegistry {
                                 if (state.getBoolean("resumed")) cached[name] = selection to SystemClock.elapsedRealtime()
                                 else cached.remove(name)
                             } else cached.remove(name)
-                        } catch (_: android.os.RemoteException) { cached.remove(name) }
-                        catch (_: SecurityException) { cached.remove(name) }
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: android.os.RemoteException) { snapshotFailed(name, current) }
+                        catch (_: RuntimeException) { snapshotFailed(name, current) }
                     }
                     sessionState.value = if (FloatingSession.active.value) validated.filterKeys { clients.containsKey(it) } else emptyMap()
                     statusState.value = diagnostics.filterKeys { clients.containsKey(it) }
@@ -105,6 +110,12 @@ object NativeBridgeRegistry {
                 delay(400)
             }
         }
+    }
+    private fun snapshotFailed(name: String, client: Client) {
+        cached.remove(name)
+        sessionState.value = sessionState.value - name
+        client.failures = minOf(client.failures + 1, 4)
+        client.retryAfter = SystemClock.elapsedRealtime() + (1_000L shl (client.failures - 1))
     }
     private fun selection(packageName: String, state: Bundle): Selection? {
         val session = state.getString("session") ?: return null
@@ -131,6 +142,28 @@ object NativeBridgeRegistry {
             (packageName == null || selection.packageName == packageName) && now - time < 1000
         }.singleOrNull()?.first
     }
+    suspend fun beginSelection(packageName: String?): Selection? = withContext(Dispatchers.IO) {
+        operations.withLock {
+            if (!FloatingSession.active.value) return@withLock null
+            val name = packageName ?: cachedSelection(null)?.packageName ?: return@withLock null
+            val client = clients[name] ?: return@withLock null
+            try {
+                val state = client.remote.snapshot(true)
+                if (!FloatingSession.active.value || clients[name] !== client) return@withLock null
+                client.failures = 0; client.retryAfter = 0
+                val selected = selection(name, state)?.takeIf { state.getBoolean("resumed") }
+                if (selected == null) {
+                    cached.remove(name); sessionState.value = sessionState.value - name
+                } else {
+                    cached[name] = selected to SystemClock.elapsedRealtime()
+                    sessionState.value = sessionState.value + (name to selected)
+                }
+                selected
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: android.os.RemoteException) { snapshotFailed(name, client); null }
+            catch (_: RuntimeException) { snapshotFailed(name, client); null }
+        }
+    }
     suspend fun insert(context: Context, packageName: String, uri: Uri, mimeType: String, session: String): Boolean = withContext(Dispatchers.IO) {
         operations.withLock {
             if (!FloatingSession.active.value) return@withLock false
@@ -140,8 +173,14 @@ object NativeBridgeRegistry {
             try {
                 val initial = selection(packageName, client.remote.snapshot(false))
                 if (initial?.session != session || mimeType !in initial.mimeTypes) return@withLock false
-                context.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                granted = true
+                val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                val uid = context.packageManager.getPackageUid(packageName, 0)
+                // Grants are not reference-counted. Rolling back a second attempt must
+                // not revoke the same URI from an attachment already held by this host.
+                if (context.checkUriPermission(uri, -1, uid, read) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    context.grantUriPermission(packageName, uri, read)
+                    granted = true
+                }
                 repeat(20) {
                     delay(100)
                     if (!FloatingSession.active.value || clients[packageName] !== client) return@withLock false
@@ -157,6 +196,9 @@ object NativeBridgeRegistry {
                 false
             } catch (_: android.os.RemoteException) { false }
             catch (_: SecurityException) { false }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: RuntimeException) { false }
+            catch (_: android.content.pm.PackageManager.NameNotFoundException) { false }
             finally {
                 if (granted && !accepted) runCatching {
                     context.revokeUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)

@@ -58,8 +58,10 @@ handler. No video is sent by selecting, copying or browsing. Upload/server accep
 still belongs to Instagram; authenticated video delivery through Vector needs a phone
 check. Unsupported contracts and formats keep the DM recipient-picker route.
 There is no exact-version gate: class ownership and constructor/field/method shapes
-control availability. The inspected baseline remains 451.0.0.53.80; removing the gate
-does not make obfuscated names portable to every future build.
+control availability. Verified contracts cover 435.0.0.37.76 and 451.0.0.53.80;
+unknown shapes remain unavailable. The 435 sender has an additional boolean argument
+and different selected-media/callback types, so removing a version gate alone was
+insufficient to support it.
 
 `InstagramGalleryContract` isolates the inspected obfuscated gallery contract
 from the structural keyboard-photo adapter. It checks the controller's sender field,
@@ -86,6 +88,8 @@ binding/thread again. A changed/detached chat or stopped bridge drops the callba
 guard consumes it even on rejection. A late duplicate cannot send a second message. Gallery
 contract discovery also runs on the host IO executor; late capability updates need no
 fabricated or restarted keyboard connection.
+Gallery capability also works through the visible DM composer without keyboard focus;
+an existing natural keyboard connection retains photo support alongside it.
 
 ### Adapter and session validation
 
@@ -164,7 +168,7 @@ probe still never invokes an authenticated sending listener.
 
 The production adapter was compiled directly into the reproducible
 [isolated probe](../tools/instagram-native-probe/README.md). With real Instagram classes
-and synthetic controller/key metadata it verified the DM role, native controller
+from both inspected versions and synthetic controller/key metadata it verified the DM role, native controller
 binding, mutable thread changes in the same editor, replaced-editor rejection,
 cleared-listener rejection and PNG/JPEG keyboard capabilities. Gallery checks verify
 MP4/WebM capability without a version-string gate, missing-sender/changed-contract rejection and real selected-video objects
@@ -178,6 +182,9 @@ UID enforcement, exact-MIME dispatch and no retry after rejection. Picker tests 
 that verified native photo/MP4 sessions enable Paste independently of accessibility;
 highlight/copy never sends, and unadvertised motion formats stay disabled. Existing receiver tests verify
 JPEG/GIF/MP4/WebM routing and actual byte hashes under another receiving UID.
+Recovery tests also cover late capability changes without rotating the picker token,
+explicit reopening after a revoked draft without reconnecting the keyboard, and
+preserving earlier attachment grants after a subsequent rejection.
 
 These checks validate SAO's adapter, safeguards, UI and transport. Framework injection
 and authenticated DM upload/delivery still need the user's rooted device. No emulator

@@ -17,30 +17,46 @@ final class InstagramGalleryContract {
     private final Constructor<?> senderConstructor;
     private final Field contextField, sessionField, delegateField, pipelineField, storeField;
     private final Field mediaRestricted;
-    private final Method send;
+    private final Method send, videoCallback, batchPermission;
+    private final int sendFlags;
 
-    private InstagramGalleryContract(ClassLoader loader) throws ReflectiveOperationException {
-        ownerType = loader.loadClass("X.01SB");
-        senderType = loader.loadClass("X.01TL");
+    // Inspected APK contracts, selected by complete reflection signatures. These are
+    // independent of version strings; an unknown/ambiguous shape stays unavailable.
+    private record Shape(String owner, String sender, String ownerField, String selected,
+        String pending, String listener, String first, String second, String video, String batch, int flags) { }
+    private static final Shape[] SHAPES = {
+        new Shape("X.01SB", "X.01TL", "A14", "X.0S1g", "X.03oB", "X.01ZC", "X.0GJS", "X.0Kg9", "GUG", "EbO", 2),
+        new Shape("X.5Ta", "X.5Ve", "A13", "X.Dvg", "X.Mlx", "X.5dN", "X.6gP", "X.GCO", "FyJ", "ECZ", 3)
+    };
+
+    private InstagramGalleryContract(ClassLoader loader, Shape shape) throws ReflectiveOperationException {
+        ownerType = loader.loadClass(shape.owner());
+        senderType = loader.loadClass(shape.sender());
         Class<?> medium = loader.loadClass("com.instagram.common.gallery.Medium");
-        Class<?> selected = loader.loadClass("X.0S1g");
-        Class<?> pending = loader.loadClass("X.03oB");
-        senderField = ownerType.getDeclaredField("A14");
+        Class<?> selected = loader.loadClass(shape.selected());
+        Class<?> pending = loader.loadClass(shape.pending());
+        senderField = ownerType.getDeclaredField(shape.ownerField());
         if (senderField.getType() != senderType || !Modifier.isFinal(senderField.getModifiers()))
             throw new NoSuchFieldException("Gallery ownership changed");
         senderField.setAccessible(true);
-        mediaRestricted = loader.loadClass("X.01ZC").getField("A04");
+        mediaRestricted = loader.loadClass(shape.listener()).getField("A04");
         if (mediaRestricted.getType() != boolean.class) throw new NoSuchFieldException("Media permission shape changed");
         contextField = senderType.getField("A01"); sessionField = senderType.getField("A02");
         delegateField = senderType.getField("A03"); pipelineField = senderType.getField("A05"); storeField = senderType.getField("A06");
+        if (contextField.getType() != android.content.Context.class ||
+            sessionField.getType() != loader.loadClass("com.instagram.common.session.UserSession") || !delegateField.getType().isInterface())
+            throw new NoSuchFieldException("Gallery dependencies changed");
         senderConstructor = senderType.getConstructor(contextField.getType(), sessionField.getType(),
             delegateField.getType(), pipelineField.getType(), storeField.getType());
         mediumConstructor = medium.getConstructor(Uri.class, String.class, String.class,
             int.class, int.class, int.class, int.class, int.class, long.class, long.class, boolean.class);
         widthField = medium.getField("A0D"); heightField = medium.getField("A05");
         selectedConstructor = selected.getConstructor(medium, pending);
-        Class<?>[] signature = {loader.loadClass("X.0GJS"), loader.loadClass("X.0Kg9"),
-            Long.class, List.class, boolean.class, boolean.class};
+        sendFlags = shape.flags();
+        Class<?>[] signature = new Class<?>[4 + sendFlags];
+        signature[0] = loader.loadClass(shape.first()); signature[1] = loader.loadClass(shape.second());
+        signature[2] = Long.class; signature[3] = List.class;
+        java.util.Arrays.fill(signature, 4, signature.length, boolean.class);
         Method found = null;
         // DEX allows numeric class names which Java's hidden-API lint parser cannot model.
         // Match this third-party contract directly, keeping Android API checks enabled.
@@ -53,18 +69,24 @@ final class InstagramGalleryContract {
         if (found == null) throw new NoSuchMethodException("Gallery send shape changed");
         send = found;
         send.setAccessible(true);
-        boolean videoCallback = false;
         Class<?>[] callbackSignature = {signature[0], signature[1],
             loader.loadClass("com.instagram.pendingmedia.model.ClipInfo"), pending,
             Long.class, String.class, String.class, int.class, boolean.class};
-        for (Method callback : delegateField.getType().getMethods())
-            if (callback.getName().equals("GUG") && callback.getReturnType() == void.class &&
-                java.util.Arrays.equals(callback.getParameterTypes(), callbackSignature)) videoCallback = true;
-        if (!videoCallback) throw new NoSuchMethodException("Gallery video callback changed");
+        videoCallback = delegateField.getType().getMethod(shape.video(), callbackSignature);
+        batchPermission = delegateField.getType().getMethod(shape.batch(), int.class);
+        if (videoCallback.getReturnType() != void.class || batchPermission.getReturnType() != boolean.class)
+            throw new NoSuchMethodException("Gallery callback changed");
     }
     static InstagramGalleryContract load(ClassLoader loader) {
-        try { return new InstagramGalleryContract(loader); }
-        catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { return null; }
+        InstagramGalleryContract found = null;
+        for (Shape shape : SHAPES) {
+            try {
+                InstagramGalleryContract candidate = new InstagramGalleryContract(loader, shape);
+                if (found != null) return null;
+                found = candidate;
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { }
+        }
+        return found;
     }
     Object sender(Object owner) {
         if (!ownerType.isInstance(owner)) return null;
@@ -95,10 +117,10 @@ final class InstagramGalleryContract {
                 };
                 // Only the video callback is allowed to send. A fresh sender is private to
                 // this request; Instagram's normal gallery/delegate is never replaced.
-                if (method.getName().equals("GUG")) {
+                if (method.equals(videoCallback)) {
                     if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper() ||
                         !sent.compareAndSet(false, true) || !valid.getAsBoolean()) return null;
-                } else if (!method.getName().equals("EbO")) return null;
+                } else if (!method.equals(batchPermission)) return null;
                 try { return method.invoke(delegate, arguments); }
                 catch (java.lang.reflect.InvocationTargetException error) { throw error.getCause(); }
             });
@@ -108,6 +130,9 @@ final class InstagramGalleryContract {
     void send(Object sender, Object selected, BooleanSupplier valid) throws ReflectiveOperationException {
         // Native gallery dispatch decides clip limits, processing, encryption and upload.
         // The sender belongs to the exact controller leased by SAO; no recipient is supplied.
-        send.invoke(guardedSender(sender, valid), null, null, null, List.of(selected), false, false);
+        Object[] arguments = new Object[4 + sendFlags];
+        arguments[3] = List.of(selected);
+        java.util.Arrays.fill(arguments, 4, arguments.length, false);
+        send.invoke(guardedSender(sender, valid), arguments);
     }
 }

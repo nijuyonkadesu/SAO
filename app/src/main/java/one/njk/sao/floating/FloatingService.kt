@@ -420,7 +420,7 @@ class FloatingService : Service() {
                 val detected = withTimeoutOrNull(150) { foreground.await() }
                 val original = withTimeoutOrNull(maxOf(1, deadline - android.os.SystemClock.elapsedRealtime())) { capture.await() }
                 if (!FloatingSession.active.value) return@launch
-                val nativeSelection = NativeBridgeRegistry.cachedSelection(original?.packageName ?: detected)
+                val nativeSelection = NativeBridgeRegistry.beginSelection(original?.packageName ?: detected)
                 val target = original?.packageName ?: detected ?: nativeSelection?.packageName
                 startActivity(PickerActivity.intent(this@FloatingService, target, original?.token, nativeSelection?.session)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

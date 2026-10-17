@@ -137,6 +137,67 @@ class DiscordDeviceTest {
         } finally { registry.clear(); FloatingSession.active(beforeActive); preferences.pasteAssistance(before.pasteAssistance) }
     }
 
+    @Test fun rejectedStickerPreferenceVideoDoesNotPoisonNextMediaPaste() = runBlocking {
+        val registry = one.njk.sao.floating.nativebridge.NativeBridgeRegistry
+        val beforeActive = FloatingSession.active.value
+        val preferences = FloatingPreferences(app); val before = preferences.current()
+        val lease = AtomicReference<String?>()
+        val accept = java.util.concurrent.atomic.AtomicBoolean(true)
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val results = java.util.concurrent.CopyOnWriteArrayList<Pair<String, ByteArray>>()
+        try {
+            mp4First = true; FloatingSession.active(true); preferences.pasteAssistance(false)
+            registry.register("com.discord", object : one.njk.sao.floating.nativebridge.INativeStickerClient.Stub() {
+                override fun setActive(active: Boolean, generation: Long) = Unit
+                override fun snapshot(beginSelection: Boolean) = android.os.Bundle().apply {
+                    if (beginSelection) lease.set(UUID.randomUUID().toString())
+                    lease.get()?.let { putString("session", it) }
+                    putLong("created", SystemClock.elapsedRealtime()); putBoolean("resumed", true)
+                    putStringArray("mime_types", arrayOf("video/mp4"))
+                }
+                override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Boolean {
+                    if (lease.get() != session) return false
+                    lease.set(null)
+                    results.add(mimeType to app.contentResolver.openInputStream(uri)!!.use { it.readBytes() })
+                    calls.incrementAndGet(); return accept.get()
+                }
+            })
+            val tokens = mutableSetOf<String>()
+            for ((index, sticker) in listOf(false, true, false).withIndex()) {
+                preferences.preferStickers(sticker); accept.set(index != 1)
+                val selection = registry.beginSelection("com.discord")!!
+                assertTrue("Each explicit picker opening needs a fresh one-use lease", tokens.add(selection.session))
+                ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, "com.discord", null, selection.session)).use { scenario ->
+                    val deadline = SystemClock.elapsedRealtime() + 10_000
+                    var ready = false
+                    while (!ready && SystemClock.elapsedRealtime() < deadline) {
+                        scenario.onMainActivity {
+                            val grid = it.findViewById<RecyclerView>(R.id.media_grid)
+                            val focal = (grid.onFlingListener as com.google.android.material.carousel.CarouselSnapHelper).findSnapView(grid.layoutManager!!)
+                            val item = focal?.let { v -> (grid.getChildViewHolder(v) as MediaCarouselAdapter.Holder).item }
+                            ready = item?.mimeType == "video/mp4" && !grid.isLayoutRequested && !grid.isComputingLayout &&
+                                (grid.adapter as MediaCarouselAdapter).focusedId == item.id && it.findViewById<View>(R.id.paste_action).isEnabled
+                        }
+                        kotlinx.coroutines.delay(40)
+                    }
+                    assertTrue("Attempt $index must expose Paste, without an intervening photo", ready)
+                    assertEquals(index, calls.get())
+                    scenario.onMainActivity {
+                        assertFalse(it.findViewById<View>(R.id.sticker_action).isEnabled)
+                        assertTrue(it.findViewById<View>(R.id.paste_action).performClick())
+                    }
+                    kotlinx.coroutines.withTimeout(5_000) { while (calls.get() <= index) kotlinx.coroutines.delay(20) }
+                    assertEquals(index + 1, calls.get())
+                }
+            }
+            assertEquals(3, results.size)
+            results.forEach { (mime, bytes) -> assertEquals("video/mp4", mime); assertArrayEquals(mp4, bytes) }
+        } finally {
+            registry.clear(); FloatingSession.active(beforeActive)
+            preferences.preferStickers(before.preferStickers); preferences.pasteAssistance(before.pasteAssistance)
+        }
+    }
+
     @Test fun gifWebmAndMp4ArriveAsOriginalAttachmentsUnderAnotherUid() = runBlocking {
         val local = LocalMediaSource(app)
         val gif = local.all().first { it.animated }

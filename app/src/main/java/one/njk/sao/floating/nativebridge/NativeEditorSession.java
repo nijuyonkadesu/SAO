@@ -26,6 +26,7 @@ final class NativeEditorSession {
     private String session;
     private String[] mimeTypes = new String[0];
     private String[] baseMimeTypes = new String[0];
+    private boolean revoked;
     private long created;
     private long lastRequest;
     private String status = "waiting_editor";
@@ -38,38 +39,56 @@ final class NativeEditorSession {
     }
     boolean owns(EditText view) { return editor.get() == view; }
     void clear() {
-        input = null; receiveContent = false; session = null; identity = null; mimeTypes = new String[0]; baseMimeTypes = new String[0];
+        input = null; receiveContent = false; session = null; identity = null; mimeTypes = new String[0]; baseMimeTypes = new String[0]; revoked = false;
         editor.clear(); activity.clear(); status = "waiting_editor";
     }
     void captureView(Activity current, EditText view) {
         String[] types = policy.viewMimeTypes(view);
         if (types.length == 0) return;
-        capture(current, view, null, types, true);
+        capture(current, view, null, new String[0], types);
     }
     void capture(Activity current, EditText view, InputConnection connection, EditorInfo info) {
         String[] types = policy.viewMimeTypes(view);
-        boolean receiver = types.length > 0;
-        capture(current, view, connection, receiver ? types : policy.mimeTypes(info), receiver);
+        capture(current, view, connection, policy.mimeTypes(info), types);
     }
-    private void capture(Activity current, EditText view, InputConnection connection, String[] types, boolean receiver) {
+    private void capture(Activity current, EditText view, InputConnection connection, String[] types, String[] viewTypes) {
+        boolean receiver = viewTypes.length > 0;
         String[] base = types;
-        types = combinedTypes(types, policy.additionalMimeTypes(view));
+        types = combinedTypes(combinedTypes(types, viewTypes), policy.additionalMimeTypes(view));
         String nextIdentity = policy.isComposer(view) ? policy.identity(current, view) : null;
         if ((!receiver && connection == null) || !policy.isComposer(view) || types.length == 0) { clear(); status = "unsupported_mime"; return; }
         // Retain the naturally created wrapper while the host finishes loading its metadata.
         // No lease exists until that metadata is verified. A changed established identity
-        // still clears the wrapper and cannot reuse an old conversation selection.
-        if (activity.get() != current || editor.get() != view || nextIdentity == null || !nextIdentity.equals(identity) || !Arrays.equals(types, mimeTypes) || receiveContent != receiver) session = null;
+        // still invalidates the token and cannot reuse an old conversation selection.
+        if (activity.get() != current || editor.get() != view || nextIdentity == null || !nextIdentity.equals(identity)) session = null;
         activity = new WeakReference<>(current); editor = new WeakReference<>(view);
-        input = connection; receiveContent = receiver; identity = nextIdentity; baseMimeTypes = base.clone(); mimeTypes = types.clone();
+        input = connection; receiveContent = receiver; identity = nextIdentity; baseMimeTypes = base.clone(); mimeTypes = types.clone(); revoked = false;
     }
+    private void refreshCapabilities(EditText view) {
+        if (view == null || !policy.isComposer(view)) return;
+        String[] types = policy.viewMimeTypes(view);
+        receiveContent = types.length > 0;
+        mimeTypes = combinedTypes(combinedTypes(baseMimeTypes, types), policy.additionalMimeTypes(view));
+    }
+    Bundle beginSelection(Activity current, boolean resumed) {
+        EditText view = editor.get();
+        refreshCapabilities(view);
+        // A fresh explicit icon press may re-arm this exact visible editor. Ordinary
+        // snapshots never turn a revoked picker token into a different conversation.
+        if (sameEditor(current, view) && resumed && current.hasWindowFocus() && (view.hasFocus() || receiveContent)) {
+            identity = policy.identity(current, view); session = null; revoked = false;
+        }
+        return snapshot(current, resumed);
+    }
+    private void revoke() { session = null; revoked = true; status = "editor_changed"; }
     Bundle snapshot(Activity current, boolean resumed) {
         Bundle state = new Bundle();
         EditText view = editor.get();
+        refreshCapabilities(view);
         if (input == null && !receiveContent) { state.putString("status", status); return state; }
         if (!sameEditor(current, view)) { clear(); state.putString("status", status); return state; }
-        String[] supported = combinedTypes(baseMimeTypes, policy.additionalMimeTypes(view));
-        if (!Arrays.equals(supported, mimeTypes)) { mimeTypes = supported; session = null; }
+        if (revoked) { state.putString("status", status); return state; }
+        // Capabilities change independently of the recipient-bound token.
         String actual = policy.identity(current, view);
         boolean ready = resumed && (view.hasFocus() || receiveContent) && current.hasWindowFocus();
         if (identity == null) {
@@ -79,7 +98,7 @@ final class NativeEditorSession {
             if (actual != null && ready && policy.renewFocusedDraft()) {
                 identity = actual; session = null; // Fresh foreground selection; the old token is revoked.
             } else {
-                clear(); status = "editor_changed"; state.putString("status", status); return state;
+                revoke(); state.putString("status", status); return state;
             }
         }
         status = ready ? "ready" : "unfocused";
@@ -94,10 +113,10 @@ final class NativeEditorSession {
     }
     private boolean sameEditor(Activity current, EditText view) {
         return current != null && activity.get() == current && view != null && view.isAttachedToWindow() && view.isShown() && (input != null || receiveContent) && view.isEnabled() &&
-            view.getRootView() == current.getWindow().getDecorView().getRootView() && policy.isComposer(view) && (!receiveContent || Arrays.equals(baseMimeTypes, policy.viewMimeTypes(view)));
+            view.getRootView() == current.getWindow().getDecorView().getRootView() && policy.isComposer(view);
     }
     private boolean validEditor(Activity current, EditText view) {
-        if (!sameEditor(current, view) || identity == null) return false;
+        if (revoked || !sameEditor(current, view) || identity == null) return false;
         String actual = policy.identity(current, view);
         return actual != null && actual.equals(identity);
     }
@@ -106,13 +125,14 @@ final class NativeEditorSession {
             (view, connection) -> policy.insertContent(view, connection, uri, mimeType));
     }
     boolean accepts(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId) {
+        refreshCapabilities(editor.get());
         if (uri == null || !"content".equals(uri.getScheme()) || !authority.equals(uri.getAuthority()) ||
             !Arrays.asList(mimeTypes).contains(mimeType)) return false;
         EditText view = editor.get();
-        if (!validEditor(current, view)) { clear(); return false; }
+        if (!validEditor(current, view)) { if (sameEditor(current, view)) revoke(); else clear(); return false; }
         if (!resumed || !current.hasWindowFocus() || (!view.hasFocus() && !receiveContent) || expected == null || !expected.equals(session) ||
             requestId <= lastRequest || clock.getAsLong() - created > MAX_AGE_MS) return false;
-        return Arrays.asList(combinedTypes(baseMimeTypes, policy.additionalMimeTypes(view))).contains(mimeType);
+        return true; // Current capabilities were refreshed before validating this request.
     }
     boolean insert(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId, PreparedNativeContent content) {
         if (!accepts(current, resumed, uri, mimeType, expected, requestId)) return false;

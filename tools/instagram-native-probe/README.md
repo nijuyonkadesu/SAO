@@ -1,10 +1,11 @@
 # Isolated Instagram adapter probe
 
-Requires the original installed Instagram **451.0.0.53.80 ARM64** APK, API 35 emulator
+Requires the original installed Instagram **435.0.0.37.76** or **451.0.0.53.80** ARM64 APK, API 35 emulator
 and the repository's Gradle wrapper/JDK 21/Android SDK. No proprietary APK or code is
 included. `NativeInstagramProbe` uses inspected build-specific names only to construct
 sparse synthetic controller metadata in Instagram's real classes. The production
-adapter is compiled directly from the main app and does not hardcode those names.
+adapter is compiled directly from the main app. Controller discovery is structural;
+the gallery adapter checks the two inspected obfuscated contracts without version gates.
 
 ```sh
 ./gradlew -p tools/instagram-native-probe :app:assembleDebug
@@ -23,6 +24,7 @@ rejection and a real selected-video object with matching dimensions/duration. It
 `commitContent` call enters the unmodified native keyboard wrapper with a recording
 callback and synthetic content URI; that callback does not decode or upload media.
 It reports pass flags only, with no account, thread IDs or conversation content.
+Both inspected APKs also expose MP4/WebM via the verified composer view without an IME connection.
 
 The bundled MP4 fixture is prepared off Main. The gallery check constructs native data
 objects but **never calls the gallery sender**. It cannot establish video upload or

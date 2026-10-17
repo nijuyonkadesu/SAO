@@ -64,7 +64,7 @@
 > With a valid Vector lease, **Paste** and **DM** send supported media directly to the original conversation. Otherwise DM opens the recipient picker. No native sticker insertion.
 
 > [!WARNING]
-> Instagram and Discord video paths passed native contract/fixture checks; authenticated phone upload remains unverified. Instagram uses contract checks without an exact-version gate.
+> Instagram 435/451 and Discord video paths passed native contract/fixture checks; authenticated phone upload remains unverified. Instagram uses contract checks without an exact-version gate.
 
 ## Details
 

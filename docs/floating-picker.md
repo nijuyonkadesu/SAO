@@ -699,3 +699,11 @@ flow. Instagram GIF is not routed through its bitmap photo handler. Selection/co
 never sends. File/metadata work runs off Main, the lease is rechecked after preparation,
 and native dispatch is consumed once without automatic send retries. See the
 [capability matrix](media-capabilities.md) for validation limits.
+
+An explicit icon press refreshes the visible native composer before opening the picker.
+Normal snapshots never re-arm a revoked selection. MIME availability can change without
+replacing its chat-bound token; a new explicit opening can recover a failed/revoked
+draft without an intervening photo paste or keyboard reconnect. Failed snapshots use
+bounded backoff while the floating service is active; explicit opening can retry immediately.
+Rejected actions preserve any existing URI grant held by an earlier attachment and
+never retry the send. Instagram's verified gallery contracts cover 435 and 451.
