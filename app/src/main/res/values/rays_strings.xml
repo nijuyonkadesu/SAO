@@ -3,7 +3,7 @@
     <string name="source_rays">Rays</string>
     <string name="source_rays_debug">Rays (development)</string>
     <string name="rays_title">Rays library</string>
-    <string name="rays_description">Browse images and GIFs from the installed Rays app. Search uses its titles, tags, and search settings. Your library stays on this device.</string>
+    <string name="rays_description">Browse images, GIFs, and videos from the installed Rays app. Search uses its titles, tags, and search settings. Your library stays on this device.</string>
     <string name="rays_authorization">In Rays, open Settings → API (Experimental) → API grant. Enable the API, add %1$s, and enable its switch. Then return here to test and save.</string>
     <string name="rays_open">Open Rays</string>
     <string name="rays_save">Save and use Rays</string>

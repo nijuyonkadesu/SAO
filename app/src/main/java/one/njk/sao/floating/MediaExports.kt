@@ -23,7 +23,8 @@ data class ExportedMedia(val uri: Uri, val mimeType: String, val file: File)
 @Singleton
 class MediaExports @Inject constructor(@ApplicationContext private val context: Context,
     private val source: MediaSource,
-    private val dispatchers: FloatingDispatchers = FloatingDispatchers()) {
+    private val dispatchers: FloatingDispatchers = FloatingDispatchers(),
+    private val transcoder: VideoTranscoder = VideoTranscoder(context, dispatchers)) {
     private val mutex = Mutex()
 
     suspend fun prepare(item: MediaItem, rendition: Rendition): ExportedMedia = withContext(dispatchers.io) {
@@ -54,6 +55,21 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
             }
         }
         ExportedMedia(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file), mime, file)
+    }
+    suspend fun mp4(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
+        require(item.mimeType == "video/webm")
+        val original = prepare(item, Rendition.MEDIA)
+        val file = File(original.file.parentFile, "${item.id}-compatible.mp4")
+        mutex.withLock {
+            if (!file.isFile) {
+                val staging = File(file.parentFile, file.name + ".pending")
+                try {
+                    transcoder.mp4(original.file, staging)
+                    check(staging.isFile && staging.length() > 0 && staging.renameTo(file))
+                } finally { staging.delete() }
+            }
+        }
+        ExportedMedia(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file), "video/mp4", file)
     }
     private fun encode(original: ByteArray, rendition: Rendition): ByteArray {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

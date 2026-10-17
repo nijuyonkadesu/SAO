@@ -42,3 +42,10 @@ The MP4 preview uses a bundled test clip and a recording native client. It demon
 capability gating and UI. With a valid Vector lease, Paste/DM sends supported media
 to the original Instagram conversation, and Discord Paste/Attach stages it in the
 original draft. Both video paths still require authenticated phone validation. See the [delivery capability matrix](../media-capabilities.md).
+
+The installed Rays source was also checked on Android 15 using a synthetic video
+imported through Rays' normal Add screen. [Setup and source behavior](../rays-source.md).
+
+| Rays connection | Rays video in the floating picker |
+| --- | --- |
+| <img src="rays-source-settings.png" width="260" alt="Named Rays source with successful API connection and local-library setup instructions" /> | <img src="rays-video-picker.png" width="260" alt="Synthetic MP4 playing in the existing floating carousel from the installed Rays library" /> |

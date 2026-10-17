@@ -90,6 +90,7 @@ dependencies {
     implementation libs.bundles.androidx
     implementation libs.android.material
     implementation libs.media3.exoplayer
+    implementation libs.media3.transformer
     implementation libs.media3.ui
     
     // Testing

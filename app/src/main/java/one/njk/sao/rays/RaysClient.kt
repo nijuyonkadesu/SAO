@@ -85,7 +85,7 @@ class RaysClient(private val context: Context, private val packageName: String,
                     val uri = row.getString("uri").toUri()
                     require(uri.scheme == "content" && uri.authority == "$packageName.fileprovider")
                     val mime = row.getString("mimeType").let { if (it == "image/jpg") "image/jpeg" else it }
-                    require(mime.startsWith("image/") && mime != "image/*")
+                    require(mime.startsWith("image/") && mime != "image/*" || mime in setOf("video/mp4", "video/webm"))
                     val tags = row.getJSONArray("tags")
                     RaysSticker(sticker.getString("uuid"), sticker.getString("title"), uri, mime,
                         sticker.getString("stickerMd5"), List(tags.length()) { tags.getJSONObject(it).getString("tag") })

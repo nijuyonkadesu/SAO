@@ -3,6 +3,8 @@ package one.njk.sao.floating
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import one.njk.sao.rays.RaysClient
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -46,6 +48,30 @@ class RaysLiveDeviceTest {
             assertTrue(source.preview(svg) is java.nio.ByteBuffer)
             assertTrue(source.raster(svg).use { android.graphics.BitmapFactory.decodeStream(it) != null })
             assertEquals("image/png", MediaExports(app, source).prepare(svg, Rendition.STICKER_PNG).mimeType)
+            val video = source.page(MediaQuery("api-fixture 060")).items.single { it.title == "api-fixture 060" }
+            assertEquals("video/mp4", video.mimeType)
+            assertTrue(video.isVideo)
+            assertTrue(source.preview(video) is android.graphics.Bitmap)
+            assertTrue(source.video(video)!!.isFile)
+            val movie = source.page(MediaQuery("api-fixture 059")).items.single { it.title == "api-fixture 059" }
+            assertEquals("video/webm", movie.mimeType)
+            val originalMovie = source.original(movie).use { it.readBytes() }
+            val ticks = java.util.concurrent.atomic.AtomicInteger()
+            val heartbeat = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                while (isActive) { ticks.incrementAndGet(); kotlinx.coroutines.delay(16) }
+            }
+            val converted = try { kotlinx.coroutines.withTimeout(30_000) { MediaExports(app, source).mp4(movie) } }
+                finally { heartbeat.cancel() }
+            assertTrue("Main looper should remain responsive during export", ticks.get() > 0)
+            assertEquals("video/mp4", converted.mimeType)
+            val extractor = android.media.MediaExtractor()
+            try {
+                extractor.setDataSource(converted.file.path)
+                assertTrue((0 until extractor.trackCount).any {
+                    extractor.getTrackFormat(it).getString(android.media.MediaFormat.KEY_MIME) == "video/avc"
+                })
+            } finally { extractor.release() }
+            assertArrayEquals(originalMovie, source.original(movie).use { it.readBytes() })
             val emoji = source.page(MediaQuery("🧪"))
             assertEquals(1, emoji.items.size)
             val animated = emoji.items.single()
@@ -67,8 +93,9 @@ class RaysLiveDeviceTest {
         val source = RaysMediaSource(app, config, profile.identity, FloatingDispatchers())
         try {
             val page = source.page(MediaQuery("real-fixture"))
-            assertEquals(3, page.items.size)
-            page.items.forEach { item ->
+            val images = page.items.filterNot { it.isVideo }
+            assertEquals(3, images.size)
+            images.forEach { item ->
                 assertEquals("image/webp", item.mimeType)
                 assertFalse(item.animated)
                 val export = MediaExports(app, source).prepare(item, Rendition.STICKER_PNG)
@@ -77,6 +104,12 @@ class RaysLiveDeviceTest {
                 assertEquals(512, bitmap.width); assertEquals(512, bitmap.height)
                 bitmap.recycle()
             }
+            val video = page.items.single { it.isVideo }
+            val original = source.original(video).use { it.readBytes() }
+            val converted = kotlinx.coroutines.withTimeout(30_000) { MediaExports(app, source).mp4(video) }
+            assertEquals("video/mp4", converted.mimeType)
+            assertTrue(converted.file.length() > 0)
+            assertArrayEquals(original, source.original(video).use { it.readBytes() })
         } finally { source.close() }
     }
 }

@@ -455,9 +455,13 @@ class PickerActivity : AppCompatActivity() {
         if (item == null) return null
         if (target.isWhatsapp && options.preferStickers && !item.hasMotion &&
             NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")) return Rendition.STICKER_WEBP
-        val mime = if (item.hasMotion) item.mimeType else "image/jpeg"
+        val mime = nativeMediaMime(item)
         return if ((target.isWhatsapp || target == MessagingTarget.INSTAGRAM || target == MessagingTarget.DISCORD) &&
             NativeBridgeRegistry.supports(targetPackage, nativeSession, mime)) Rendition.MEDIA else null
+    }
+    private fun nativeMediaMime(item: MediaItem): String {
+        val original = if (item.hasMotion) item.mimeType else "image/jpeg"
+        return VideoCompatibility.mime(original) { NativeBridgeRegistry.supports(targetPackage, nativeSession, it) }
     }
     private fun renderDock() {
         if (!::binding.isInitialized) return
@@ -591,7 +595,8 @@ class PickerActivity : AppCompatActivity() {
         capabilityMime = mime
         capabilityJob = lifecycleScope.launch {
             if (instagram) {
-                val supported = withContext(dispatchers.io) { InstagramDelivery.receiver(packageManager, mime) != null }
+                val supported = withContext(dispatchers.io) { InstagramDelivery.receiver(packageManager, mime) != null ||
+                    mime == "video/webm" && InstagramDelivery.receiver(packageManager, "video/mp4") != null }
                 if (targetPackage == pkg) { canAttachInstagram = supported; renderDock() }
                 return@launch
             }
@@ -678,13 +683,25 @@ class PickerActivity : AppCompatActivity() {
     }
     private fun inlineFailure(message: Int) { model.copyStatus.value = message }
     private suspend fun share(item: MediaItem, rendition: Rendition) {
-        if (rendition == Rendition.MEDIA && target in setOf(MessagingTarget.INSTAGRAM, MessagingTarget.DISCORD) &&
+        val receivingPackage = targetPackage
+        val receivingTarget = target
+        if (rendition == Rendition.MEDIA && receivingTarget in setOf(MessagingTarget.INSTAGRAM, MessagingTarget.DISCORD) &&
             nativePasteRendition(item) != null) {
             nativeInsert(item, Rendition.MEDIA)
             return
         }
-        val media = exports.prepare(item, rendition)
-        if (target == MessagingTarget.INSTAGRAM) {
+        var media = exports.prepare(item, rendition)
+        if (item.mimeType == "video/webm" && receivingPackage != null && receivingTarget != MessagingTarget.OTHER) {
+            val compatibleMime = withContext(dispatchers.io) {
+                VideoCompatibility.mime(item.mimeType) { mime ->
+                    if (receivingTarget == MessagingTarget.INSTAGRAM) InstagramDelivery.receiver(packageManager, mime) != null
+                    else packageManager.resolveActivity(MediaDelivery.intent(media.copy(mimeType = mime), receivingPackage, item.title),
+                        android.content.pm.PackageManager.MATCH_DEFAULT_ONLY) != null
+                }
+            }
+            if (compatibleMime == "video/mp4") media = exports.mp4(item)
+        }
+        if (receivingTarget == MessagingTarget.INSTAGRAM) {
             val receiver = withContext(dispatchers.io) { InstagramDelivery.receiver(packageManager, media.mimeType) }
             if (receiver == null) {
                 canAttachInstagram = false; renderDock(); inlineFailure(R.string.picker_instagram_unavailable)
@@ -693,20 +710,21 @@ class PickerActivity : AppCompatActivity() {
             startActivity(InstagramDelivery.intent(media, receiver, item.title))
             finish(); return
         }
-        if (target == MessagingTarget.TELEGRAM && rendition == Rendition.STICKER_WEBP) {
-            startActivity(TelegramDelivery.stickerIntent(media, requireNotNull(targetPackage), item.title))
+        if (receivingTarget == MessagingTarget.TELEGRAM && rendition == Rendition.STICKER_WEBP) {
+            startActivity(TelegramDelivery.stickerIntent(media, requireNotNull(receivingPackage), item.title))
             finish(); return
         }
-        val send = MediaDelivery.intent(media, targetPackage.takeIf { target != MessagingTarget.OTHER }, item.title)
+        val send = MediaDelivery.intent(media, receivingPackage.takeIf { receivingTarget != MessagingTarget.OTHER }, item.title)
         startActivity(if (send.`package` == null) Intent.createChooser(send, getString(R.string.floating_share)) else send); finish()
     }
     private suspend fun nativeInsert(item: MediaItem, rendition: Rendition = Rendition.STICKER_WEBP) {
         val pkg = targetPackage ?: return; val session = nativeSession ?: return
-        val mime = if (rendition == Rendition.STICKER_WEBP) "image/webp.wasticker" else if (item.hasMotion) item.mimeType else "image/jpeg"
+        val mime = if (rendition == Rendition.STICKER_WEBP) "image/webp.wasticker" else nativeMediaMime(item)
         if (!NativeBridgeRegistry.supports(pkg, session, mime)) { inlineFailure(R.string.floating_native_rejected); return }
-        val media = exports.prepare(item, rendition)
         val instagram = target == MessagingTarget.INSTAGRAM
         val discord = target == MessagingTarget.DISCORD
+        val media = if (item.mimeType == "video/webm" && mime == "video/mp4") exports.mp4(item)
+            else exports.prepare(item, rendition)
         val context = applicationContext
         // Explicit handoff must outlive this activity while the original host regains focus.
         deliveryScope.launch {
