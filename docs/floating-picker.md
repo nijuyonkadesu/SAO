@@ -86,6 +86,8 @@ browsing, selection, filter chips, actions, Search, Back, and keyboard dismissal
 collapse it while preserving the query. The header shows an active query. Large
 text uses two action rows, and the panel stays above the keyboard.
 
+Typing `:wink` or another emoji shortcut opens a compact Material autocomplete list. Tap an emoji to replace just that shortcut and keep typing with the keyboard open. Suggestions use bundled English aliases/keywords, work with every source and need no network connection. See [Telegram source mapping, implementation and licenses](emoji-autocomplete.md).
+
 For Immich, expanded search also shows a compact **Context** / **Filters** row.
 The mode chip opens an inline, single-selection list: **Context** (the default),
 **Filename**, **Description**, **Full path or folder**, and **OCR**. Context and

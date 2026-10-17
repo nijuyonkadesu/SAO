@@ -11,8 +11,11 @@
                 <com.google.android.material.textfield.TextInputLayout android:id="@+id/search_field"
                     android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:visibility="gone"
                     android:hint="@string/floating_search_hint" app:endIconMode="clear_text" app:boxBackgroundMode="outline">
-                    <com.google.android.material.textfield.TextInputEditText android:id="@+id/search"
-                        android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="text" android:singleLine="true" android:imeOptions="actionSearch|flagNoExtractUi" />
+                    <one.njk.sao.floating.emoji.EmojiSearchView android:id="@+id/search"
+                        style="@style/Widget.Material3.AutoCompleteTextView.OutlinedBox"
+                        android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="text" android:singleLine="true"
+                        android:completionThreshold="1" android:dropDownVerticalOffset="4dp" android:popupElevation="8dp"
+                        android:imeOptions="actionSearch|flagNoExtractUi" />
                 </com.google.android.material.textfield.TextInputLayout>
                 <com.google.android.material.button.MaterialButton android:id="@+id/source_toggle"
                     style="@style/Widget.Material3.Button.TonalButton" android:layout_width="wrap_content" android:layout_height="48dp"

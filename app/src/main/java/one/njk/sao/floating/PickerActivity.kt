@@ -40,6 +40,7 @@ class PickerActivity : AppCompatActivity() {
     @Inject lateinit var source: MediaSource
     @Inject lateinit var dispatchers: FloatingDispatchers
     @Inject lateinit var apps: AppCatalog
+    @Inject lateinit var emojiKeywords: one.njk.sao.floating.emoji.EmojiKeywords
     private val model: PickerViewModel by viewModels()
     private val sourcesModel: SourceProfilesViewModel by viewModels()
     private val searchOptions: SearchOptionsViewModel by viewModels()
@@ -131,11 +132,12 @@ class PickerActivity : AppCompatActivity() {
         sequenceCarousel = createCarousel(binding.sequenceGrid, true)
         searchController = PickerSearchController(this, binding, model, searchOptions, source, imageLoader,
             visibilityChanged = { visible ->
+                if (visible) binding.search.dismissSuggestions()
                 if (visible) { showSource(false); showTargets(false); binding.message.isVisible = false }
                 showCarousels()
                 resize(imeHeight)
             }, redraw = { renderHeader(); resize(imeHeight) }, randomRequested = { collapseSearch(); model.lucky() },
-            beforeGesture = { if (::sourceGesture.isInitialized) sourceGesture.cancel() })
+            beforeGesture = { binding.search.dismissSuggestions(); if (::sourceGesture.isInitialized) sourceGesture.cancel() })
         sourceGesture = HoldDragSelector(binding.sourceToggle, binding.root as FrameLayout,
             choices = ::sourceGestureChoices,
             selected = { SourceGestureChoice(catalog.selectedId, catalog.selected?.name ?: getString(R.string.picker_source_samples)) },
@@ -145,15 +147,21 @@ class PickerActivity : AppCompatActivity() {
                 sourcesModel.select(choice.id)
             }, title = R.string.sources_title, chooseAction = R.string.source_hold_choose,
             nextAction = R.string.source_hold_next, previousAction = R.string.source_hold_previous,
-            opening = { searchController.cancelGesture() },
+            opening = { binding.search.dismissSuggestions(); searchController.cancelGesture() },
             hint = { getString(R.string.source_hold_release) }, holdDelay = { options.longPressMs.toLong() })
+        binding.search.bind(emojiKeywords, this, binding.searchField) {
+            editing && !searchController.visible && !binding.sourcePanel.isVisible && !binding.targetList.isVisible
+        }
         binding.search.setText(model.query.value.text)
         binding.search.doAfterTextChanged {
             if (!syncingQuery) model.search(it?.toString().orEmpty())
             renderHeader()
         }
         binding.search.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) { model.backToResults(); collapseSearch(); true } else false
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                if (!binding.search.completeHighlightedSuggestion()) { model.backToResults(); collapseSearch() }
+                true
+            } else false
         }
         binding.preferStickers.setOnClickListener {
             // This chip names the active mode, so both modes keep their active checkmark.
@@ -181,6 +189,7 @@ class PickerActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when { cancelPickerGesture() -> Unit
+                    binding.search.dismissSuggestions() -> Unit
                     searchController.visible && hadIme -> searchController.hideKeyboard()
                     searchController.visible -> searchController.close()
                     editing -> collapseSearch(); binding.sourcePanel.isVisible -> showSource(false)
@@ -372,6 +381,7 @@ class PickerActivity : AppCompatActivity() {
         WindowCompat.getInsetsController(window, binding.search).show(WindowInsetsCompat.Type.ime())
     }
     private fun collapseSearch() {
+        binding.search.dismissSuggestions()
         if (!editing) return
         searchController.close()
         editing = false; binding.search.clearFocus(); binding.searchField.isVisible = false; binding.targetLabel.isVisible = true

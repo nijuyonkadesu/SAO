@@ -1,0 +1,11 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/emoji_suggestion" android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:minHeight="48dp" android:paddingHorizontal="12dp" android:paddingVertical="8dp"
+    android:orientation="horizontal" android:gravity="center_vertical">
+    <androidx.appcompat.widget.AppCompatTextView android:id="@+id/emoji"
+        android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="36dp"
+        android:gravity="center" android:singleLine="true" android:textSize="24sp" android:importantForAccessibility="no" />
+    <TextView android:id="@+id/keyword" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+        android:layout_marginStart="8dp" android:singleLine="true" android:ellipsize="end"
+        android:textAppearance="?attr/textAppearanceBodyLarge" android:textColor="?attr/colorOnSurface" android:importantForAccessibility="no" />
+</LinearLayout>

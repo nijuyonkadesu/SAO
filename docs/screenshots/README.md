@@ -14,6 +14,12 @@ Enabled/selected settings, granted permissions and configured source/app control
 
 Opening SAO shows the floating icon automatically once overlay access is granted. The inline “Show icon on app launch” setting is enabled by default; Stop or dismissal ends the current session.
 
+Type `:wink` to choose an emoji from a compact autocomplete list. Selecting it replaces only the shortcut, keeps the keyboard open and preserves surrounding text. Lookup uses bundled English keywords and aliases. [Telegram source mapping and implementation](../emoji-autocomplete.md).
+
+| Emoji shortcuts in light mode | Emoji shortcuts in dark mode |
+| --- | --- |
+| <img src="floating-emoji-autocomplete.png" width="260" alt="Typing wink after a colon offers winking emoji while preserving the rest of the query" /> | <img src="floating-emoji-autocomplete-dark.png" width="260" alt="The same emoji shortcut list uses Material dark surface and foreground colors" /> |
+
 Background reliability shows battery status, system settings shortcuts and the last app-exit reason. System reconnect, restart and app-update recovery respect manual dismissal; no wake locks or periodic watchdogs are used.
 
 <img src="floating-background-reliability.png" width="280" alt="Inline background reliability controls with battery status and a shortcut to SAO system app settings" />
