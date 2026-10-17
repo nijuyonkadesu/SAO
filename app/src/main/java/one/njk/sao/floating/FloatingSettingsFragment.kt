@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -35,6 +36,7 @@ class FloatingSettingsFragment : Fragment() {
     @Inject lateinit var dispatchers: FloatingDispatchers
     @Inject lateinit var detector: ForegroundAppDetector
     @Inject lateinit var runtime: FloatingRuntime
+    private val sources: SourceProfilesViewModel by viewModels()
     private var _binding: FragmentFloatingSettingsBinding? = null
     private val binding get() = requireNotNull(_binding)
     private var pendingStart = false
@@ -121,6 +123,7 @@ class FloatingSettingsFragment : Fragment() {
                     renderToggle(binding.autoHide, options.autoHide, R.string.floating_auto_hide)
                     renderToggle(binding.showOnLaunch, options.showOnLaunch, R.string.floating_show_on_launch)
                     renderToggle(binding.browseSequence, options.browseSequence, R.string.sequence_setting)
+                    binding.telegramApps.isActivated = options.telegramPackages.isNotEmpty()
                     if (!draggingHoldDelay) binding.longPressValue.text = getString(R.string.sequence_hold_value, options.longPressMs)
                     if (!draggingHoldDelay) binding.longPressDelay.value = options.longPressMs.toFloat()
                     binding.hideDelay.check(when (options.idleSeconds) { 5 -> R.id.delay_five; 10 -> R.id.delay_ten; else -> R.id.delay_three })
@@ -136,9 +139,13 @@ class FloatingSettingsFragment : Fragment() {
                         FloatingSession.IconState.VISIBLE -> R.string.floating_running
                     })
                     binding.stopFloating.isEnabled = state != FloatingSession.IconState.STOPPED
+                    binding.startStop.isActivated = state != FloatingSession.IconState.STOPPED
                 } }
                 launch { NativeBridgeRegistry.connected.collect { connected ->
                     binding.nativeStatus.setText(if (connected) R.string.floating_native_ready else R.string.floating_native_unavailable)
+                } }
+                launch { sources.state.collect { state ->
+                    binding.immichSettings.isActivated = state.loaded && !state.error && state.catalog.profiles.isNotEmpty()
                 } }
             }
         }
@@ -182,6 +189,7 @@ class FloatingSettingsFragment : Fragment() {
             val chip = _binding?.backgroundReliability?.batteryOptimization ?: return@launch
             val label = getString(if (exempt) R.string.floating_battery_exempt else R.string.floating_battery_optimized)
             chip.text = label
+            chip.isActivated = exempt
             chip.contentDescription = "${getString(R.string.floating_battery_optimization)}: $label"
             _binding?.backgroundReliability?.lastAppExit?.apply {
                 text = lastExit
@@ -203,6 +211,7 @@ class FloatingSettingsFragment : Fragment() {
     }
 
     private fun renderPermission(chip: Chip, granted: Boolean, title: Int) {
+        chip.isActivated = granted
         val label = getString(if (granted) R.string.floating_permission_granted else R.string.floating_permission_not_granted)
         if (chip.text.toString() != label) chip.text = label
         chip.contentDescription = "${getString(title)}: $label"

@@ -17,7 +17,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
-import com.google.android.material.color.MaterialColors
 import androidx.media3.common.Player
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
@@ -128,8 +127,6 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
             root.contentDescription = holder.description + if (showUploadTime) ", ${holder.uploadCaption}" else ""
             val selected = item.id == selectedId
             root.isSelected = selected; check.isVisible = selected
-            card.strokeWidth = if (selected) (2 * root.resources.displayMetrics.density).toInt() else 0
-            card.strokeColor = MaterialColors.getColor(root, androidx.appcompat.R.attr.colorPrimary)
             (preview.drawable as? Animatable)?.let {
                 if (playing && !scrolling && item.id == focusedId && holder in attached) it.start() else it.stop()
             }

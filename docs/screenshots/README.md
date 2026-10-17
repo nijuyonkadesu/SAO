@@ -4,7 +4,13 @@ Captured on the Android 15 emulator using bundled samples and a localhost Immich
 
 | Carousel in light mode | Carousel in dark mode | Context search selector |
 | --- | --- | --- |
-| <img src="floating-carousel.png" width="260" alt="Light picker with balanced bottom spacing, tonal actions and aligned title and feedback" /> | <img src="floating-carousel-dark.png" width="260" alt="Dark picker using matching Material foreground and container roles" /> | <img src="floating-search.png" width="260" alt="Expanded Context selector with looping drag choices during text and emoji search" /> |
+| <img src="floating-carousel.png" width="260" alt="Light picker with continuous selection border and rounded Material search, close and check icons" /> | <img src="floating-carousel-dark.png" width="260" alt="Dark picker with continuous selection border and matching icon foregrounds" /> | <img src="floating-search.png" width="260" alt="Expanded Context selector with looping drag choices during text and emoji search" /> |
+
+Enabled/selected settings, granted permissions and configured source/app controls share a filled Material secondary container. The floating icon follows the same dynamic theme as activities. Picker icons use Material Symbols Rounded; the selection outline follows the visible carousel mask, including narrow side cards. Visually checked in light/dark themes and at 200% text.
+
+| Configured settings | Floating icon in light mode | Floating icon in dark mode |
+| --- | --- | --- |
+| <img src="floating-settings-configured.png" width="260" alt="Configured media source and Telegram-app controls filled like enabled preferences" /> | <img src="floating-icon-light.png" width="260" alt="Floating smiley using the wallpaper's light primary container and foreground" /> | <img src="floating-icon-dark.png" width="260" alt="Floating smiley using the corresponding dark primary container and foreground" /> |
 
 Opening SAO shows the floating icon automatically once overlay access is granted. The inline “Show icon on app launch” setting is enabled by default; Stop or dismissal ends the current session.
 

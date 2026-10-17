@@ -15,6 +15,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.hardware.display.DisplayManager
 import android.os.Build
@@ -37,6 +38,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.android.material.color.DynamicColors
+import com.google.android.material.color.MaterialColors
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -109,7 +112,7 @@ class FloatingService : Service() {
     }
     private val windowConfiguration = object : ComponentCallbacks {
         override fun onConfigurationChanged(newConfig: Configuration) {
-            scope.launch { scheduleGeometryUpdate() }
+            scope.launch { refreshBubbleTheme(); scheduleGeometryUpdate() }
         }
         override fun onLowMemory() = Unit
     }
@@ -151,11 +154,12 @@ class FloatingService : Service() {
         windowContext = createDisplayContext(display)
             .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
         windowManager = windowContext.getSystemService(WindowManager::class.java)
-        val themed = ContextThemeWrapper(windowContext, R.style.Theme_SAO)
+        val themed = bubbleTheme()
         dismissTarget = FloatingDismissTarget(themed, windowManager)
         bubble = object : FloatingActionButton(themed) {
             override fun onConfigurationChanged(newConfig: Configuration) {
                 super.onConfigurationChanged(newConfig)
+                refreshBubbleTheme()
                 // ViewRoot also delivers the window's configuration on API 30, where a
                 // window context cannot yet register its own configuration callbacks.
                 scheduleGeometryUpdate()
@@ -163,7 +167,7 @@ class FloatingService : Service() {
             override fun onAttachedToWindow() {
                 super.onAttachedToWindow()
                 // Attachment can deliver new geometry after a lock/rotation while detached.
-                post { scheduleGeometryUpdate() }
+                post { refreshBubbleTheme(); scheduleGeometryUpdate() }
             }
         }.apply {
             customSize = dp(40)
@@ -200,6 +204,21 @@ class FloatingService : Service() {
                 if (timingChanged && attached) scheduleIdle()
             }
         }
+    }
+
+    private fun bubbleTheme(): Context = DynamicColors.wrapContextIfAvailable(
+        ContextThemeWrapper(windowContext, R.style.Theme_SAO))
+
+    /** Configuration/attachment events only; no wallpaper polling or background work. */
+    private fun refreshBubbleTheme() {
+        val button = bubble ?: return
+        val themed = bubbleTheme()
+        val background = MaterialColors.getColor(themed, com.google.android.material.R.attr.colorPrimaryContainer, "FloatingService")
+        val foreground = MaterialColors.getColor(themed, com.google.android.material.R.attr.colorOnPrimaryContainer, "FloatingService")
+        if (button.backgroundTintList?.defaultColor != background) button.backgroundTintList = ColorStateList.valueOf(background)
+        if (button.imageTintList?.defaultColor != foreground) button.imageTintList = ColorStateList.valueOf(foreground)
+        val ripple = MaterialColors.getColor(themed, androidx.appcompat.R.attr.colorControlHighlight, "FloatingService")
+        if (button.rippleColorStateList?.defaultColor != ripple) button.setRippleColor(ColorStateList.valueOf(ripple))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

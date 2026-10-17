@@ -28,6 +28,7 @@ class SettingsFragment: Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding.apply {
+            languageSelect.isActivated = true // English is the currently supported language.
             viewModel.nsfwMode.observe(viewLifecycleOwner){
                 nsfwToggle.isChecked = it
                 nsfwToggle.text = when(it){

@@ -93,7 +93,12 @@ class FloatingSettingsDeviceTest {
     @Test fun mainSettingsExposeInlineControlsAndRestoreThemAfterNavigationAndRecreation() {
         val preferences = FloatingPreferences(app)
         val previous = runBlocking { preferences.current() }
-        runBlocking { preferences.autoHide(false); preferences.preferStickers(false); preferences.idleSeconds(3) }
+        val sources = dagger.hilt.android.EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java).sources()
+        val previousSources = runBlocking { sources.current() }
+        runBlocking {
+            preferences.autoHide(false); preferences.preferStickers(false); preferences.idleSeconds(3)
+            preferences.telegramPackages(emptySet()); sources.restore(SourceCatalog())
+        }
         try {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 scenario.onActivity { activity ->
@@ -138,11 +143,31 @@ class FloatingSettingsDeviceTest {
                 screenshot("inline-settings-portrait.png")
                 onView(withId(R.id.usage_permission)).perform(scrollTo())
                 screenshot("inline-settings-permissions.png")
+                scenario.onActivity { activity ->
+                    assertFalse(activity.findViewById<Chip>(R.id.immich_settings).isActivated)
+                    assertFalse(activity.findViewById<Chip>(R.id.telegram_apps).isActivated)
+                }
+                runBlocking {
+                    // A saved, unselected fixture profile must fill Manage without contacting a server.
+                    sources.upsert(SourceProfile(java.util.UUID(0, 1).toString(), "Test library", ImmichConfig("http://127.0.0.1:1", "settings-fixture")))
+                    preferences.telegramPackages(setOf(instrumentation.context.packageName))
+                }
+                await("Configured source/app controls must render their filled state") {
+                    var ready = false
+                    scenario.onActivity { activity ->
+                        ready = activity.findViewById<Chip>(R.id.immich_settings).isActivated &&
+                            activity.findViewById<Chip>(R.id.telegram_apps).isActivated
+                    }
+                    ready
+                }
+                onView(withId(R.id.telegram_apps)).perform(scrollTo())
+                if (InstrumentationRegistry.getArguments().containsKey("dockShots")) screenshot("inline-settings-configured.png")
             }
         } finally {
             runBlocking {
                 preferences.autoHide(previous.autoHide); preferences.preferStickers(previous.preferStickers)
                 preferences.idleSeconds(previous.idleSeconds)
+                preferences.telegramPackages(previous.telegramPackages); sources.restore(previousSources)
             }
         }
     }
@@ -179,6 +204,14 @@ class FloatingSettingsDeviceTest {
                     assertTrue("Emoji must be vertically centered: $report", abs(glyph.centerY() - body.exactCenterY()) <= 1f)
                 }
                 screenshot("floating-icon-centered.png")
+                settings.onActivity { activity ->
+                    val background = com.google.android.material.color.MaterialColors.getColor(activity,
+                        com.google.android.material.R.attr.colorPrimaryContainer, "FloatingSettingsDeviceTest")
+                    val foreground = com.google.android.material.color.MaterialColors.getColor(activity,
+                        com.google.android.material.R.attr.colorOnPrimaryContainer, "FloatingSettingsDeviceTest")
+                    assertEquals("The overlay must use the same dynamic container as the activity", background, icon!!.backgroundTintList!!.defaultColor)
+                    assertEquals("The overlay icon must use the matching foreground", foreground, icon!!.imageTintList!!.defaultColor)
+                }
             }
         } finally {
             app.stopService(Intent(app, FloatingService::class.java))

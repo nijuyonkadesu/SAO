@@ -206,6 +206,8 @@ class PickerActivity : AppCompatActivity() {
                 syncingQuery = true; binding.filters.removeAllViews()
                 (filters + listOfNotNull(model.query.value.filter)).distinct().forEach { filter -> binding.filters.addView(Chip(this@PickerActivity).apply {
                     id = View.generateViewId(); text = filter; isCheckable = true
+                    checkedIcon = androidx.appcompat.content.res.AppCompatResources.getDrawable(context, R.drawable.ic_picker_check)
+                    checkedIconTint = textColors
                     isChecked = model.query.value.filter == filter
                     chipStrokeColor = android.content.res.ColorStateList.valueOf(com.google.android.material.color.MaterialColors
                         .getColor(binding.root, com.google.android.material.R.attr.colorOutlineVariant))

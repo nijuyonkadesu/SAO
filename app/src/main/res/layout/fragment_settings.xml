@@ -32,7 +32,7 @@
                     android:textAppearance="?attr/textAppearanceTitleMedium" />
                 <com.google.android.material.chip.Chip
                     android:id="@+id/nsfw_toggle"
-                    style="@style/Widget.Material3.Chip.Filter"
+                    style="@style/Widget.SAO.Chip.Filter"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:checkable="true"
@@ -128,7 +128,7 @@
                     android:textAppearance="?attr/textAppearanceTitleMedium" />
                 <com.google.android.material.chip.Chip
                     android:id="@+id/language_select"
-                    style="@style/Widget.Material3.Chip.Assist"
+                    style="@style/Widget.SAO.Settings.StatusChip"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:checkable="false"

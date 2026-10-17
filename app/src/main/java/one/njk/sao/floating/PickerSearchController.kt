@@ -201,6 +201,7 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
             panel.selectedPeople.removeAllViews()
             criteria.people.forEach { person -> panel.selectedPeople.addView(Chip(activity).apply {
                 text = person.name.ifBlank { activity.getString(R.string.search_person_unnamed) }
+                closeIcon = androidx.appcompat.content.res.AppCompatResources.getDrawable(context, R.drawable.ic_picker_close)
                 isCloseIconVisible = true
                 closeIconContentDescription = activity.getString(R.string.search_person_remove, text)
                 setOnCloseIconClickListener { update(constraints.copy(people = constraints.people.filterNot { it.id == person.id })) }

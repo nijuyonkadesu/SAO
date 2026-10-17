@@ -39,6 +39,8 @@ follow the fragment's view lifecycle. The icon lets Material measure its 40 dp b
 minimum-touch insets, keeping its smiley centered rather than forcing the padded size as the
 body size. See [alignment and inline-settings verification](../diagnostics/floating-settings/README.md).
 
+Settings use a filled secondary container for enabled switches, selected values, granted permissions and configured source/app controls. Status actions keep their button behavior; their fill reflects the actual state rather than the last tap. Unconfigured controls remain outlined. The service wraps its window context with the same Material dynamic-color overlay as activities, and refreshes the icon's container, foreground and ripple on configuration/attachment events.
+
 ## Collection and search
 
 `MediaSource` is the source boundary. `LocalMediaSource` returns the bundled
@@ -178,6 +180,8 @@ The title and SAO's feedback form a two-line block with a fixed 2 dp gap, center
 The embedded dock follows its action row's measured height instead of reserving the standalone toolbar's 64 dp minimum. This removes 16 dp of empty bottom space at normal text size while retaining the panel's 12 dp inset and the buttons' standard touch targets.
 
 Colors follow [Material 3's roles](https://m3.material.io/styles/color/the-color-system): low/high surface containers for the panel/cards, on-surface titles, and on-surface-variant supporting text. Copy/Paste inherit the official tonal button's on-secondary-container foreground, ripple and disabled states against their shared secondary container. Motion badges have an opaque surface container behind their text; selector labels use their semantic foreground without extra alpha fading. Activity dynamic color and DayNight theming resolve these roles for the current wallpaper and theme.
+
+Picker icons share Google's Material Symbols Rounded family (24 optical size, weight 400), including vector selection checks that do not depend on font rendering. [Source and license](../THIRD_PARTY_NOTICES.md). The selected outline follows Material Carousel's current visible mask with matching 24 dp corners, so all four edges remain continuous as a card narrows. The pixel regression checks every edge at four mask widths in light and dark themes; device checks cover scrolling, restored positions, dynamic overlay colors, configured settings states, rotation and 200% text.
 
 Screenshots: [empty tip](screenshots/floating-dock-empty.png),
 [overflowing title and tip](screenshots/floating-dock-marquee.png).
