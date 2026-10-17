@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <queries>
+        <package android:name="com.skyd.rays" />
+        <package android:name="com.skyd.rays.debug" />
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
         <package android:name="org.telegram.messenger" />
@@ -38,6 +40,7 @@
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.SAO"
         tools:targetApi="31">
+        <activity android:name=".floating.RaysSettingsActivity" android:exported="false" />
         <activity android:name=".floating.SourceSettingsActivity" android:exported="false" />
         <activity android:name=".floating.ImmichSettingsActivity" android:exported="false" />
         <activity android:name=".floating.TelegramAppsActivity" android:exported="false" />

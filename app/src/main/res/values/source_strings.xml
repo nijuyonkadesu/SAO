@@ -2,7 +2,7 @@
     <string name="sources_title">Media sources</string>
     <string name="sources_description">Add named connections and choose the library to browse. Each connection keeps its own credentials and media.</string>
     <string name="source_name">Source name</string>
-    <string name="source_add">Add Immich source</string>
+    <string name="source_add">Add source</string>
     <string name="source_edit">Edit %1$s</string>
     <string name="source_delete">Remove this source</string>
     <string name="source_removed">Source removed. Samples are available when no source is selected.</string>

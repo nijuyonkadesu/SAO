@@ -41,6 +41,6 @@ internal fun Context.sourceRows(catalog: SourceCatalog): List<SourceListAdapter.
             val detail = if (config is ImmichConfig) "Immich · " + getString(R.string.picker_source_scope,
                 getString(if (config.albumId == null) R.string.immich_all_photos else R.string.immich_saved_album),
                 getString(if (config.smartSearch) R.string.immich_smart_search else R.string.immich_metadata_search))
-                else config.kind
+                else if (config is RaysConfig) getString(R.string.rays_source_description) else config.kind
             SourceListAdapter.Row(profile.id, profile.name, detail, profile.id == catalog.selectedId)
         }

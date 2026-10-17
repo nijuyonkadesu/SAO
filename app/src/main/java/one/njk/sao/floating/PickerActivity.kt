@@ -91,11 +91,9 @@ class PickerActivity : AppCompatActivity() {
         binding.close.setOnClickListener { finish() }
         binding.sourceToggle.setOnClickListener { collapseSearch(); showSource(!binding.sourcePanel.isVisible) }
         binding.sourceBack.setOnClickListener { showSource(false) }
-        binding.sourceConfigure.setOnClickListener { startActivity(ImmichSettingsActivity.intent(this)) }
+        binding.sourceConfigure.setOnClickListener { addMediaSource() }
         val sourceAdapter = SourceListAdapter({ id -> sourcesModel.select(id) }) { id ->
-            if (catalog.profiles.firstOrNull { it.id == id }?.configuration is ImmichConfig)
-                startActivity(ImmichSettingsActivity.intent(this, id))
-            else Toast.makeText(this, R.string.source_unavailable, Toast.LENGTH_SHORT).show()
+            editMediaSource(catalog.profiles.firstOrNull { it.id == id })
         }
         binding.sourceList.layoutManager = LinearLayoutManager(this); binding.sourceList.adapter = sourceAdapter
         binding.message.setOnClickListener { model.retry() }
@@ -253,7 +251,7 @@ class PickerActivity : AppCompatActivity() {
                     updatePlayback()
                     binding.progress.isVisible = busy || state.loading || state.loadingMore
                     binding.message.isVisible = state.error || (!state.loading && state.items.isEmpty())
-                    binding.message.setText(if (state.error) {
+                    binding.message.setText(state.errorMessage ?: if (state.error) {
                         if (state.sequenceId != null) R.string.sequence_retry
                         else if (state.items.isEmpty()) R.string.picker_retry else R.string.picker_retry_more
                     } else R.string.floating_no_results)

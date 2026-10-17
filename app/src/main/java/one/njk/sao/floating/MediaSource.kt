@@ -25,3 +25,7 @@ interface MediaSource {
     /** A decoder-compatible still image for the existing 512px export pipeline. */
     suspend fun raster(item: MediaItem): InputStream
 }
+
+/** Provider adapters translate setup failures without exposing their client types to picker UI. */
+class SourceReadException(@androidx.annotation.StringRes val messageRes: Int, cause: Exception) :
+    java.io.IOException(cause)

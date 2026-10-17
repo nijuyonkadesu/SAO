@@ -1,7 +1,6 @@
 package one.njk.sao.floating
 
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -28,11 +27,9 @@ class SourceSettingsActivity : AppCompatActivity() {
             view.setPadding(padding + bars.left, padding + bars.top, padding + bars.right, padding + bars.bottom); insets
         }
         binding.back.setOnClickListener { finish() }
-        binding.addSource.setOnClickListener { startActivity(ImmichSettingsActivity.intent(this)) }
+        binding.addSource.setOnClickListener { addMediaSource() }
         val adapter = SourceListAdapter(model::select) { id ->
-            if (model.state.value.catalog.profiles.firstOrNull { it.id == id }?.configuration is ImmichConfig)
-                startActivity(ImmichSettingsActivity.intent(this, id))
-            else Toast.makeText(this, R.string.source_unavailable, Toast.LENGTH_SHORT).show()
+            editMediaSource(model.state.value.catalog.profiles.firstOrNull { it.id == id })
         }
         binding.sourceList.layoutManager = LinearLayoutManager(this); binding.sourceList.adapter = adapter
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.state.collect { state ->

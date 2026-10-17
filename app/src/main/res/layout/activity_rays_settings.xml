@@ -1,0 +1,18 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="24dp" android:orientation="vertical">
+        <com.google.android.material.button.MaterialButton android:id="@+id/back" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/immich_back" app:icon="@drawable/ic_picker_back" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/rays_title" android:textAppearance="?attr/textAppearanceHeadlineMedium" />
+        <TextView android:id="@+id/provider" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textAppearance="?attr/textAppearanceTitleMedium" android:textColor="?attr/colorPrimary" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginVertical="12dp" android:text="@string/rays_description" android:textAppearance="?attr/textAppearanceBodyLarge" android:textColor="?attr/colorOnSurfaceVariant" />
+        <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/source_name">
+            <com.google.android.material.textfield.TextInputEditText android:id="@+id/source_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textCapSentences" android:singleLine="true" />
+        </com.google.android.material.textfield.TextInputLayout>
+        <TextView android:id="@+id/authorization" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" android:textIsSelectable="true" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/open_rays" style="@style/Widget.Material3.Button.TonalButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="@string/rays_open" />
+        <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginVertical="16dp" android:minHeight="48dp" android:gravity="center_vertical" android:textAppearance="?attr/textAppearanceBodyMedium" android:accessibilityLiveRegion="polite" />
+        <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:indeterminate="true" android:visibility="gone" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/test_connection" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/immich_test" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/save_connection" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/rays_save" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/delete_source" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/source_delete" android:visibility="gone" />
+    </LinearLayout>
+</ScrollView>

@@ -28,7 +28,7 @@ import javax.inject.Inject
 
 data class PickerState(val items: List<MediaItem> = emptyList(), val loading: Boolean = true,
     val error: Boolean = false, val query: MediaQuery = MediaQuery(), val loadingMore: Boolean = false,
-    val hasMore: Boolean = false, val sourceId: String = "local", val sequenceId: String? = null)
+    val hasMore: Boolean = false, val sourceId: String = "local", val sequenceId: String? = null, val errorMessage: Int? = null)
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
@@ -155,8 +155,9 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
             }
             var current = requireNotNull(snapshot)
             var pageError = false
+            var pageErrorMessage: Int? = null
             while (true) {
-                emit(PickerState(current.items, loading = false, error = pageError, query = query, hasMore = current.nextCursor != null, sourceId = sourceId))
+                emit(PickerState(current.items, loading = false, error = pageError, query = query, hasMore = current.nextCursor != null, sourceId = sourceId, errorMessage = pageErrorMessage))
                 requestingPage = false
                 pageRequests.receive()
                 val cursor = current.nextCursor
@@ -169,11 +170,12 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
                         uniqueItems(if (cursor == null) page.items else current.items + page.items),
                         page.nextCursor?.takeUnless { it in seen }, seen)
                     session.rememberResults(current)
-                    pageError = false
+                    pageError = false; pageErrorMessage = null
                 } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { pageError = true }
+                catch (error: Exception) { pageError = true; pageErrorMessage = (error as? SourceReadException)?.messageRes }
             }
-        }.catch { emit(PickerState(loading = false, error = true, query = query, sourceId = sourceId)) } }
+        }.catch { error -> emit(PickerState(loading = false, error = true, query = query, sourceId = sourceId,
+            errorMessage = (error as? SourceReadException)?.messageRes)) } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PickerState())
     val state = combine(resultsState, sequence.state) { results, nearby ->
         if (nearby == null || nearby.sourceId != results.sourceId) results else PickerState(
