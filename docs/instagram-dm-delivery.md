@@ -91,6 +91,18 @@ fabricated or restarted keyboard connection.
 Gallery capability also works through the visible DM composer without keyboard focus;
 an existing natural keyboard connection retains photo support alongside it.
 
+An early unresolved listener no longer stays disabled after its bounded discovery
+attempts. Each explicit icon press may retry that same visible composer's binding once;
+ordinary refreshes retain their existing limits. A probe using the real 435 classes
+reproduced the unresolved-listener failure before this change and verifies recovery
+without installing a new listener. Both inspected contracts run the same check.
+
+Unavailable video Paste now reports the actual stage inline: gallery loading/unsupported,
+unresolved controller/thread, restricted media, missing sender, or selection timeout.
+The report includes the host version/build and distinguishes older loaded SAO hooks
+from the updated APK. GIF has separate guidance. These diagnostics use the existing
+bridge snapshots and add no polling or persistent logs containing conversation data.
+
 ### Adapter and session validation
 
 `InstagramComposerPolicy` requires the named `ComposerAutoCompleteTextView` and exact

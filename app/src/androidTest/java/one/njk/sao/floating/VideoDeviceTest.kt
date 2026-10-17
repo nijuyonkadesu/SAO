@@ -131,6 +131,37 @@ class VideoDeviceTest {
             }
         } finally { registry.clear(); FloatingSession.active(beforeActive); preferences.pasteAssistance(before.pasteAssistance) }
     }
+    @Test fun instagramVideoFailureExplainsTheActualNativeGate() = runBlocking {
+        val registry = one.njk.sao.floating.nativebridge.NativeBridgeRegistry
+        val beforeActive = FloatingSession.active.value
+        try {
+            FloatingSession.active(true)
+            for ((gate, expected) in listOf("gallery_unavailable" to "could not load", "thread_unresolved" to "could not bind")) {
+                registry.register("com.instagram.android", object : one.njk.sao.floating.nativebridge.INativeStickerClient.Stub() {
+                    override fun setActive(active: Boolean, generation: Long) = Unit
+                    override fun snapshot(beginSelection: Boolean) = android.os.Bundle().apply {
+                        putString("status", "pending_metadata"); putString("host_version", "435.0.0.37.76")
+                        putString("video_status", gate); putInt("bridge_revision", 1)
+                    }
+                    override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Boolean {
+                        fail("An unavailable video handler must not dispatch"); return false
+                    }
+                })
+                ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, "com.instagram.android", null)).use { scenario ->
+                    await(scenario, "$gate must replace the generic GIF/video fallback hint") {
+                        holder(it)?.item?.isVideo == true &&
+                            it.findViewById<android.widget.TextView>(R.id.selection_message).text.contains(expected)
+                    }
+                    scenario.onMainActivity { assertFalse(it.findViewById<View>(R.id.paste_action).isEnabled) }
+                    if (gate == "gallery_unavailable") {
+                        val hold = InstrumentationRegistry.getArguments().getString("nativeGateHoldMs")?.toLongOrNull()?.coerceIn(0, 30_000) ?: 0
+                        if (hold > 0) kotlinx.coroutines.delay(hold)
+                    }
+                }
+                registry.clear()
+            }
+        } finally { registry.clear(); FloatingSession.active(beforeActive) }
+    }
     @Test fun focusedVideoLoopsMutedAndReleasesWhenHiddenStoppedOrBrowsedAway(): Unit = runBlocking {
         val prefs = FloatingPreferences(app); val preferred = prefs.current().preferStickers; prefs.preferStickers(true)
         try {

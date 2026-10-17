@@ -41,7 +41,7 @@
 | --- | --- | --- |
 | Photo (JPEG/PNG) | ✓ | ✓ |
 | GIF | ✓ | ✓ |
-| MP4 | X — No video Paste handler | ~ Native draft; phone check pending |
+| MP4 | X — No video Paste handler | ✓ Native draft |
 | WebM | X — No video Paste handler | ~ Native draft; phone check pending |
 
 **Supported sticker medium by app:** ✓ PNG/APNG/GIF · ✓ Lottie (restricted upload) · X MP4/WebM (not sticker formats).
@@ -55,8 +55,8 @@
 | --- | --- | --- |
 | Photo (JPEG/PNG) | X — No media clipboard handler | ✓ |
 | GIF | X — No media clipboard handler | X — No GIF adapter |
-| MP4 | X — No video clipboard handler | ~ Compatible gallery contract required |
-| WebM | X — No video clipboard handler | ~ Compatible gallery contract required |
+| MP4 | X — No video clipboard handler | ~ Phone failure under investigation |
+| WebM | X — No video clipboard handler | ~ Contract verified; phone check pending |
 
 **Supported sticker medium by app:** ✓ In-app static stickers · ✓ In-app animated/GIF stickers.
 
@@ -64,7 +64,7 @@
 > With a valid Vector lease, **Paste** and **DM** send supported media directly to the original conversation. Otherwise DM opens the recipient picker. No native sticker insertion.
 
 > [!WARNING]
-> Instagram 435/451 and Discord video paths passed native contract/fixture checks; authenticated phone upload remains unverified. Instagram uses contract checks without an exact-version gate.
+> Instagram 435 still reports disabled MP4 Paste; the binding fix needs phone confirmation. Discord MP4 is phone-confirmed; WebM has fixture checks. Instagram uses contract checks without an exact-version gate.
 
 ## Details
 
@@ -72,4 +72,4 @@ Tapping copies immediately; scrolling alone does not. Media-mode photos use JPEG
 
 Sticker specifications: [WhatsApp](https://github.com/WhatsApp/stickers/blob/main/Android/README.md#sticker-art-and-app-requirements), [Telegram](https://core.telegram.org/api/stickers), [Discord](https://docs.discord.com/developers/resources/sticker#sticker-format-types), [Instagram DM packs](https://about.fb.com/news/2024/11/new-ways-to-connect-through-dms/) and [GIF library](https://about.fb.com/news/2020/05/welcome-giphy/). Discord Lottie uploads require a verified/partnered server; custom server stickers in DMs require [Nitro](https://support.discord.com/hc/en-us/articles/4403089981975-Custom-Stickers-FAQ).
 
-Implementation/validation: [Instagram](instagram-dm-delivery.md), [Discord](discord-apk-analysis.md), [Telegram/Nagram](telegram-delivery.md). WhatsApp/Instagram photos and Discord drafts have phone confirmation; the Instagram/Discord video adapters have no authenticated upload confirmation.
+Implementation/validation: [Instagram](instagram-dm-delivery.md), [Discord](discord-apk-analysis.md), [Telegram/Nagram](telegram-delivery.md). WhatsApp/Instagram photos and Discord drafts/MP4 have phone confirmation; Instagram video remains under investigation.

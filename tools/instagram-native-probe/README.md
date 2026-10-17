@@ -25,6 +25,9 @@ rejection and a real selected-video object with matching dimensions/duration. It
 callback and synthetic content URI; that callback does not decode or upload media.
 It reports pass flags only, with no account, thread IDs or conversation content.
 Both inspected APKs also expose MP4/WebM via the verified composer view without an IME connection.
+The initialization test installs the listener before its controller owns the editor,
+then publishes the editor and explicitly reopens selection. It verifies recovery with
+the same listener and specific loading/binding/restriction/missing-sender diagnostics.
 
 The bundled MP4 fixture is prepared off Main. The gallery check constructs native data
 objects but **never calls the gallery sender**. It cannot establish video upload or

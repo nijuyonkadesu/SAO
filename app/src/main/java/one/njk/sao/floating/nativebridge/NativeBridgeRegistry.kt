@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap
 import one.njk.sao.floating.FloatingSession
 
 object NativeBridgeRegistry {
+    const val PROTOCOL_REVISION = NativeBridgeProtocol.REVISION
     data class Selection(val packageName: String, val session: String, val mimeTypes: Set<String>)
     private data class Client(val remote: INativeStickerClient, val binder: IBinder, var death: IBinder.DeathRecipient? = null,
         var failures: Int = 0, var retryAfter: Long = 0)
@@ -25,7 +26,8 @@ object NativeBridgeRegistry {
     private val clients = ConcurrentHashMap<String, Client>()
     private val connection = MutableStateFlow(false)
     val connected = connection.asStateFlow()
-    data class HostStatus(val stage: String, val version: String)
+    data class HostStatus(val stage: String, val version: String, val videoStage: String = "",
+        val revision: Int = 0, val build: String = "")
     private val statusState = MutableStateFlow<Map<String, HostStatus>>(emptyMap())
     val statuses = statusState.asStateFlow()
     fun status(packageName: String?) = statusState.value[packageName]
@@ -91,9 +93,7 @@ object NativeBridgeRegistry {
                             val state = current.remote.snapshot(false)
                             if (clients[name] !== current) return@forEach
                             current.failures = 0; current.retryAfter = 0
-                            diagnostics[name] = HostStatus(state.getString("status").orEmpty().takeIf {
-                                it in setOf("waiting_editor", "unsupported_mime", "pending_metadata", "editor_changed", "unfocused", "ready", "hooks_unavailable")
-                            } ?: "waiting_editor", state.getString("host_version").orEmpty().take(40))
+                            diagnostics[name] = hostStatus(state)
                             val selection = selection(name, state)
                             if (selection != null) {
                                 validated[name] = selection
@@ -117,6 +117,15 @@ object NativeBridgeRegistry {
         client.failures = minOf(client.failures + 1, 4)
         client.retryAfter = SystemClock.elapsedRealtime() + (1_000L shl (client.failures - 1))
     }
+    private fun hostStatus(state: Bundle) = HostStatus(
+        state.getString("status").orEmpty().takeIf {
+            it in setOf("waiting_editor", "unsupported_mime", "pending_metadata", "editor_changed", "unfocused", "ready", "hooks_unavailable", "selection_timeout")
+        } ?: "waiting_editor",
+        state.getString("host_version").orEmpty().take(40),
+        state.getString("video_status").orEmpty().takeIf {
+            it in setOf("gallery_loading", "gallery_unavailable", "ambiguous_composer", "waiting_editor", "thread_unresolved", "pending_metadata", "media_restricted", "sender_missing", "ready")
+        }.orEmpty(), state.getInt("bridge_revision"),
+        state.getString("host_build").orEmpty().take(20).filter(Char::isDigit))
     private fun selection(packageName: String, state: Bundle): Selection? {
         val session = state.getString("session") ?: return null
         val age = SystemClock.elapsedRealtime() - state.getLong("created")
@@ -151,6 +160,7 @@ object NativeBridgeRegistry {
                 val state = client.remote.snapshot(true)
                 if (!FloatingSession.active.value || clients[name] !== client) return@withLock null
                 client.failures = 0; client.retryAfter = 0
+                statusState.value = statusState.value + (name to hostStatus(state))
                 val selected = selection(name, state)?.takeIf { state.getBoolean("resumed") }
                 if (selected == null) {
                     cached.remove(name); sessionState.value = sessionState.value - name

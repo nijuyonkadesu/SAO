@@ -57,6 +57,7 @@ public final class SaoXposedModule extends XposedModule {
     private final Set<View> receiverObserved = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     private volatile Bundle cachedState = Bundle.EMPTY;
     private volatile String hostVersion = "";
+    private volatile String hostBuild = "";
     private String lastStatus = "";
 
     @Override public void onModuleLoaded(ModuleLoadedParam param) {
@@ -251,7 +252,10 @@ public final class SaoXposedModule extends XposedModule {
         bridgeIo.execute(() -> {
             try {
                 moduleUid = context.getPackageManager().getApplicationInfo(modulePackage, 0).uid;
-                try { hostVersion = context.getPackageManager().getPackageInfo(processName, 0).versionName; }
+                try {
+                    android.content.pm.PackageInfo info = context.getPackageManager().getPackageInfo(processName, 0);
+                    hostVersion = info.versionName; hostBuild = Long.toString(info.getLongVersionCode());
+                }
                 catch (android.content.pm.PackageManager.NameNotFoundException ignored) { }
                 Intent intent = new Intent().setComponent(new ComponentName(modulePackage,
                     "one.njk.sao.floating.nativebridge.NativeBridgeService"));
@@ -315,9 +319,12 @@ public final class SaoXposedModule extends XposedModule {
         });
     }
     private void scan(View view, Activity current) {
+        scan(view, current, false);
+    }
+    private void scan(View view, Activity current, boolean explicitSelection) {
         if (!nativeActive || current != activity.get() || !resumed || policy == null || editorSession == null) return;
         java.util.List<EditText> receivers = new java.util.ArrayList<>();
-        scanViews(view, receivers);
+        scanViews(view, receivers, explicitSelection);
         if (receivers.size() == 1) {
             EditText editor = receivers.get(0);
             // Existing leases are validated by snapshot, never silently re-captured when
@@ -325,10 +332,10 @@ public final class SaoXposedModule extends XposedModule {
             if (!editorSession.owns(editor)) editorSession.captureView(current, editor);
         } else if (receivers.size() > 1) editorSession.clear(); // Ambiguous native drafts stay disabled.
     }
-    private void scanViews(View view, java.util.List<EditText> receivers) {
+    private void scanViews(View view, java.util.List<EditText> receivers, boolean explicitSelection) {
         if (view instanceof EditText && view.isShown() && view.isEnabled() && policy.isComposer((EditText) view)) {
             EditText editor = (EditText) view;
-            if (policy instanceof InstagramComposerPolicy) ((InstagramComposerPolicy) policy).configuredFromEditor(editor);
+            if (policy instanceof InstagramComposerPolicy) ((InstagramComposerPolicy) policy).configuredFromEditor(editor, explicitSelection);
             if (policy.viewMimeTypes(editor).length > 0 && editor.getGlobalVisibleRect(new android.graphics.Rect())) {
                 receivers.add(editor); observeReceiver(editor);
             }
@@ -338,7 +345,7 @@ public final class SaoXposedModule extends XposedModule {
         }
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) scanViews(group.getChildAt(i), receivers);
+            for (int i = 0; i < group.getChildCount(); i++) scanViews(group.getChildAt(i), receivers, explicitSelection);
         }
     }
     private boolean installConnectionHook(Method method) {
@@ -363,7 +370,11 @@ public final class SaoXposedModule extends XposedModule {
         Bundle state = editorSession == null ? new Bundle() : editorSession.snapshot(activity.get(), resumed);
         if (!adapterReady) state.putString("status", "hooks_unavailable");
         state.putString("host_version", hostVersion);
-        String status = state.getString("status", "waiting_editor");
+        state.putString("host_build", hostBuild);
+        state.putInt("bridge_revision", NativeBridgeProtocol.REVISION);
+        String video = policy == null ? "" : policy.videoStatus();
+        state.putString("video_status", video);
+        String status = state.getString("status", "waiting_editor") + (video.isEmpty() ? "" : ", video: " + video);
         if (!status.equals(lastStatus)) {
             lastStatus = status;
             log(android.util.Log.INFO, "SAO", processName + " native state: " + status);
@@ -387,25 +398,33 @@ public final class SaoXposedModule extends XposedModule {
             return new Bundle(cachedState);
         }
         private Bundle freshSelection() {
-            Bundle[] state = {Bundle.EMPTY};
+            Bundle[] state = {unavailableSelection("unfocused")};
             AtomicBoolean expired = new AtomicBoolean();
             CountDownLatch ready = new CountDownLatch(1);
             main.post(() -> {
                 try {
                     Activity current = activity.get();
                     if (!expired.get() && nativeActive && resumed && current != null && current.hasWindowFocus()) {
-                        scan(current.getWindow().getDecorView(), current);
-                        if (editorSession != null) editorSession.beginSelection(current, true);
-                        publishState(); state[0] = new Bundle(cachedState);
+                        scan(current.getWindow().getDecorView(), current, true);
+                        if (!expired.get()) {
+                            if (editorSession != null) editorSession.beginSelection(current, true);
+                            publishState(); state[0] = new Bundle(cachedState);
+                        }
                     }
                 } catch (RuntimeException | LinkageError error) {
                     warn("Could not capture the current native editor");
                 } finally { ready.countDown(); }
             });
             try {
-                if (!ready.await(250, TimeUnit.MILLISECONDS)) { expired.set(true); return Bundle.EMPTY; }
+                if (!ready.await(250, TimeUnit.MILLISECONDS)) { expired.set(true); return unavailableSelection("selection_timeout"); }
                 return state[0];
-            } catch (InterruptedException error) { expired.set(true); Thread.currentThread().interrupt(); return Bundle.EMPTY; }
+            } catch (InterruptedException error) { expired.set(true); Thread.currentThread().interrupt(); return unavailableSelection("selection_timeout"); }
+        }
+        private Bundle unavailableSelection(String status) {
+            Bundle state = new Bundle();
+            state.putString("status", status); state.putString("host_version", hostVersion);
+            state.putString("host_build", hostBuild); state.putInt("bridge_revision", NativeBridgeProtocol.REVISION);
+            return state;
         }
         @Override public void setActive(boolean active, long generation) {
             enforceCaller(); main.post(() -> applyActive(active, generation));

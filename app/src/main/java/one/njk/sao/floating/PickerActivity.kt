@@ -423,9 +423,27 @@ class PickerActivity : AppCompatActivity() {
         binding.sourceToggle.contentDescription = getString(R.string.source_hold_accessibility, label)
         androidx.appcompat.widget.TooltipCompat.setTooltipText(binding.sourceToggle, binding.sourceToggle.contentDescription)
     }
-    private fun nativeUnavailableHint(): String {
+    private fun nativeUnavailableHint(video: Boolean = false): String {
         val status = NativeBridgeRegistry.status(targetPackage)
         if (!NativeBridgeRegistry.available(targetPackage)) return getString(R.string.picker_native_inactive)
+        if (video && target == MessagingTarget.INSTAGRAM && status != null) {
+            val reason = getString(when {
+                status.revision < NativeBridgeRegistry.PROTOCOL_REVISION && status.version.isNotEmpty() -> R.string.picker_instagram_hooks_old
+                status.stage == "selection_timeout" -> R.string.picker_instagram_capture_timeout
+                status.videoStage == "gallery_loading" -> R.string.picker_instagram_gallery_loading
+                status.videoStage == "gallery_unavailable" -> R.string.picker_instagram_gallery_unavailable
+                status.videoStage == "thread_unresolved" -> R.string.picker_instagram_thread_unresolved
+                status.videoStage == "media_restricted" -> R.string.picker_instagram_media_restricted
+                status.videoStage == "sender_missing" -> R.string.picker_instagram_sender_missing
+                status.videoStage == "ambiguous_composer" -> R.string.picker_instagram_composer_ambiguous
+                status.videoStage == "pending_metadata" || status.stage == "pending_metadata" -> R.string.picker_native_metadata_pending
+                status.stage == "hooks_unavailable" -> R.string.picker_native_hooks_unavailable
+                status.videoStage == "ready" -> R.string.picker_instagram_video_reopen
+                else -> R.string.picker_native_focus
+            })
+            val version = status.version.ifEmpty { "—" } + status.build.takeIf { it.isNotEmpty() }?.let { "/$it" }.orEmpty()
+            return getString(R.string.picker_instagram_video_diagnostic, reason, version)
+        }
         val reason = getString(when (status?.stage) {
             "hooks_unavailable" -> R.string.picker_native_hooks_unavailable
             "pending_metadata" -> R.string.picker_native_metadata_pending
@@ -474,7 +492,8 @@ class PickerActivity : AppCompatActivity() {
             target.isWhatsapp && nativeRendition == Rendition.STICKER_WEBP -> getString(R.string.picker_whatsapp_native_paste_hint)
             nativePaste && target == MessagingTarget.DISCORD -> getString(R.string.picker_discord_native_hint)
             nativePaste -> getString(R.string.picker_native_image_hint)
-            target == MessagingTarget.INSTAGRAM && item?.hasMotion == true && NativeBridgeRegistry.available(targetPackage) -> getString(R.string.picker_instagram_motion_hint)
+            target == MessagingTarget.INSTAGRAM && item?.isVideo == true && NativeBridgeRegistry.available(targetPackage) -> nativeUnavailableHint(video = true)
+            target == MessagingTarget.INSTAGRAM && item?.animated == true && NativeBridgeRegistry.available(targetPackage) -> getString(R.string.picker_instagram_motion_hint)
             target == MessagingTarget.INSTAGRAM && !canAttachInstagram -> getString(R.string.picker_instagram_unavailable)
             target == MessagingTarget.INSTAGRAM && NativeBridgeRegistry.available(targetPackage) -> nativeUnavailableHint()
             target == MessagingTarget.INSTAGRAM -> getString(R.string.picker_instagram_hint)

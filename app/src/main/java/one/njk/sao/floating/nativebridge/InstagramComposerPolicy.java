@@ -26,6 +26,7 @@ final class InstagramComposerPolicy implements ComposerPolicy {
     private final Class<?> composerType;
     private final Class<?> keyType;
     private volatile InstagramGalleryContract gallery;
+    private volatile boolean galleryLoaded;
     private final Map<EditText, Binding> bindings = new WeakHashMap<>();
 
     InstagramComposerPolicy(ClassLoader loader) throws ClassNotFoundException {
@@ -34,7 +35,10 @@ final class InstagramComposerPolicy implements ComposerPolicy {
     InstagramComposerPolicy(ClassLoader loader, java.util.concurrent.Executor io) throws ClassNotFoundException {
         composerType = Class.forName("com.instagram.ui.widget.textview.ComposerAutoCompleteTextView", false, loader);
         keyType = Class.forName("com.instagram.model.direct.DirectThreadKey", false, loader);
-        io.execute(() -> gallery = InstagramGalleryContract.load(loader));
+        io.execute(() -> {
+            gallery = InstagramGalleryContract.load(loader);
+            galleryLoaded = true;
+        });
     }
     @Override public boolean isComposer(EditText view) {
         if (!composerType.isInstance(view)) return false;
@@ -60,11 +64,23 @@ final class InstagramComposerPolicy implements ComposerPolicy {
     }
     @Override public void reset() { bindings.clear(); }
     void configuredFromEditor(EditText view) {
+        configuredFromEditor(view, false);
+    }
+    void configuredFromEditor(EditText view, boolean explicitSelection) {
         if (!isComposer(view)) return;
         Binding existing = bindings.get(view);
         if (existing != null) try {
             Object listener = existing.listener.get();
-            if (listener != null && existing.listenerField.get(view) == listener) return;
+            if (listener != null && existing.listenerField.get(view) == listener) {
+                if (explicitSelection && (existing.thread == null || existing.thread.controller(view) == null)) {
+                    // The listener can precede the controller's editor assignment. The
+                    // bounded background attempts must not disable this composer forever.
+                    // One explicit opening permits one new bounded discovery; no idle loop.
+                    existing.thread = InstagramThreadBinding.discover(listener, view, keyType);
+                    existing.attempts = 1; existing.nextAttempt = android.os.SystemClock.elapsedRealtime() + 250;
+                }
+                return;
+            }
         } catch (ReflectiveOperationException | RuntimeException ignored) { }
         bindings.remove(view);
         // The host may configure its media listener before the module sees the setter.
@@ -123,6 +139,26 @@ final class InstagramComposerPolicy implements ComposerPolicy {
         // Gallery video delivery belongs to the verified DM controller, independently
         // of keyboard focus. Still photos keep the naturally captured IME connection.
         return isComposer(view) && identity(null, view) != null ? additionalMimeTypes(view) : new String[0];
+    }
+    @Override public String videoStatus() {
+        if (!galleryLoaded) return "gallery_loading";
+        if (gallery == null) return "gallery_unavailable";
+        EditText editor = null; Binding selected = null;
+        for (Map.Entry<EditText, Binding> entry : bindings.entrySet()) {
+            EditText view = entry.getKey();
+            if (view == null || !view.isAttachedToWindow() || !view.isShown() || !isComposer(view)) continue;
+            if (editor != null) return "ambiguous_composer";
+            editor = view; selected = entry.getValue();
+        }
+        if (selected == null) return "waiting_editor";
+        try {
+            Object listener = selected.listener.get();
+            if (listener == null || selected.listenerField.get(editor) != listener) return "waiting_editor";
+            if (selected.thread == null || selected.thread.controller(editor) == null) return "thread_unresolved";
+            if (selected.thread.identity(editor) == null) return "pending_metadata";
+            if (!gallery.acceptsMedia(listener)) return "media_restricted";
+            return gallery.sender(selected.thread.controller(editor)) == null ? "sender_missing" : "ready";
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { return "thread_unresolved"; }
     }
     @Override public PreparedNativeContent prepareContent(Context context, android.net.Uri uri, String mimeType) throws Exception {
         if (!NativeVideoMetadata.supports(mimeType)) return ComposerPolicy.super.prepareContent(context, uri, mimeType);

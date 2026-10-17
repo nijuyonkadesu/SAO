@@ -15,6 +15,7 @@ interface ComposerPolicy {
     String identity(Activity activity, EditText view);
     String[] mimeTypes(EditorInfo info);
     default String[] additionalMimeTypes(EditText view) { return new String[0]; }
+    default String videoStatus() { return ""; }
     default PreparedNativeContent prepareContent(Context context, Uri uri, String mimeType) throws Exception {
         return (view, input) -> insertContent(view, input, uri, mimeType);
     }

@@ -82,6 +82,17 @@ public final class NativeInstagramProbe extends Instrumentation {
                     for(Method m:composer.getMethods()) if(m.getName().equals("setInputContentInfoListener")) configure=m;
                     configure.invoke(view,new String[]{"image/png","image/jpeg","image/gif"},listener);
                     InstagramComposerPolicy policy = new InstagramComposerPolicy(loader);
+                    // The real composer can install its listener before the controller
+                    // publishes its editor. Explicit opening must recover that same listener.
+                    set(container,fixture.firstEditor(),null); set(container,fixture.secondEditor(),null);
+                    policy.configured(view,listener,configure.getParameterTypes()[1]);
+                    report.put("initial_unresolved_controller_has_no_capability", policy.viewMimeTypes(view).length == 0);
+                    report.put("unresolved_controller_reason_is_specific", policy.videoStatus().equals("thread_unresolved"));
+                    set(container,fixture.firstEditor(),view); set(container,fixture.secondEditor(),view);
+                    policy.configuredFromEditor(view, true);
+                    report.put("explicit_open_recovers_late_controller_without_new_listener", policy.identity(host,view) != null &&
+                        java.util.Arrays.asList(policy.viewMimeTypes(view)).contains("video/mp4"));
+                    report.put("recovered_controller_reason_is_ready", policy.videoStatus().equals("ready"));
                     policy.configured(view,listener,configure.getParameterTypes()[1]);
                     String original = policy.identity(host,view);
                     report.put("dm_resource_verified",policy.isComposer(view));
@@ -119,13 +130,19 @@ public final class NativeInstagramProbe extends Instrumentation {
                     InstagramComposerPolicy videos = new InstagramComposerPolicy(loader);
                     videos.configured(view, listener, configure.getParameterTypes()[1]);
                     report.put("native_video_capability", new org.json.JSONArray(videos.additionalMimeTypes(view)));
+                    java.util.List<Runnable> pending = new java.util.ArrayList<>();
+                    InstagramComposerPolicy loading = new InstagramComposerPolicy(loader, pending::add);
+                    report.put("gallery_loading_reason_is_specific", loading.videoStatus().equals("gallery_loading"));
+                    pending.forEach(Runnable::run);
                     report.put("native_video_view_without_keyboard", java.util.Arrays.asList(videos.viewMimeTypes(view)).contains("video/mp4"));
                     set(listener, "A04", true);
                     report.put("native_media_invite_limit_respected", videos.additionalMimeTypes(view).length == 0);
+                    report.put("native_media_restriction_reason_is_specific", videos.videoStatus().equals("media_restricted"));
                     set(listener, "A04", false);
                     report.put("video_capability_without_version_gate", java.util.Arrays.asList(videos.additionalMimeTypes(view)).contains("video/mp4"));
                     set(owner, fixture.ownerSender(), null);
                     report.put("missing_video_sender_disabled", videos.additionalMimeTypes(view).length == 0);
+                    report.put("missing_video_sender_reason_is_specific", videos.videoStatus().equals("sender_missing"));
                     set(owner, fixture.ownerSender(), gallerySender);
                     // Construct the real native gallery item only. Never invoke the sender.
                     // File IO and metadata extraction run outside this Main callback below.
