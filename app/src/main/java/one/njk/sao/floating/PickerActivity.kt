@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.Context
@@ -295,6 +297,7 @@ class PickerActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent); setIntent(intent); readContext(); refreshCapability(); renderHeader(); renderDock()
     }
+    override fun onResume() { super.onResume(); sourcesModel.refreshExtensions() }
     override fun onStart() {
         super.onStart()
         dockMarquee(true)

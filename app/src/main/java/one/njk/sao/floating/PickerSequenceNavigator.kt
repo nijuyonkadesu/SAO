@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -9,7 +11,7 @@ internal data class SequenceState(val id: String, val sourceId: String, val anch
     val items: List<MediaItem> = listOf(anchor), val loading: Boolean = true,
     val newer: String? = null, val older: String? = null,
     val loadingMore: Boolean = false, val error: Boolean = false,
-    val failedDirection: SequenceDirection? = null)
+    val failedDirection: SequenceDirection? = null, val errorMessage: Int? = null)
 
 /** One level of temporary navigation. Owns cancellable reads, never the search result cache. */
 internal class PickerSequenceNavigator(private val source: MediaSource, private val scope: CoroutineScope,
@@ -44,10 +46,10 @@ internal class PickerSequenceNavigator(private val source: MediaSource, private 
                     value.value = start.copy(items = items, loading = false, newer = page.newer, older = page.older)
                 }
             } catch (cancelled: CancellationException) { opened?.close(); throw cancelled }
-            catch (_: Exception) {
+            catch (error: Exception) {
                 opened?.close()
                 ensureActive()
-                if (value.value?.id == start.id) { session = null; value.value = start.copy(loading = false, error = true) }
+                if (value.value?.id == start.id) { session = null; value.value = start.copy(loading = false, error = true, errorMessage = (error as? SourceReadException)?.messageRes) }
             }
         }
     }
@@ -65,7 +67,7 @@ internal class PickerSequenceNavigator(private val source: MediaSource, private 
         val current = value.value ?: return
         val active = session ?: return
         val cursor = (if (direction == SequenceDirection.NEWER) current.newer else current.older) ?: return
-        value.value = current.copy(loadingMore = true, error = false, failedDirection = null)
+        value.value = current.copy(loadingMore = true, error = false, failedDirection = null, errorMessage = null)
         work = scope.launch {
             try {
                 val page = active.page(direction, cursor)
@@ -81,11 +83,11 @@ internal class PickerSequenceNavigator(private val source: MediaSource, private 
                 value.value = current.copy(items = items, loadingMore = false, error = false,
                     newer = if (direction == SequenceDirection.NEWER) continuation else current.newer,
                     older = if (direction == SequenceDirection.OLDER) continuation else current.older,
-                    failedDirection = null)
+                    failedDirection = null, errorMessage = null)
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) {
+            catch (error: Exception) {
                 ensureActive()
-                if (value.value?.id == current.id) value.value = current.copy(error = true, failedDirection = direction)
+                if (value.value?.id == current.id) value.value = current.copy(error = true, failedDirection = direction, errorMessage = (error as? SourceReadException)?.messageRes)
             }
         }
     }

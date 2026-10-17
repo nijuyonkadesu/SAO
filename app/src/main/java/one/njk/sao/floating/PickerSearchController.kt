@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import android.view.inputmethod.EditorInfo
 import android.widget.ArrayAdapter
 import androidx.appcompat.app.AppCompatActivity
@@ -43,7 +45,7 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
         identity = { options.state.value.sourceId }, apply = { picker.searchMode(it) }, opening = { filterGesture.cancel(); beforeGesture() },
         holdDelay = { picker.options.value.longPressMs.toLong() })
     private val filterGesture: HoldDragSelector<QuickFilter> = HoldDragSelector(binding.searchFilters, binding.root as android.widget.FrameLayout,
-        choices = { if (supported) QuickFilter.entries.toList() else emptyList() },
+        choices = { if (supported) QuickFilter.entries.filter(::supportsFilter) else emptyList() },
         selected = { when (constraints.media) {
             SearchMedia.ALL -> QuickFilter.ALL_MEDIA; SearchMedia.IMAGES -> QuickFilter.IMAGES; SearchMedia.VIDEOS -> QuickFilter.VIDEOS
         } },
@@ -60,7 +62,7 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
         }) }, holdDelay = { picker.options.value.longPressMs.toLong() })
     init {
         binding.queryMode.setOnClickListener { open(R.id.section_type) }
-        binding.searchFilters.setOnClickListener { open(R.id.section_people) }
+        binding.searchFilters.setOnClickListener { open(firstFilterSection()) }
         binding.clearSearchFilters.setOnClickListener { picker.clearSearchConstraints() }
         binding.searchLucky.setOnClickListener { randomRequested() }
         panel.optionsLucky.setOnClickListener { randomRequested() }
@@ -100,8 +102,16 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
                 panel.typeStatus.isVisible = state.supported && (state.modesError || SearchMode.CONTEXT !in state.modes)
                 panel.typeStatus.setText(if (state.modesError) R.string.search_options_error else R.string.search_context_unavailable)
                 panel.typeRetry.isVisible = state.supported && state.modesError
+                mapOf(R.id.section_people to SearchFacet.PEOPLE,R.id.section_places to SearchFacet.PLACES,R.id.section_media to SearchFacet.MEDIA)
+                    .forEach { (id,facet) -> panel.root.findViewById<Chip>(id).isEnabled=facet in state.facets }
+                for (index in 0 until panel.mediaChoices.childCount) {
+                    panel.mediaChoices.getChildAt(index).isEnabled = SearchFacet.MEDIA in state.facets
+                }
+                if (state.modes.isNotEmpty() && picker.query.value.mode !in state.modes) picker.searchMode(state.defaultMode)
+
                 binding.queryMode.isVisible = state.supported
                 binding.searchFilters.isVisible = state.supported
+                binding.searchFilters.isEnabled = state.facets.isNotEmpty()
                 binding.searchLucky.isVisible = state.randomSupported
                 panel.searchModes.isVisible = state.supported
                 panel.typeDescription.isVisible = state.supported
@@ -120,12 +130,21 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
                 panel.peopleMore.setText(if (state.peopleError) R.string.search_retry else R.string.search_more_people)
                 setPlaces(state)
                 updating = false
-                if (!controlsAvailable && visible) close()
-                else if (!state.supported && visible) showSection(R.id.section_type)
+                if (state.loaded && !controlsAvailable && visible) close()
+                else if (state.loaded && !state.supported && visible) showSection(R.id.section_type)
                 renderQuery(); redraw()
             }
         } }
     }
+    private fun supportsFilter(value: QuickFilter): Boolean = when (value) {
+        QuickFilter.ALL_MEDIA,QuickFilter.IMAGES,QuickFilter.VIDEOS -> SearchFacet.MEDIA in options.state.value.facets
+        QuickFilter.PEOPLE -> SearchFacet.PEOPLE in options.state.value.facets
+        QuickFilter.PLACES -> SearchFacet.PLACES in options.state.value.facets
+        QuickFilter.RESET -> options.state.value.facets.isNotEmpty()
+    }
+    private fun firstFilterSection(): Int = mapOf(SearchFacet.PEOPLE to R.id.section_people,
+        SearchFacet.PLACES to R.id.section_places,SearchFacet.MEDIA to R.id.section_media)
+        .entries.firstOrNull { it.key in options.state.value.facets }?.value ?: R.id.section_type
     private fun update(value: SearchConstraints) {
         picker.searchConstraints(value.copy(sourceId = options.state.value.sourceId))
         if (visible && section == R.id.section_places) options.places(value.country, value.state)
@@ -157,7 +176,10 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
         if (!visible) return
         panel.root.isVisible = false; panel.peopleName.clearFocus(); visibilityChanged(false)
     }
-    private fun showSection(value: Int) {
+    private fun showSection(requested: Int) {
+        val facet = mapOf(R.id.section_people to SearchFacet.PEOPLE, R.id.section_places to SearchFacet.PLACES,
+            R.id.section_media to SearchFacet.MEDIA)[requested]
+        val value = requested.takeIf { facet == null || facet in options.state.value.facets } ?: R.id.section_type
         section = value
         updating = true; panel.optionsSections.check(value); updating = false
         panel.typePanel.isVisible = value == R.id.section_type

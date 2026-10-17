@@ -57,6 +57,7 @@ class FloatingReliabilityDeviceTest {
         focused == expected
     }
     private fun screenshot(name: String) {
+        if (InstrumentationRegistry.getArguments().getString("captureScreenshots") != "true") return
         if (!InstrumentationRegistry.getArguments().containsKey("reliabilityShots")) return
         instrumentation.waitForIdleSync(); SystemClock.sleep(250)
         val bitmap = instrumentation.uiAutomation.takeScreenshot()

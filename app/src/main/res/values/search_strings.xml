@@ -28,7 +28,7 @@
     <string name="search_state">State or province</string>
     <string name="search_city">City</string>
     <string name="search_any">Any</string>
-    <string name="search_media_description">Choose images, videos, or both. GIFs follow the media type reported by Immich.</string>
+    <string name="search_media_description">Choose images, videos, or both. GIFs follow the media type reported by the source.</string>
     <string name="search_media_all">All media</string>
     <string name="search_media_images">Images</string>
     <string name="search_media_videos">Videos</string>

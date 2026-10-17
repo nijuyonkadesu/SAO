@@ -1,5 +1,8 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+import one.njk.sao.immichprovider.*
+
 import android.content.ClipboardManager
 import android.os.SystemClock
 import android.view.MotionEvent
@@ -56,7 +59,7 @@ class SequenceBrowseDeviceTest {
         // Deliberately unrelated to timeline ordering: this is the caption's date, not its sort key.
         .put("createdAt", "2026-10-15T12:${(119-index).rem(60).toString().padStart(2, '0')}:00Z")
     @Before fun setup() = runBlocking {
-        previous = access.sources().current(); oldOptions = preferences.current()
+        previous = access.sources().current(); access.sources().restore(SourceCatalog()); oldOptions = preferences.current()
         access.browseSession().reset(); preferences.browseSequence(true); preferences.longPressMs(160)
         val png = app.assets.open("floating/happy.png").use { it.readBytes() }
         val numbered = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
@@ -117,7 +120,7 @@ class SequenceBrowseDeviceTest {
             }
             start()
         }
-        access.sources().upsert(SourceProfile(UUID.randomUUID().toString(), "Sequence fixture",
+        access.sources().upsert(immichProfile("Sequence fixture",
             ImmichConfig(server.url("/").toString(), "local-sequence-fixture", albumId = album)), true)
     }
     @After fun cleanup() = runBlocking {
@@ -170,7 +173,7 @@ class SequenceBrowseDeviceTest {
         return grid.getChildViewHolder(view) as MediaCarouselAdapter.Holder
     }
     @Test fun closingAfterCopyResumesTheInnerScreenAndBackRestoresTheOriginalSearch() {
-        searchIndices = (40..119).toList() + (0..39).toList()
+        searchIndices = (40..119).toList() + (0..19).toList()
         lateinit var originalModel: PickerViewModel
         lateinit var innerItems: List<MediaItem>
         var sequenceId: String? = null
@@ -289,9 +292,18 @@ class SequenceBrowseDeviceTest {
         assertEquals("No reads or retries while the picker is closed", reads, requests.count { it.requestUrl!!.encodedPath.startsWith("/api/timeline/") })
         slowTimeline.set(false)
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { reopened ->
+            try {
             await("Opening the picker must resume the interrupted inner screen") {
                 var correct = false
                 reopened.onActivity { correct = model(it).state.value.let { state -> state.sequenceId != null && !state.loading && !state.error } && focal(grid(it))?.item?.remote?.assetId == id(80) }; correct
+            }
+            } catch(error: AssertionError) {
+                var details=""
+                reopened.onActivity { val value=model(it).state.value
+                    details="sequence=${value.sequenceId}, loading=${value.loading}, error=${value.error}/${value.errorMessage?.let { message -> app.getString(message) }}, count=${value.items.size}, focal=${focal(grid(it))?.item?.remote?.assetId}, reads=${requests.map { request -> request.requestUrl!!.encodedPath }.takeLast(10)}"
+                }
+                pauseSourceVisual("resume",details)
+                throw AssertionError(details,error)
             }
         }
     }
@@ -310,7 +322,7 @@ class SequenceBrowseDeviceTest {
         }
     }
     @Test fun heldImageIsActuallyVisibleAndBackKeepsTheScrolledSearchView() {
-        searchIndices = (40..119).toList() + (0..39).toList()
+        searchIndices = (40..119).toList() + (0..19).toList()
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
             val picker = ready(scenario)
             lateinit var searchGrid: RecyclerView
@@ -366,7 +378,7 @@ class SequenceBrowseDeviceTest {
         }
     }
     @Test fun paginationDuringFirstDiffAndUpdatedMetadataKeepTheExactHeldAssetVisible() {
-        searchIndices = (40..119).toList() + (0..39).toList()
+        searchIndices = (40..119).toList() + (0..19).toList()
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
             val picker = ready(scenario)
             val anchor = picker.state.value.items.first { it.remote!!.assetId == id(80) }
@@ -393,7 +405,7 @@ class SequenceBrowseDeviceTest {
     }
     @Test fun holdingTheVisibleCardEdgeDoesNotSelectAnOverlappingMaskedNeighbor() {
         numberedPreviews = true
-        searchIndices = (40..119).toList() + (0..39).toList()
+        searchIndices = (40..119).toList() + (0..19).toList()
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
             val picker = ready(scenario)
             scenario.onActivity { grid(it).scrollToPosition(47) }
@@ -570,7 +582,7 @@ class SequenceBrowseDeviceTest {
         }
     }
     @Test fun returningFromADifferentAnchorRestoresTheOriginalFocalItem() {
-        searchIndices = (40..119).toList() + (0..39).toList()
+        searchIndices = (40..119).toList() + (0..19).toList()
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
             val picker = ready(scenario)
             val original = picker.state.value.items
@@ -736,6 +748,7 @@ class SequenceBrowseDeviceTest {
         } finally { shell("settings put system font_scale $oldScale"); shell("wm user-rotation lock 0") }
     }
     private fun screenshot(name: String) {
+        if (InstrumentationRegistry.getArguments().getString("captureScreenshots") != "true") return
         if (InstrumentationRegistry.getArguments().getString("saoScreenshots") != "true") return
         instrumentation.waitForIdleSync(); SystemClock.sleep(350)
         val bitmap = instrumentation.uiAutomation.takeScreenshot()

@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.Locale

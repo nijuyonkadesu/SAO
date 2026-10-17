@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

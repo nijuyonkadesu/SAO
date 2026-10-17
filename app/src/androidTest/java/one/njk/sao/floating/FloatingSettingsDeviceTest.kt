@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import android.Manifest
 import android.content.Intent
 import android.graphics.Rect
@@ -42,6 +44,7 @@ class FloatingSettingsDeviceTest {
     }
 
     private fun screenshot(name: String) {
+        if (InstrumentationRegistry.getArguments().getString("captureScreenshots") != "true") return
         instrumentation.waitForIdleSync()
         SystemClock.sleep(250) // Let RenderThread present the newly scrolled viewport.
         val image = instrumentation.uiAutomation.takeScreenshot()
@@ -148,14 +151,14 @@ class FloatingSettingsDeviceTest {
                     assertFalse(activity.findViewById<Chip>(R.id.telegram_apps).isActivated)
                 }
                 runBlocking {
-                    // A saved, unselected fixture profile must fill Manage without contacting a server.
-                    sources.upsert(SourceProfile(java.util.UUID(0, 1).toString(), "Test library", ImmichConfig("http://127.0.0.1:1", "settings-fixture")))
+                    // Manage remains outlined; selected app chips reflect configuration.
+                    sources.upsert(SourceProfile(java.util.UUID(0, 1).toString(), "Test library", ExtensionConfig("example.fixture","example.fixture.Service","profile","revision","Fixture")))
                     preferences.telegramPackages(setOf(instrumentation.context.packageName))
                 }
                 await("Configured source/app controls must render their filled state") {
                     var ready = false
                     scenario.onActivity { activity ->
-                        ready = activity.findViewById<Chip>(R.id.immich_settings).isActivated &&
+                        ready = !activity.findViewById<Chip>(R.id.immich_settings).isActivated &&
                             activity.findViewById<Chip>(R.id.telegram_apps).isActivated
                     }
                     ready

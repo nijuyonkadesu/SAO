@@ -108,6 +108,7 @@ class FloatingDragDeviceTest {
         }
     }
     private fun screenshot(name: String) {
+        if (InstrumentationRegistry.getArguments().getString("captureScreenshots") != "true") return
         instrumentation.waitForIdleSync(); SystemClock.sleep(180)
         onMain {
             target()?.let {

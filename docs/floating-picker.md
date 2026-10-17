@@ -52,10 +52,10 @@ the current search; selecting a chip again clears its filter.
 
 The header's named source control opens an inline list of Samples and saved
 connections. Select a row to use it, edit an existing profile, or choose **Add
-Immich source** to create another. Choosing Samples retains every connection. Immich results load in pages and accept emoji
+source** to create another through an installed extension. Choosing Samples retains every connection. Immich results load in pages and accept emoji
 input as well as text. The source contract exposes pages, previews, decoder-ready
 still images and original streams. See [Immich API research](immich-api.md) for
-supported server versions, endpoints, permissions and validation.
+supported server versions, endpoints, permissions and validation. Immich is now a separately installed APK: [setup and extension contract](source-extensions.md).
 
 The fixtures and immutable WhatsApp pack are reproducible with
 `tools/generate_floating_samples.py` and Pillow 12.3.0. Python and Pillow are
@@ -472,9 +472,8 @@ stickers. Animated native sticker encoding still needs a separately verified cli
 
 The inline source panel is a native Material list containing Samples and every named connection.
 Tap a row to select it; its checkmark and the header identify the active profile. The row's edit
-button opens its existing configuration, and Add Immich source creates a separate named profile.
-The same list is available under Floating settings → Media sources. Saved connection names,
-credentials and selected profile are durable settings; query/filter/focus remain in the existing
+button opens its extension's configuration, and Add source creates a separate named profile.
+The same list is available under Floating settings → Media sources. Credentials are durable settings owned exclusively by the extension; SAO saves public profile references and selection. Query/filter/focus remain in the existing
 ViewModel/SavedStateHandle and in-memory session. See [provider architecture](immich-api.md#named-source-ownership-and-failures).
 
 
@@ -649,9 +648,9 @@ restrict the neighboring timeline. Archived/hidden assets and non-primary stack
 members that are absent from Photos cannot anchor this view; a failed read
 keeps Back and an explicit Retry available.
 
-Immich's internal timeline API returns an entire bucket's index. SAO streams
+Immich's internal timeline API returns an entire bucket's index. The extension streams
 only its ordered IDs into memory, discarding the parallel thumbnail/date arrays;
-it keeps at most one bucket index per active sequence. No originals or previews
+SAO receives only the requested window and opaque continuations. No originals or previews
 for an entire month/library are fetched. Metadata is hydrated for the initial
 window (up to 20 items on either side) and subsequent pages of up to 40 cards,
 in either direction. A bucket response has a 64 MiB metadata safety limit.

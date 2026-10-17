@@ -5,7 +5,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import one.njk.sao.floating.FloatingDispatchers
+import one.njk.sao.source.FloatingDispatchers
 import javax.inject.Inject
 import javax.inject.Singleton
 

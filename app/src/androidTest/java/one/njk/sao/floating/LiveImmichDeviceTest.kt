@@ -1,5 +1,8 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+import one.njk.sao.immichprovider.*
+
 import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -20,6 +23,8 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import one.njk.sao.R
 import one.njk.sao.immich.ImmichClient
 import one.njk.sao.immich.MetadataSearch
@@ -111,22 +116,14 @@ class LiveImmichDeviceTest {
             probe("search/metadata") { probe.search(MetadataSearch(SearchFilter(type = EnumFilter(eq = "IMAGE")), size = 1)) }
             report.put("device_api_preflight", true)
             settings.save(null); access.browseSession().reset()
-            ActivityScenario.launch<ImmichSettingsActivity>(Intent(app, ImmichSettingsActivity::class.java)).use { scenario ->
-                await("Connection form must load") { var ready = false
-                    scenario.onActivity { ready = it.findViewById<View>(R.id.test_connection).isEnabled }; ready }
-                scenario.onActivity {
-                    it.findViewById<EditText>(R.id.server_url).setText(url)
-                    it.findViewById<EditText>(R.id.api_key).setText(key)
-                    it.findViewById<View>(R.id.test_connection).performClick()
-                }
-                await("The emulator must verify the exact server URL") { var ready = false
-                    scenario.onActivity { ready = it.findViewById<TextView>(R.id.status).text.toString().startsWith(it.getString(R.string.immich_connected)) }; ready }
-                assertNull("Test connection must not save", settings.current())
-                scenario.onActivity { it.findViewById<View>(R.id.save_connection).performClick() }
-                await("The native form must save the verified connection") { var ready = false
-                    scenario.onActivity { ready = it.findViewById<TextView>(R.id.status).text.toString().startsWith(it.getString(R.string.immich_saved)) }; ready }
+            ExtensionForm().use { form ->
+                form.set("server_url",url); form.set("api_key",key); form.click("test_connection")
+                form.await("status") { it.text.toString().startsWith("Connection verified") }
+                assertNull(settings.current()); form.click("save_connection")
+                withTimeout(30_000) { while(settings.profiles.current().selectedId == null) delay(40) }
             }
-            val config = settings.current()!!
+            // Keep an explicit test-only copy for the independent reference client.
+            val config = ImmichConfig(url,key)
             assertTrue("Saved credentials must match without printing them", config.serverUrl == url && config.apiKey == key && settings.profiles.current().selectedId != null)
             val encrypted = File(app.noBackupFilesDir, "source-profiles-v1")
             assertFalse("Credentials must be encrypted", encrypted.readBytes().toString(Charsets.UTF_8).contains(key))

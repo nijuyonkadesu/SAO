@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import android.net.Uri
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.EntryPointAccessors
@@ -40,7 +42,7 @@ class RaysDeviceTest {
         try {
             val profile = SourceProfile(UUID.randomUUID().toString(), "Offline stickers", RaysConfig(RaysClient.DEBUG_PACKAGE))
             profiles.upsert(profile, true)
-            val fresh = SourceProfiles(app, FloatingDispatchers(), mapOf("immich" to ImmichConfigurationCodec(), "rays" to RaysConfigurationCodec()))
+            val fresh = SourceProfiles(app, FloatingDispatchers(), mapOf("extension" to ExtensionConfigurationCodec(), "rays" to RaysConfigurationCodec()))
             assertEquals(profile, fresh.current().selected)
             assertFalse(RaysSourceFactory(app, FloatingDispatchers()).advancedSearch)
             assertFalse(RaysSourceFactory(app, FloatingDispatchers()).sequenceBrowse)

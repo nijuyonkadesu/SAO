@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager

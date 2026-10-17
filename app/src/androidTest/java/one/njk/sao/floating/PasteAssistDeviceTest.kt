@@ -1,5 +1,8 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+import one.njk.sao.immichprovider.*
+
 import android.app.UiAutomation
 import android.content.*
 import android.os.Bundle

@@ -8,7 +8,7 @@ The test is skipped by the normal suite. It requires both `liveImmich=true` and 
 `files/live_immich.json` containing `url` and `key`. Keep the input file outside the repository
 with mode 0600. The API key is never a runner argument or clipboard item.
 
-After installing the debug app and test APK, transfer the private JSON through stdin:
+After installing SAO, the same-signed Immich extension and the test APK, transfer the private JSON through stdin:
 
 ```sh
 adb shell -T "run-as one.njk.sao sh -c 'umask 077; mkdir -p files; cat > files/live_immich.json'" < /path/to/private/connection.json
@@ -20,7 +20,7 @@ adb shell run-as one.njk.sao cat files/live_immich_report.json
 ```
 
 The harness removes the plaintext input after saving and again during cleanup. The configured
-connection remains AES-GCM encrypted in `noBackupFilesDir`. Delete the host input after testing.
+connection remains AES-GCM encrypted in the extension’s `noBackupFilesDir`; SAO retains its public profile reference. Delete the host input after testing.
 Its report contains only counts, version and pass flags, with no keys, photo names, asset IDs,
 descriptions, locations or image bytes. Treat any manually captured live-library screenshots
 as private development artifacts.

@@ -1,5 +1,8 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+import one.njk.sao.immichprovider.*
+
 import android.os.SystemClock
 import android.view.View
 import android.widget.EditText
@@ -54,7 +57,7 @@ class LiveEmojiSearchTest {
         fun model(activity: PickerActivity) = ViewModelProvider(activity)[PickerViewModel::class.java]
         try {
             access.sources().restore(SourceCatalog())
-            val firstProfile = SourceProfile(UUID.randomUUID().toString(), "Personal", config)
+            val firstProfile = immichProfile("Personal",config)
             access.sources().upsert(firstProfile, select = true); access.browseSession().reset()
             ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
                 scenario.onActivity { it.findViewById<View>(R.id.search_toggle).performClick() }
@@ -96,21 +99,13 @@ class LiveEmojiSearchTest {
                 }
             }
             // Add a second same-kind connection through the real form, with smart search's default.
-            ActivityScenario.launch<ImmichSettingsActivity>(ImmichSettingsActivity.intent(app)).use { scenario ->
-                var loaded = false
-                withTimeout(5000) { while (!loaded) {
-                    scenario.onActivity { loaded = it.findViewById<View>(R.id.save_connection).isEnabled }; delay(30)
-                } }
-                scenario.onActivity {
-                    it.findViewById<EditText>(R.id.source_name).setText("Reactions")
-                    it.findViewById<EditText>(R.id.server_url).setText(config.serverUrl)
-                    it.findViewById<EditText>(R.id.api_key).setText(config.apiKey)
-                    it.findViewById<View>(R.id.save_connection).performClick()
-                }
-                withTimeout(30_000) { while (access.sources().current().profiles.size != 2) delay(40) }
+            ExtensionForm().use { form ->
+                form.set("source_name","Reactions"); form.set("server_url",config.serverUrl); form.set("api_key",config.apiKey)
+                form.click("save_connection")
+                withTimeout(30_000) { while(access.sources().current().profiles.size != 2) delay(40) }
             }
             val second = access.sources().current().selected!!
-            assertTrue((second.configuration as ImmichConfig).smartSearch)
+            assertTrue(second.configuration is ExtensionConfig)
             assertNotEquals(firstProfile.identity, second.identity)
             val expected = websiteResult("skill")
             ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->

@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -116,7 +118,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
                     else -> one.njk.sao.R.string.picker_copied
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (request.current(version)) copyStatus.value = one.njk.sao.R.string.picker_copy_failed }
+            catch (error: Exception) { if (request.current(version)) copyStatus.value = (error as? SourceReadException)?.messageRes ?: one.njk.sao.R.string.picker_copy_failed }
         }
     }
     suspend fun prepareClipboard(target: MessagingTarget): Boolean {
@@ -180,7 +182,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
     val state = combine(resultsState, sequence.state) { results, nearby ->
         if (nearby == null || nearby.sourceId != results.sourceId) results else PickerState(
             nearby.items, nearby.loading, nearby.error, results.query, nearby.loadingMore,
-            nearby.newer != null || nearby.older != null, nearby.sourceId, nearby.id)
+            nearby.newer != null || nearby.older != null, nearby.sourceId, nearby.id, nearby.errorMessage)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PickerState())
     fun browseSequence(item: MediaItem) {
         if (currentSequenceId != null) return

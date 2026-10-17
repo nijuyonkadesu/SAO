@@ -43,7 +43,7 @@ class ImmichConnection(serverUrl: String, internal val apiKey: String) {
     override fun toString() = "ImmichConnection(apiUrl=$apiUrl, apiKey=<redacted>)"
 }
 
-class ImmichClient(val connection: ImmichConnection) : AutoCloseable {
+class ImmichClient(val connection: ImmichConnection, retryReadConnections: Boolean = true) : AutoCloseable {
     private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS).writeTimeout(120, TimeUnit.SECONDS)
         // No cross-host credential forwarding, HTTP downgrade, or ambiguous mutation retries.
@@ -54,7 +54,7 @@ class ImmichClient(val connection: ImmichConnection) : AutoCloseable {
             chain.proceed(chain.request().newBuilder().header("x-api-key", connection.apiKey).build())
         }.build()
     // Read-only POST searches are safe to repeat too. Writes retain the base client's policy.
-    private val readHttp = http.newBuilder().retryOnConnectionFailure(true).build()
+    private val readHttp = http.newBuilder().retryOnConnectionFailure(retryReadConnections).build()
     private val readPostPaths = setOf("search/metadata", "search/smart", "search/random", "assets/bulk-upload-check")
         .map { connection.apiUrl.resolve(it)!!.encodedPath }.toSet()
     private val calls = object : Call.Factory {
@@ -74,6 +74,22 @@ class ImmichClient(val connection: ImmichConnection) : AutoCloseable {
     val api: ImmichApi = Retrofit.Builder().baseUrl(connection.apiUrl).callFactory(calls)
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build().create(ImmichApi::class.java)
+
+    /** Raw authenticated stream, with a cancellable Call retained until its body is closed. */
+    fun mediaCall(id: String, kind: String, edited: Boolean): Call {
+        val path = when(kind) {
+            "person" -> listOf("people",id,"thumbnail")
+            "preview" -> listOf("assets",id,"thumbnail")
+            "original" -> listOf("assets",id,"original")
+            else -> error("Unsupported media request")
+        }
+        val url = connection.apiUrl.newBuilder().apply {
+            path.forEach { addPathSegment(it) }
+            if(kind != "person") addQueryParameter("edited",edited.toString())
+            if(kind == "preview") addQueryParameter("size","preview")
+        }.build()
+        return http.newCall(Request.Builder().url(url).build())
+    }
 
     override fun close() {
         http.dispatcher.cancelAll()

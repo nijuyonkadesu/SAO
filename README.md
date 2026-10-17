@@ -8,6 +8,10 @@ Choose a category, scroll till you find your favourite pic, share or save! Uses 
 <img src="previews/ss (2).png" alt="sharing on telegram" width="270px" />
 </p>
 
+## Floating media sources
+
+The floating picker supports separately installed source extensions. Install SAO and the Immich extension APK, then add named profiles under **Settings → Media sources**. Each extension owns its credentials; SAO handles browsing, media caching and chat insertion. [Setup and extension contract](docs/source-extensions.md).
+
 ## Stack
 - [x] Retrofit - network client
 - [x] COIL - Image Loader

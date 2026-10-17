@@ -33,6 +33,7 @@ coil = ["coil", "coil-gif", "coil-network"]
 retrofit = ["retrofit-moshi", "moshi"]
 
 [libraries]
+javax-inject = { module = "javax.inject:javax.inject", version = "1" }
 media3-transformer = { module = "androidx.media3:media3-transformer", version.ref = "media3" }
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
 media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }

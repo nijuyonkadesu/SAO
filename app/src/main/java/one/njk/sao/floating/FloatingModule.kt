@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import dagger.multibindings.IntoMap
 import dagger.multibindings.StringKey
 import dagger.Binds
@@ -15,8 +17,8 @@ abstract class FloatingModule {
     abstract fun raysFactory(factory: RaysSourceFactory): MediaSourceFactory
     @Binds @IntoMap @StringKey("rays")
     abstract fun raysCodec(codec: RaysConfigurationCodec): SourceConfigurationCodec
-    @Binds @IntoMap @StringKey("immich")
-    abstract fun immichFactory(factory: ImmichSourceFactory): MediaSourceFactory
-    @Binds @IntoMap @StringKey("immich")
-    abstract fun immichCodec(codec: ImmichConfigurationCodec): SourceConfigurationCodec
+    @Binds @IntoMap @StringKey("extension")
+    abstract fun extensionFactory(factory: ExtensionSourceFactory): MediaSourceFactory
+    @Binds @IntoMap @StringKey("extension")
+    abstract fun extensionCodec(codec: ExtensionConfigurationCodec): SourceConfigurationCodec
 }

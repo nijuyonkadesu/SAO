@@ -1,5 +1,8 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+import one.njk.sao.immichprovider.*
+
 import android.content.BroadcastReceiver
 import android.content.ClipboardManager
 import android.content.ComponentName

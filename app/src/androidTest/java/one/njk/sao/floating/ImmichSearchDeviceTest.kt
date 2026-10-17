@@ -1,5 +1,8 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+import one.njk.sao.immichprovider.*
+
 import android.content.ClipboardManager
 import android.os.SystemClock
 import android.view.View
@@ -38,6 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 class ImmichSearchDeviceTest {
+    @get:org.junit.Rule val marquees = PickerMarqueeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app = instrumentation.targetContext
     private val access get() = EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java)
@@ -58,7 +62,10 @@ class ImmichSearchDeviceTest {
         .put(JSONObject().put("id", bob).put("name", "Bob"))
 
     @Before fun setup() = runBlocking {
-        previous = access.sources().current(); access.browseSession().reset()
+        instrumentation.uiAutomation.serviceInfo = instrumentation.uiAutomation.serviceInfo.apply {
+            flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+        }
+        previous = access.sources().current(); access.sources().restore(SourceCatalog()); access.browseSession().reset()
         val png = app.assets.open("floating/happy.png").use { it.readBytes() }
         val video = instrumentation.context.assets.open("preview-video.webm").use { it.readBytes() }
         server = MockWebServer().apply {
@@ -117,7 +124,7 @@ class ImmichSearchDeviceTest {
             }
             start()
         }
-        profile = SourceProfile(UUID.randomUUID().toString(), "Search fixture", ImmichConfig(server.url("/").toString(), "search-fixture-key"))
+        profile = immichProfile("Search fixture", ImmichConfig(server.url("/").toString(), "search-fixture-key"))
         access.sources().upsert(profile, true)
     }
     @After fun cleanup() = runBlocking { access.sources().restore(previous); access.browseSession().reset(); server.shutdown() }
@@ -136,6 +143,7 @@ class ImmichSearchDeviceTest {
         return uri
     }
     private fun screenshot(name: String) {
+        if (InstrumentationRegistry.getArguments().getString("captureScreenshots") != "true") return
         instrumentation.waitForIdleSync(); SystemClock.sleep(250)
         val image = instrumentation.uiAutomation.takeScreenshot()
         File(app.filesDir, name).outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; image.recycle()
@@ -396,7 +404,7 @@ class ImmichSearchDeviceTest {
     }
 
     @Test fun sourceHoldLoopsNamedProfilesAndSwitchesOnlyOnRelease() {
-        val second = SourceProfile(UUID.randomUUID().toString(), "Second library", (profile.configuration as ImmichConfig).copy(apiKey = "second-search-fixture-key"))
+        val second = runBlocking { immichProfile("Second library", profile.testConnection().copy(apiKey = "second-search-fixture-key")) }
         runBlocking { access.sources().upsert(second) }
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
             await(scenario, "Named sources must load") { !model(it).state.value.loading && ViewModelProvider(it)[SourceProfilesViewModel::class.java].state.value.catalog.profiles.size == 2 }
@@ -437,14 +445,32 @@ class ImmichSearchDeviceTest {
             SystemClock.sleep(650); assertEquals(before, requests.size)
             val tap = ChoiceDrag(scenario, R.id.source_toggle); SystemClock.sleep(125); tap.send(MotionEvent.ACTION_UP)
             await(scenario, "Short taps must retain the full source picker") { it.findViewById<View>(R.id.source_panel).isVisible }
-            val monitor = instrumentation.addMonitor(ImmichSettingsActivity::class.java.name, null, false)
+            scenario.onActivity { it.findViewById<View>(R.id.source_configure).performClick() }
+            val providers = runBlocking { testExtensions(app).installed().size } + one.njk.sao.rays.RaysClient.packages.count {
+                one.njk.sao.rays.RaysClient.installed(app,it)
+            }
+            if(providers > 1) {
+                await("Installed extensions chooser must open") {
+                    instrumentation.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByText("Immich")?.any { it.text?.toString()=="Immich" } == true
+                }
+                val option=instrumentation.uiAutomation.rootInActiveWindow.findAccessibilityNodeInfosByText("Immich").first { it.text?.toString()=="Immich" }
+                if(option.isClickable) option.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+                else option.parent.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+            }
+            // The editor runs in the extension process; SAO cannot inspect its View objects.
+            val until = SystemClock.elapsedRealtime() + 5000
+            while (instrumentation.uiAutomation.rootInActiveWindow?.packageName != "one.njk.sao.extension.immich" && SystemClock.elapsedRealtime()<until) SystemClock.sleep(40)
+            var fields = emptyList<android.view.accessibility.AccessibilityNodeInfo>()
+            await("Extension form must expose its empty API key field") {
+                fields = instrumentation.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByViewId("one.njk.sao.extension.immich:id/api_key").orEmpty()
+                fields.isNotEmpty()
+            }
             try {
-                scenario.onActivity { it.findViewById<View>(R.id.source_configure).performClick() }
-                val editor = instrumentation.waitForMonitorWithTimeout(monitor, 5_000)
-                assertNotNull("Add source needs the setup screen", editor)
-                instrumentation.runOnMainSync { assertTrue(editor.findViewById<EditText>(R.id.api_key).text.isEmpty()); editor.finish() }
-                assertEquals(before, requests.size)
-            } finally { instrumentation.removeMonitor(monitor) }
+                assertTrue("Add source must start with an empty key",fields.single().isShowingHintText || fields.single().text.isNullOrEmpty())
+            } finally {
+                instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            }
+            assertEquals(before,requests.size)
         }
     }
 
@@ -474,7 +500,7 @@ class ImmichSearchDeviceTest {
         val metadata = source.page(pathQuery); assertEquals("opaque-second", metadata.nextCursor)
         source.page(pathQuery, metadata.nextCursor)
         assertEquals("opaque-second", requests.last().second.getString("cursor"))
-        val other = SourceProfile(UUID.randomUUID().toString(), "Second fixture", profile.configuration)
+        val other = immichProfile("Second fixture",profile.testConnection())
         access.sources().upsert(other, true)
         source.page(contextQuery)
         assertFalse(requests.last().second.has("personIds")); assertFalse(requests.last().second.has("country"))
@@ -546,7 +572,7 @@ class ImmichSearchDeviceTest {
     @Test fun luckyUsesTheServerRandomArrayAndRetainsOnlyApplicableFilters() = runBlocking {
         randomTags.set(true)
         val album = "a1ff3b80-344f-48f0-8a15-c2dd47f6ff2a"
-        profile = profile.copy(configuration = (profile.configuration as ImmichConfig).copy(albumId = album))
+        profile = profile.changeConnection(profile.testConnection().copy(albumId = album))
         access.sources().upsert(profile, true)
         val criteria = SearchConstraints(profile.identity, listOf(SearchPerson(alice, "Alice", profile.identity)),
             "France", "Île-de-France", "Paris", SearchMedia.VIDEOS)
@@ -566,7 +592,7 @@ class ImmichSearchDeviceTest {
         assertTrue(filter.getJSONObject("trashedAt").isNull("eq"))
         assertEquals(1, randomCalls.get())
         assertTrue(source.page(query, "not-a-random-cursor").items.isEmpty()); assertEquals(1, randomCalls.get())
-        val other = SourceProfile(UUID.randomUUID().toString(), "Second random fixture", profile.configuration)
+        val other = immichProfile("Second random fixture",profile.testConnection())
         access.sources().upsert(other, true); source.page(query)
         val scoped = requests.last().second.getJSONObject("filter")
         assertFalse(scoped.has("personIds")); assertFalse(scoped.has("country")); assertFalse(scoped.has("state")); assertFalse(scoped.has("city"))
@@ -698,8 +724,18 @@ class ImmichSearchDeviceTest {
                         it.findViewById<View>(R.id.picker_panel).height > 400
                 }
                 screenshot("search-options-large-landscape.png")
-                onView(withId(R.id.mode_ocr)).perform(androidx.test.espresso.action.ViewActions.scrollTo(), click())
-                await(scenario, "OCR selection must restore the results area") { model(it).query.value.mode == SearchMode.OCR && it.findViewById<View>(R.id.media_grid).isVisible }
+                onView(withId(R.id.mode_ocr)).perform(androidx.test.espresso.action.ViewActions.scrollTo())
+                instrumentation.waitForIdleSync()
+                SystemClock.sleep(300)
+                var position=""
+                scenario.onActivity { val view=it.findViewById<View>(R.id.mode_ocr); val xy=IntArray(2); view.getLocationOnScreen(xy)
+                    position="x=${xy[0]+view.width/2},y=${xy[1]+view.height/2},enabled=${view.isEnabled},shown=${view.isShown}" }
+                pauseSourceVisual("large-before",position)
+                onView(withId(R.id.mode_ocr)).perform(click())
+                var details=""
+                scenario.onActivity { details="mode=${model(it).query.value.mode}, grid=${it.findViewById<View>(R.id.media_grid).isVisible}, options=${it.findViewById<View>(R.id.type_panel).isShown}" }
+                pauseSourceVisual("large",details)
+                await(scenario, "OCR selection must restore the results area ($details)") { model(it).query.value.mode == SearchMode.OCR && it.findViewById<View>(R.id.media_grid).isVisible }
                 scenario.onActivity { it.findViewById<View>(R.id.close).performClick() }
             }
         } finally {

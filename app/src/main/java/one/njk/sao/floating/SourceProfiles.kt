@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -27,7 +29,8 @@ import javax.inject.Singleton
 @Singleton
 class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
     private val dispatchers: FloatingDispatchers,
-    private val codecs: Map<String, @JvmSuppressWildcards SourceConfigurationCodec>) {
+    private val codecs: Map<String, @JvmSuppressWildcards SourceConfigurationCodec>,
+    private val mediaCache: SourceMediaCache? = null) {
     private val mutex = Mutex()
     private var loaded = false
     private val value = MutableStateFlow(SourceCatalog())
@@ -50,7 +53,11 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
     }
     private suspend fun update(transform: (SourceCatalog) -> SourceCatalog) = withContext(dispatchers.io) { mutex.withLock {
         val old = load(); val next = transform(old)
-        if (old != next) { write(next); value.value = next }
+        if (old != next) {
+            write(next); value.value = next
+            old.profiles.filter { before -> next.profiles.none { it.identity == before.identity } }
+                .forEach { mediaCache?.remove(it.identity) }
+        }
     } }
 
     private fun load(): SourceCatalog {
@@ -59,8 +66,8 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
             value.value = if (json != null) decode(json) else {
                 val old = legacy.read()
                 if (old == null) SourceCatalog() else {
-                    val codec = checkNotNull(codecs["immich"])
-                    val profile = SourceProfile(UUID.randomUUID().toString(), "Immich", codec.decode(old))
+                    val profile = SourceProfile(UUID.randomUUID().toString(), "Imported source",
+                        UnknownSourceConfiguration("immich",old.toString()))
                     SourceCatalog(listOf(profile), profile.id.takeIf { old.optBoolean("enabled", true) }).also(::write)
                 }
             }

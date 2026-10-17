@@ -1,229 +1,203 @@
 package one.njk.sao.floating
 
-import androidx.test.core.app.ActivityScenario
+import android.content.ContextWrapper
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.EntryPointAccessors
-import kotlinx.coroutines.runBlocking
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
-import org.junit.After
-import org.junit.Assert.*
-import org.junit.Before
-import org.junit.Test
-import java.io.File
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
+import okhttp3.mockwebserver.*
 import okio.Buffer
+import one.njk.sao.source.*
+import one.njk.sao.immichprovider.*
+import org.json.JSONObject
+import org.junit.*
+import org.junit.Assert.*
+import java.io.File
+import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 
+/** Real Binder + provider-stream contract against localhost. No personal media/server access. */
 class ImmichDeviceTest {
-    private val instrumentation = InstrumentationRegistry.getInstrumentation()
-    private val app = instrumentation.targetContext
-    private val access get() = EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java)
-    private val settings get() = access.immichSettings()
+    @get:org.junit.Rule val marquees = PickerMarqueeRule()
+    private val app = InstrumentationRegistry.getInstrumentation().targetContext
+    private val access get() = EntryPointAccessors.fromApplication(app,FloatingTestAccess::class.java)
+    private val profiles get() = access.sources()
+    private lateinit var previous: SourceCatalog
     private lateinit var server: MockWebServer
-    private var previous = SourceCatalog()
-    private lateinit var config: ImmichConfig
-    private val id = "ca9a1ff5-f185-4d1d-8e5a-667a2d14bf50"
-    private val tag = """{"id":"emoji-tag","name":"😂","value":"reactions/😂"}"""
-    private fun result(cursor: String? = null, gif: Boolean = false) = """{"assets":{"items":[{"id":"$id","originalFileName":"reaction.${if (gif) "gif" else "png"}","originalMimeType":"image/${if (gif) "gif" else "png"}","type":"${if (gif) "VIDEO" else "IMAGE"}","updatedAt":"2026-10-09T00:00:00Z","tags":[$tag]}],"nextCursor":${cursor?.let { "\"$it\"" } ?: "null"}}}"""
-    private fun source() = SwitchingMediaSource(app, LocalMediaSource(app), settings, FloatingDispatchers())
+    private lateinit var profile: SourceProfile
+    private lateinit var source: SwitchingMediaSource
+    private val calls = CopyOnWriteArrayList<RecordedRequest>()
+    private val searchStatus = AtomicInteger(200)
+    private val mediaStatus = AtomicInteger(200)
+    private val featuresStatus = AtomicInteger(200)
+    private var smart = true
+    private var mediaBytes = "GIF89a-synthetic-animation".toByteArray()
+    private var kind = "image/gif"
+    private var resultCursor: String? = null
+    private var slowMedia = false
+    private fun result() = """{"assets":{"items":[{"id":"same-asset","type":"${if(kind.startsWith("video/")) "VIDEO" else "IMAGE"}","originalFileName":"reaction.gif","originalMimeType":"$kind","updatedAt":"v1"}],"nextCursor":${resultCursor?.let { "\"$it\"" } ?: "null"}}}"""
     @Before fun setup() = runBlocking {
-        previous = access.sources().current(); server = MockWebServer(); server.start()
-        config = ImmichConfig(server.url("/").toString(), "device-contract-key")
-        settings.save(config); access.browseSession().reset()
-    }
-    @After fun cleanup() = runBlocking { access.sources().restore(previous); access.browseSession().reset(); server.shutdown() }
-
-    @Test fun connectionIsEncryptedOutsideBackupAndLocalSwitchRetainsCredentials() = runBlocking {
-        val ciphertext = File(app.noBackupFilesDir, "source-profiles-v1").readBytes()
-        assertFalse(ciphertext.toString(Charsets.UTF_8).contains(config.apiKey))
-        assertFalse(ciphertext.toString(Charsets.UTF_8).contains(config.serverUrl))
-        val fresh = ImmichTestSettings(SourceProfiles(app, FloatingDispatchers(), mapOf("immich" to ImmichConfigurationCodec())))
-        assertEquals(config.apiKey, fresh.current()?.apiKey)
-        settings.save(config, enabled = false)
-        assertEquals(7, source().page(MediaQuery()).items.size)
-        assertEquals(config.apiKey, settings.current()?.apiKey)
-    }
-    @Test fun explicitFilenameSearchCombinesEmojiTagFilterAndPreservesCursor() = runBlocking {
-        server.enqueue(MockResponse().setBody("[$tag]")); server.enqueue(MockResponse().setBody(result("next-page")))
-        val source = source(); val query = MediaQuery("😂", filter = "😂", mode = SearchMode.FILENAME)
-        val page = source.page(query)
-        assertEquals("next-page", page.nextCursor); assertEquals(listOf("😂"), page.items.single().emojis)
-        assertEquals("/api/tags", server.takeRequest()!!.path)
-        val first = server.takeRequest()!!.body.readUtf8()
-        assertTrue(first.contains("😂")); assertTrue(first.contains("emoji-tag")); assertTrue(first.contains("\"originalFileName\""))
-        assertFalse(first.contains("\"description\"")); assertFalse(first.contains("\"or\""))
-        assertTrue(first.contains("\"trashedAt\":{\"eq\":null}")); assertFalse(first.contains("isTrashed"))
-        server.enqueue(MockResponse().setBody(result()))
-        source.page(query, page.nextCursor)
-        assertTrue(server.takeRequest()!!.body.readUtf8().contains("\"cursor\":\"next-page\""))
-        assertEquals(3, server.requestCount)
-    }
-    @Test fun smartSearchPreservesEmojiMixedTextAndSelectedTagFilter() = runBlocking {
-        val source = source()
-        server.enqueue(MockResponse().setBody("[$tag]"))
-        for (text in listOf("😂", "☀️", "👩🏽‍💻", "happy 😂", "😂 😭")) {
-            server.enqueue(MockResponse().setBody(result()))
-            val page = source.page(MediaQuery(text, filter = "😂"))
-            assertEquals(1, page.items.size); assertNull(page.nextCursor)
-            if (text == "😂") assertEquals("/api/tags", server.takeRequest()!!.path)
-            val request = server.takeRequest()!!
-            assertEquals("/api/search/smart", request.path)
-            val json = org.json.JSONObject(request.body.readUtf8())
-            assertEquals(text, json.getString("query"))
-            assertEquals(100, json.getInt("size")); assertEquals(1, json.getInt("page")); assertFalse(json.has("cursor")); assertFalse(json.has("filter"))
-            assertFalse(json.has("or"))
-            assertEquals("emoji-tag", json.getJSONArray("tagIds").getString(0))
-        }
-        assertEquals(6, server.requestCount)
-    }
-    @Test fun gifPreviewAndExportInputKeepOriginalAnimationAndAccountIsolation() = runBlocking {
-        val source = source()
-        server.enqueue(MockResponse().setBody("[$tag]")); server.enqueue(MockResponse().setBody(result(gif = true)))
-        val item = source.page(MediaQuery()).items.single()
-        server.takeRequest(); server.takeRequest()
-        server.enqueue(MockResponse().setBody("GIF89a-original-animation"))
-        val preview = source.preview(item) as File
-        assertEquals("GIF89a-original-animation", preview.readText())
-        assertEquals("/api/assets/$id/original?edited=false", server.takeRequest()!!.path)
-        assertEquals(preview.readText(), source.original(item).bufferedReader().use { it.readText() })
-        settings.save(config.copy(apiKey = "different-account-key"))
-        try { source.preview(item); fail("Cross-account asset accepted") } catch (_: IllegalStateException) { }
-        assertNull(server.takeRequest(100, TimeUnit.MILLISECONDS))
-    }
-    @Test fun transparentRemotePngKeepsAlphaInStickerExport() = runBlocking {
-        val source = source()
-        server.enqueue(MockResponse().setBody("[$tag]")); server.enqueue(MockResponse().setBody(result()))
-        val item = source.page(MediaQuery()).items.single(); server.takeRequest(); server.takeRequest()
-        val sample = LocalMediaSource(app).all().first { !it.animated }
-        val bytes = app.assets.open(sample.asset).use { it.readBytes() }
-        server.enqueue(MockResponse().setHeader("Content-Type", "image/png").setBody(Buffer().write(bytes)))
-        val exported = MediaExports(app, source).prepare(item, Rendition.STICKER_PNG)
-        assertEquals("/api/assets/$id/original?edited=false", server.takeRequest()!!.path)
-        val bitmap = android.graphics.BitmapFactory.decodeFile(exported.file.path)
-        try { assertEquals(0, android.graphics.Color.alpha(bitmap.getPixel(16, 16))) } finally { bitmap.recycle() }
-    }
-    @Test fun pickerReturnsToSameRemotePageAndSearchAcrossCloseWithoutRequestsOrDiskWrites() = runBlocking {
-        server.enqueue(MockResponse().setBody("[$tag]")); server.enqueue(MockResponse().setBody(result()))
-        // Activity filters and page requests can arrive in either order; cache tags first.
-        val sharedSource = source(); sharedSource.filters(); server.takeRequest()
-        // The injected source has its own tag cache; allow its first GET and search in either order.
-        server.enqueue(MockResponse().setBody(result()))
-        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
-            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse =
-                MockResponse().setBody(if (request.path == "/api/tags") "[$tag]" else result())
-        }
-        val file = File(app.noBackupFilesDir, "source-profiles-v1"); val before = file.readBytes(); val modified = file.lastModified()
-        fun awaitLoaded(scenario: ActivityScenario<PickerActivity>) {
-            val deadline = android.os.SystemClock.elapsedRealtime() + 5000; var count = 0
-            while (count != 1 && android.os.SystemClock.elapsedRealtime() < deadline) {
-                scenario.onActivity { count = (it.findViewById<androidx.recyclerview.widget.RecyclerView>(one.njk.sao.R.id.media_grid).adapter as MediaCarouselAdapter).itemCount }
-                Thread.sleep(30)
-            }
-            assertEquals(1, count)
-        }
-        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { awaitLoaded(it) }
-        val count = server.requestCount
-        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { awaitLoaded(it) }
-        assertEquals(count, server.requestCount)
-        assertArrayEquals(before, file.readBytes()); assertEquals(modified, file.lastModified())
-    }
-
-    @Test fun inlineSourcePanelSwitchesBackendAndSelectedRemotePhotoCopiesImmediately() = runBlocking {
-        settings.save(config, enabled = false)
-        val sample = LocalMediaSource(app).all().first { !it.animated }
-        val bytes = app.assets.open(sample.asset).use { it.readBytes() }
-        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
-            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = when {
-                request.path == "/api/tags" -> MockResponse().setBody("[$tag]")
-                request.path?.contains("/thumbnail") == true || request.path?.contains("/original") == true ->
-                    MockResponse().setHeader("Content-Type", "image/png").setBody(Buffer().write(bytes))
-                else -> MockResponse().setBody(result())
-            }
-        }
-        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
-            fun waitFor(condition: (PickerActivity) -> Boolean) {
-                val deadline = android.os.SystemClock.elapsedRealtime() + 8000; var ready = false
-                while (!ready && android.os.SystemClock.elapsedRealtime() < deadline) {
-                    scenario.onActivity { ready = condition(it) }; Thread.sleep(30)
+        previous=profiles.current(); profiles.restore(SourceCatalog()); access.browseSession().reset()
+        server=MockWebServer().apply { dispatcher=object: Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                calls+=request
+                val path=request.requestUrl!!.encodedPath
+                return when {
+                    path=="/api/server/features" -> MockResponse().setResponseCode(featuresStatus.get()).setBody("""{"smartSearch":$smart,"ocr":$smart}""")
+                    path=="/api/server/version" -> MockResponse().setBody("""{"major":3,"minor":3,"patch":1}""")
+                    path=="/api/api-keys/me" -> MockResponse().setBody("""{"id":"key","name":"Fixture","permissions":["all"]}""")
+                    path=="/api/albums" || path=="/api/tags" -> MockResponse().setBody("[]")
+                    path.endsWith("/original") || path.endsWith("/thumbnail") -> if(slowMedia) MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE)
+                        else MockResponse().setResponseCode(mediaStatus.get()).setBody(Buffer().write(mediaBytes))
+                    else -> MockResponse().setResponseCode(searchStatus.get()).setHeader("Retry-After","3600").setBody(result())
                 }
-                assertTrue(ready)
             }
-            fun capture(name: String) {
-                // Use the existing instrumentation owner; a second UIAutomator process cannot
-                // register another UiAutomationService while this test is attached.
-                val image = instrumentation.uiAutomation.takeScreenshot()
-                val file = File(app.getExternalFilesDir(null), "$name.png")
-                file.outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
-                image.recycle()
-                android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation
-                    .executeShellCommand("cp ${file.absolutePath} /data/local/tmp/$name.png")).use { it.readBytes() }
-            }
-            waitFor { (it.findViewById<androidx.recyclerview.widget.RecyclerView>(one.njk.sao.R.id.media_grid).adapter as MediaCarouselAdapter).itemCount == 7 }
-            Thread.sleep(250); capture("sao-immich-picker-samples")
+        }; start() }
+        profile=immichProfile("Fixture",ImmichConfig(server.url("/").toString(),"fixture-secret"))
+        profiles.upsert(profile,true)
+        source=SwitchingMediaSource(app,LocalMediaSource(app),access.immichSettings(),FloatingDispatchers())
+    }
+    @After fun cleanup() = runBlocking { source.shutdown(); profiles.restore(previous); access.browseSession().reset(); server.shutdown() }
+    @Test fun publicProfilesContainNoCredentialsAndConfigurationRevisionIsStableOnRename() = runBlocking {
+        val config=profile.configuration as ExtensionConfig
+        val extension=testExtensions(app).requireInstalled(config)
+        val public=ExtensionClient(app,extension.component).request(operation=ExtensionProtocol.PROFILES).toString()
+        assertFalse(public.contains("fixture-secret")); assertFalse(public.contains(server.hostName)); assertFalse(public.contains("apiKey"))
+        val codec=ExtensionConfigurationCodec(); val stored=codec.encode(config).toString()
+        assertFalse(stored.contains("fixture-secret")); assertFalse(stored.contains("127.0.0.1"))
+        val renamed=immichProfile("Renamed",profile.testConnection(),config.profile)
+        assertEquals(profile.identity,renamed.identity)
+        val changed=renamed.changeConnection(profile.testConnection().copy(apiKey="another-secret"))
+        assertNotEquals(profile.identity,changed.identity)
+        val fresh=SourceProfiles(app,FloatingDispatchers(),mapOf("extension" to codec))
+        assertEquals(config,fresh.current().selected!!.configuration)
+        try {
+            ExtensionClient(app,extension.component).request(config.profile,ExtensionProtocol.CAPABILITIES,
+                JSONObject().put("source",profile.identity).put("revision",config.revision)); fail("Accepted stale revision")
+        } catch(error: ExtensionFailure) { assertEquals("PROFILE_CHANGED",error.code) }
+        assertEquals(0,calls.size)
+    }
+    @Test fun profilesAreLazyAndNeverMixHeadersMediaOrSelectedItems() = runBlocking {
+        val second=immichProfile("Work",profile.testConnection().copy(apiKey="work-key")); profiles.upsert(second)
+        assertEquals(0,calls.size)
+        val first=source.page(MediaQuery("😂 amazing")).items.single()
+        assertEquals("GIF89a-synthetic-animation",source.original(first).bufferedReader().use { it.readText() })
+        assertTrue(calls.all { it.getHeader("x-api-key")=="fixture-secret" })
+        val before=calls.size
+        source.original(first).close(); assertEquals(before,calls.size)
+        profiles.select(second.id)
+        try { source.original(first); fail("Accepted old source selection") } catch(_: IllegalStateException) { }
+        mediaBytes="work-only".toByteArray()
+        val work=source.page(MediaQuery()).items.single()
+        assertEquals("work-only",source.original(work).bufferedReader().use { it.readText() })
+        assertNotEquals(first.id,work.id)
+        assertTrue(calls.drop(before).all { it.getHeader("x-api-key")=="work-key" })
+    }
+    @Test fun gifPngAndVideoUseLosslessHostCacheAndPartialFailuresNeverCommit() = runBlocking {
+        for(mime in listOf("image/gif","image/png","video/mp4","video/webm")) {
+            kind=mime
+            profile=profile.changeConnection(profile.testConnection().copy(apiKey="key-$mime")); profiles.upsert(profile,true)
+            val item=source.page(MediaQuery()).items.single()
+            mediaBytes=ByteArray(4096) { (it%251).toByte() }
+            val file=if(item.isVideo) source.video(item)!! else source.preview(item) as File
+            assertArrayEquals(mediaBytes,file.readBytes())
+            assertTrue(file.canonicalPath.startsWith(File(app.cacheDir,"source-media").canonicalPath))
+            val count=calls.size
+            if(item.isVideo) source.video(item) else source.preview(item)
+            assertEquals(count,calls.size)
+        }
+        profile=profile.changeConnection(profile.testConnection().copy(apiKey="bad-stream")); profiles.upsert(profile,true)
+        val item=source.page(MediaQuery()).items.single(); mediaStatus.set(401)
+        try { source.original(item); fail("Committed failed stream") } catch(error: SourceReadException) { assertEquals(one.njk.sao.R.string.source_extension_auth,error.messageRes) }
+        val folder=File(app.cacheDir,"source-media/${digest(profile.identity).take(32)}")
+        assertTrue(folder.listFiles().orEmpty().isEmpty())
+        assertEquals(1,calls.count { it.requestUrl!!.encodedPath.endsWith("/original") && it.getHeader("x-api-key")=="bad-stream" })
+    }
+    @Test fun identicalPreviewAndOriginalShareOneHostCacheEntry() = runBlocking {
+        val item=source.page(MediaQuery()).items.single()
+        val preview=source.preview(item) as File
+        val before=calls.size
+        assertArrayEquals(preview.readBytes(),source.original(item).use { it.readBytes() })
+        assertEquals(before,calls.size)
+        val folder=File(app.cacheDir,"source-media/${digest(profile.identity).take(32)}")
+        assertEquals(1,folder.listFiles().orEmpty().size)
+    }
+    @Test fun retryBudgetIsBoundedAndAuthenticationCooldownAndIdleDoNotRetry() = runBlocking {
+        source.searchModes(); calls.clear()
+        searchStatus.set(503)
+        try { source.page(MediaQuery()); fail("Expected server error") } catch(_: SourceReadException) { }
+        // Long server cooldown wins over automatic retry.
+        assertEquals(1,calls.count { it.requestUrl!!.encodedPath=="/api/search/metadata" })
+        searchStatus.set(401); calls.clear()
+        try { source.page(MediaQuery()); fail("Expected auth error") } catch(error: SourceReadException) { assertEquals(one.njk.sao.R.string.source_extension_auth,error.messageRes) }
+        val before=calls.size; delay(1200); assertEquals(before,calls.size)
+    }
+    @Test fun switchingCancelsBlockedStreamWithoutRetryOrPartialFile() = runBlocking {
+        kind="video/mp4"; val item=source.page(MediaQuery()).items.single(); slowMedia=true
+        val download=launch(Dispatchers.IO) { source.video(item) }
+        withTimeout(5000) { while(calls.none { it.requestUrl!!.encodedPath.endsWith("/original") }) delay(20) }
+        profiles.select(null); withTimeout(5000) { download.join() }; assertTrue(download.isCancelled)
+        val count=calls.size; delay(1100); assertEquals(count,calls.size)
+        assertFalse(File(app.cacheDir,"source-media").walkTopDown().any { it.name.endsWith(".pending") })
+    }
+    @Test fun capabilityFailureRecoversWithoutSwitchingProfileAndUnsupportedModesFallBack() = runBlocking {
+        featuresStatus.set(401)
+        val state=async { withTimeout(8000) { source.capabilities.first { SearchMode.FILENAME in it.modes } } }
+        delay(300); featuresStatus.set(200); smart=false
+        source.page(MediaQuery("name"))
+        val caps=state.await()
+        assertFalse(SearchMode.CONTEXT in caps.modes); assertFalse(SearchMode.OCR in caps.modes)
+        assertEquals(SearchMode.FILENAME,caps.defaultMode)
+        val search=calls.last { it.requestUrl!!.encodedPath=="/api/search/metadata" }
+        assertTrue(search.body.clone().readUtf8().contains("originalFileName"))
+    }
+    @Test fun realExtensionSettingsRenameOfflineAndReturnOnlyProfileReference() = runBlocking {
+        val count=calls.size
+        ExtensionForm(profile).use { form ->
+            form.await("source_name") { it.text.toString()=="Fixture" }
+            form.set("source_name","Offline rename"); form.click("save_connection")
+            withTimeout(8000) { while(profiles.current().selected?.name!="Offline rename") delay(30) }
+        }
+        assertEquals(count,calls.size); assertEquals(profile.identity,profiles.current().selected!!.identity)
+    }
+    @Test fun moreThanOneHundredExtensionProfilesAreDiscoveredWithoutNetworkCalls() = runBlocking {
+        repeat(104) { immichProfile("Library $it",profile.testConnection()) }
+        val config=profile.configuration as ExtensionConfig
+        val client=ExtensionClient(app,config.component)
+        val rows=client.profiles()
+        assertEquals(105,rows.size); assertEquals(105,rows.map { it.id }.distinct().size)
+        assertEquals(0,calls.size)
+        val first=client.request(operation=ExtensionProtocol.PROFILES)
+        val cursor=first.getString("next")
+        profile.changeConnection(profile.testConnection().copy(apiKey="changed-during-discovery"))
+        try {
+            client.request(operation=ExtensionProtocol.PROFILES,payload=JSONObject().put("cursor",cursor)); fail("Accepted stale profile-list cursor")
+        } catch(error: ExtensionFailure) { assertEquals("PROFILE_CHANGED",error.code) }
+    }
+    @Test fun profileNamesRemainInOriginalPickerAndSettingsStayInExtension() = runBlocking {
+        kind="image/png"; mediaBytes=app.assets.open("floating/happy.png").use { it.readBytes() }
+        val work=immichProfile("Work library",profile.testConnection().copy(apiKey="work-profile")); profiles.upsert(work)
+        androidx.test.core.app.ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,null,null)).use { scenario ->
+            var ready=false
+            withTimeout(8000) { while(!ready) {
+                scenario.onActivity { ready=androidx.lifecycle.ViewModelProvider(it)[PickerViewModel::class.java].state.value.items.size==1 }; delay(30)
+            } }
             scenario.onActivity { it.findViewById<android.view.View>(one.njk.sao.R.id.source_toggle).performClick() }
-            waitFor { it.findViewById<android.view.View>(one.njk.sao.R.id.source_panel).visibility == android.view.View.VISIBLE }
-            capture("sao-immich-picker-source")
-            waitFor {
-                val list = it.findViewById<androidx.recyclerview.widget.RecyclerView>(one.njk.sao.R.id.source_list)
-                val ready = list.findViewHolderForAdapterPosition(1) != null
-                if (!ready) list.scrollToPosition(1)
-                ready
-            }
-            scenario.onActivity { val list = it.findViewById<androidx.recyclerview.widget.RecyclerView>(one.njk.sao.R.id.source_list)
-                list.findViewHolderForAdapterPosition(1)!!.itemView.performClick() }
-            waitFor { it.findViewById<android.widget.TextView>(one.njk.sao.R.id.source_toggle).text.toString().contains("Immich") }
-            scenario.onActivity { it.findViewById<android.view.View>(one.njk.sao.R.id.source_back).performClick() }
-            waitFor { val grid = it.findViewById<androidx.recyclerview.widget.RecyclerView>(one.njk.sao.R.id.media_grid)
-                val adapter = grid.adapter as MediaCarouselAdapter
-                adapter.itemCount == 1 && grid.findViewHolderForAdapterPosition(0)?.itemView?.performClick() == true }
-            waitFor { it.getSystemService(android.content.ClipboardManager::class.java).primaryClip?.getItemAt(0)?.uri?.toString()?.contains("immich_") == true }
-            Thread.sleep(250); capture("sao-immich-picker-remote")
-            scenario.onActivity { it.findViewById<android.view.View>(one.njk.sao.R.id.search_toggle).performClick() }
-            waitFor { it.findViewById<android.view.View>(one.njk.sao.R.id.search_field).visibility == android.view.View.VISIBLE }
-            scenario.onActivity {
-                assertEquals(android.view.View.GONE, it.findViewById<android.view.View>(one.njk.sao.R.id.source_toggle).visibility)
-                assertEquals(android.view.View.GONE, it.findViewById<android.view.View>(one.njk.sao.R.id.source_panel).visibility)
-            }
+            withTimeout(8000) { while(profiles.current().profiles.size!=2) delay(30) }
+            visualPause("profiles")
         }
-        Unit
+        ExtensionForm(profile).use { form ->
+            form.await("source_name") { it.text.toString()=="Fixture" }
+            visualPause("settings")
+        }
+    }
+    private suspend fun visualPause(stage: String) {
+        if(InstrumentationRegistry.getArguments().getString("visualPause")!="true") return
+        val resume=File(app.cacheDir,"source-visual-continue").apply { delete() }
+        val ready=File(app.cacheDir,"source-visual-$stage").apply { writeText("ready") }
+        try { withTimeout(50_000) { while(!resume.exists()) delay(50) } }
+        finally { ready.delete(); resume.delete() }
     }
 
-    @Test fun connectionSettingsVerifyServerBeforeSavingAndCanSwitchBackToLocal() = runBlocking {
-        settings.save(config, enabled = false)
-        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
-            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = MockResponse().setBody(when (request.path) {
-                "/api/server/version" -> """{"major":3,"minor":3,"patch":1}"""
-                "/api/server/features" -> """{"search":true,"smartSearch":true}"""
-                "/api/api-keys/me" -> """{"id":"key","name":"SAO","permissions":["all"]}"""
-                "/api/albums" -> "[]"
-                else -> result()
-            })
-        }
-        ActivityScenario.launch<ImmichSettingsActivity>(ImmichSettingsActivity.intent(app, settings.profiles.current().profiles.first().id)).use { scenario ->
-            fun awaitStatus(resource: Int) {
-                val deadline = android.os.SystemClock.elapsedRealtime() + 5000; var ready = false
-                while (!ready && android.os.SystemClock.elapsedRealtime() < deadline) {
-                    scenario.onActivity { ready = it.findViewById<android.widget.TextView>(one.njk.sao.R.id.status).text.toString().startsWith(it.getString(resource)) }
-                    Thread.sleep(30)
-                }
-                assertTrue(ready)
-            }
-            val deadline = android.os.SystemClock.elapsedRealtime() + 5000; var ready = false
-            while (!ready && android.os.SystemClock.elapsedRealtime() < deadline) {
-                scenario.onActivity { ready = it.findViewById<android.widget.EditText>(one.njk.sao.R.id.server_url).text.toString() == config.serverUrl }
-                Thread.sleep(30)
-            }
-            assertTrue(ready)
-            scenario.onActivity { it.findViewById<android.view.View>(one.njk.sao.R.id.test_connection).performClick() }
-            awaitStatus(one.njk.sao.R.string.immich_connected)
-            assertNull(settings.profiles.current().selectedId)
-            scenario.onActivity { it.findViewById<android.view.View>(one.njk.sao.R.id.save_connection).performClick() }
-            awaitStatus(one.njk.sao.R.string.immich_saved)
-            assertNotNull(settings.profiles.current().selectedId); assertEquals(config.apiKey, settings.current()!!.apiKey)
-            scenario.onActivity { it.findViewById<android.view.View>(one.njk.sao.R.id.use_local).performClick() }
-            awaitStatus(one.njk.sao.R.string.immich_using_local)
-            assertNull(settings.profiles.current().selectedId); assertEquals(config.apiKey, settings.current()!!.apiKey)
-        }
-        Unit
-    }
 }

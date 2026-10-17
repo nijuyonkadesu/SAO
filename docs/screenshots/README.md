@@ -49,3 +49,11 @@ imported through Rays' normal Add screen. [Setup and source behavior](../rays-so
 | Rays connection | Rays video in the floating picker |
 | --- | --- |
 | <img src="rays-source-settings.png" width="260" alt="Named Rays source with successful API connection and local-library setup instructions" /> | <img src="rays-video-picker.png" width="260" alt="Synthetic MP4 playing in the existing floating carousel from the installed Rays library" /> |
+
+## Source extension profiles
+
+Immich now runs in a separately installed APK. Named profiles remain in SAO's existing source list; editing opens the extension's own Material settings. These previews use a localhost fixture, with no personal server or media. [Setup and contract](../source-extensions.md).
+
+| Profiles in SAO | Extension settings | Extension settings in dark mode |
+| --- | --- | --- |
+| <img src="source-extension-profiles.png" width="260" alt="Fixture and Work library profiles served by the installed Immich extension" /> | <img src="immich-extension-settings.png" width="260" alt="Extension-owned connection form with a verified synthetic server" /> | <img src="immich-extension-settings-dark.png" width="260" alt="The same verified connection form using Material dark colors" /> |

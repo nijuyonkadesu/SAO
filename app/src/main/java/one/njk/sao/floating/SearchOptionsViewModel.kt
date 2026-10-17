@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -9,9 +11,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import javax.inject.Inject
 
-data class SearchOptionsState(val sourceId: String = "local", val supported: Boolean = false,
+data class SearchOptionsState(val sourceId: String = "local", val loaded: Boolean = false, val supported: Boolean = false,
     val randomSupported: Boolean = false,
-    val modes: Set<SearchMode> = SearchMode.entries.toSet(), val modesError: Boolean = false,
+    val facets: Set<SearchFacet> = emptySet(),
+    val defaultMode: SearchMode = SearchMode.CONTEXT, val modes: Set<SearchMode> = emptySet(), val modesError: Boolean = false,
     val peopleName: String = "", val people: List<SearchPerson> = emptyList(), val nextPeoplePage: Int? = null,
     val peopleLoading: Boolean = false, val peopleError: Boolean = false,
     val countries: List<String> = emptyList(), val states: List<String> = emptyList(), val cities: List<String> = emptyList(),
@@ -35,18 +38,24 @@ class SearchOptionsViewModel @Inject constructor(private val source: MediaSource
     private var statesLoaded = false
     private var citiesKey: Pair<String?, String?>? = null
     init {
-        viewModelScope.launch { source.identity.collect { id ->
-            if (mutable.value.sourceId != id) {
-                peopleJob?.cancel(); placesJob?.cancel(); peopleKey = null; placesKey = null
-                failedPeoplePage = null
-                modesJob?.cancel(); modesRequested = false
-                countriesLoaded = false; statesLoaded = false; statesKey = null; citiesKey = null
-                mutable.value = SearchOptionsState(sourceId = id, supported = mutable.value.supported, randomSupported = mutable.value.randomSupported)
+        viewModelScope.launch {
+            combine(source.identity,source.capabilities) { id, capabilities -> id to capabilities }.collect { (id, value) ->
+                if (mutable.value.sourceId != id) {
+                    peopleJob?.cancel(); placesJob?.cancel(); peopleKey = null; placesKey = null
+                    failedPeoplePage = null
+                    modesJob?.cancel(); modesRequested = false
+                    countriesLoaded = false; statesLoaded = false; statesKey = null; citiesKey = null
+                    mutable.value = SearchOptionsState(sourceId = id)
+                }
+                // Identity and capability flows may arrive in either order. Never apply another
+                // profile's modes, and never erase restored controls during an initial load.
+                if (value.sourceId == id) mutable.value = mutable.value.copy(loaded=true,
+                    supported=value.searchOptions,randomSupported=value.random,modes=value.modes,
+                    facets=value.facets,defaultMode=value.defaultMode)
             }
-        } }
-        viewModelScope.launch { combine(source.advancedSearch, source.randomBrowse) { advanced, random -> advanced to random }
-            .collect { (advanced, random) -> mutable.value = mutable.value.copy(supported = advanced, randomSupported = random) } }
+        }
     }
+
     fun modes(retry: Boolean = false) {
         if (!mutable.value.supported || (modesRequested && !retry)) return
         val id = mutable.value.sourceId
@@ -61,7 +70,7 @@ class SearchOptionsViewModel @Inject constructor(private val source: MediaSource
         }
     }
     fun people(name: String = mutable.value.peopleName, more: Boolean = false, retry: Boolean = false) {
-        if (!mutable.value.supported) return
+        if (SearchFacet.PEOPLE !in mutable.value.facets) return
         val id = mutable.value.sourceId
         val key = id to name.trim()
         if (more && (mutable.value.peopleLoading || mutable.value.nextPeoplePage == null)) return
@@ -85,7 +94,7 @@ class SearchOptionsViewModel @Inject constructor(private val source: MediaSource
         }
     }
     fun places(country: String?, state: String?, retry: Boolean = false) {
-        if (!mutable.value.supported) return
+        if (SearchFacet.PLACES !in mutable.value.facets) return
         val id = mutable.value.sourceId
         val key = Triple(id, country, state)
         if (!retry && key == placesKey) return

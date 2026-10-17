@@ -1,5 +1,8 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+import one.njk.sao.immichprovider.*
+
 import android.content.ClipboardManager
 import android.os.SystemClock
 import android.view.View
@@ -42,6 +45,7 @@ class VideoDeviceTest {
         server = MockWebServer()
         server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
             override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = when {
+                request.path == "/api/server/features" -> MockResponse().setBody("""{"smartSearch":true,"ocr":true}""")
                 request.path == "/api/tags" -> MockResponse().setBody("[]")
                 request.path?.contains("/thumbnail") == true -> MockResponse().setHeader("Content-Type", "image/png").setBody(Buffer().write(preview))
                 request.path?.contains("/original") == true -> MockResponse().setHeader("Content-Type", "video/mp4").setBody(Buffer().write(bytes))
@@ -67,7 +71,7 @@ class VideoDeviceTest {
         val page = source.page(MediaQuery("skill")); val item = page.items.first()
         assertEquals(rankedIds, page.items.map { it.remote!!.assetId })
         assertTrue(item.isVideo); assertTrue(item.hasMotion)
-        assertEquals("/api/tags", server.takeRequest()!!.path)
+        assertEquals("/api/server/features", server.takeRequest()!!.path)
         val query = org.json.JSONObject(server.takeRequest()!!.body.readUtf8())
         assertEquals(1, query.getInt("page")); assertFalse(query.has("type")); assertFalse(query.has("filter"))
         val export = MediaExports(app, source).prepare(item, Rendition.MEDIA)

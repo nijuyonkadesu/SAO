@@ -1,11 +1,18 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -21,6 +28,7 @@ import javax.inject.Singleton
 
 /** One active provider session. Factory lookup is lazy and configurations remain plain values. */
 @Singleton
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class SwitchingMediaSource @Inject constructor(private val local: LocalMediaSource,
     private val profiles: SourceProfiles,
     private val factories: Map<String, @JvmSuppressWildcards Provider<MediaSourceFactory>>,
@@ -40,16 +48,14 @@ class SwitchingMediaSource @Inject constructor(private val local: LocalMediaSour
     private var active: Session? = null
     override val identity = profiles.catalogs.map { it.identity }
         .catch { error -> if (error is CancellationException) throw error; emit("unavailable") }.distinctUntilChanged()
-    override val advancedSearch = profiles.catalogs.map { catalog ->
-        catalog.selected?.configuration?.kind?.let { factories[it]?.get()?.advancedSearch } == true
-    }.distinctUntilChanged()
-    override val randomBrowse = profiles.catalogs.map { catalog ->
-        val selected = catalog.selected
-        if (selected == null) true else factories[selected.configuration.kind]?.get()?.randomBrowse == true
-    }.distinctUntilChanged()
-    override val sequenceBrowse = profiles.catalogs.map { catalog ->
-        catalog.selected?.configuration?.kind?.let { factories[it]?.get()?.sequenceBrowse } == true
-    }.distinctUntilChanged()
+    override val capabilities = profiles.catalogs.map { it.identity }.distinctUntilChanged()
+        .flatMapLatest { id -> flow {
+            emitAll(session().source.capabilities.map { it.copy(sourceId = id) })
+        }.catch { error -> if (error is CancellationException) throw error; emit(SourceCapabilities(sourceId = id)) } }
+        .stateIn(scope, SharingStarted.WhileSubscribed(0),SourceCapabilities())
+    override val advancedSearch = capabilities.map { it.searchOptions }.distinctUntilChanged()
+    override val randomBrowse = capabilities.map { it.random }.distinctUntilChanged()
+    override val sequenceBrowse = capabilities.map { it.sequence }.distinctUntilChanged()
 
     private suspend fun session(): Session = withContext(dispatchers.io) { mutex.withLock {
         if (!watching) {

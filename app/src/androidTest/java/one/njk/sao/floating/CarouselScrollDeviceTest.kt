@@ -1,5 +1,8 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+import one.njk.sao.immichprovider.*
+
 import android.graphics.drawable.Animatable
 import android.os.SystemClock
 import androidx.core.view.children
@@ -36,13 +39,14 @@ class CarouselScrollDeviceTest {
     }.toList()
 
     @Before fun setup() = runBlocking {
-        previous = access.sources().current(); access.browseSession().reset()
+        previous = access.sources().current(); access.sources().restore(SourceCatalog()); access.browseSession().reset()
         val poster = app.assets.open("floating/happy.png").use { it.readBytes() }
         val gif = app.assets.open("floating/hello.gif").use { it.readBytes() }
         val video = instrumentation.context.assets.open("preview-video.webm").use { it.readBytes() }
         server = MockWebServer().apply {
             dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse = when {
+                    request.path == "/api/server/features" -> MockResponse().setBody("""{"smartSearch":true,"ocr":true}""")
                     request.path == "/api/tags" -> MockResponse().setBody("[]")
                     request.path?.contains("/thumbnail") == true -> MockResponse().setHeader("Content-Type", "image/png").setBody(Buffer().write(poster))
                     request.path?.contains("/original") == true -> MockResponse().setHeader("Content-Type", if (mediaKind == "GIF") "image/gif" else "video/webm")
@@ -61,7 +65,7 @@ class CarouselScrollDeviceTest {
             }
             start()
         }
-        access.sources().upsert(SourceProfile(UUID.randomUUID().toString(), "Scroll fixture",
+        access.sources().upsert(immichProfile("Scroll fixture",
             ImmichConfig(server.url("/").toString(), "scroll-fixture-key")), true)
     }
 

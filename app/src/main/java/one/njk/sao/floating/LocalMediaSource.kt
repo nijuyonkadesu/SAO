@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.withContext
@@ -12,6 +14,7 @@ import javax.inject.Singleton
 @Singleton
 class LocalMediaSource @Inject constructor(@ApplicationContext private val context: Context,
     private val dispatchers: FloatingDispatchers = FloatingDispatchers()) : MediaSource {
+    override val capabilities = flowOf(SourceCapabilities(random = true))
     override val randomBrowse = flowOf(true)
     private val catalog by lazy {
         val json = context.assets.open("floating/catalog.json").bufferedReader().use { JSONArray(it.readText()) }

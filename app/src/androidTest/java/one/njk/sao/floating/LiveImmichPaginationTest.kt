@@ -1,5 +1,8 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+import one.njk.sao.immichprovider.*
+
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import one.njk.sao.immich.ImmichClient
@@ -27,7 +30,7 @@ class LiveImmichPaginationTest {
         try {
             ImmichClient(connection.connection).use { reference ->
                 report.put("server_version", reference.api.version().toString())
-                ImmichMediaSource(app, connection, "live-pagination:${connection.identity}", FloatingDispatchers()).use { source ->
+                ImmichAdapter(connection, "live-pagination:${connection.identity}", FloatingDispatchers()).use { source ->
                     for (query in listOf("skill", "GIF", "😂")) {
                         val expected = reference.api.smartSearch(SmartSearch(query, SearchFilter(
                             type = EnumFilter(`in` = listOf("IMAGE", "VIDEO")), visibility = EnumFilter(`in` = listOf("timeline", "archive")),

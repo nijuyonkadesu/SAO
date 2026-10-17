@@ -1,5 +1,8 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+import one.njk.sao.immichprovider.*
+
 import android.os.SystemClock
 import android.widget.EditText
 import android.widget.TextView
@@ -35,9 +38,9 @@ class ImmichPaginationDeviceTest {
     private fun response(items: List<JSONObject>, next: String? = null) = JSONObject().put("assets", JSONObject()
         .put("items", JSONArray(items)).put("nextPage", next ?: JSONObject.NULL)).toString()
     @Before fun setup() = runBlocking {
-        previous = access.sources().current(); access.browseSession().reset()
+        previous = access.sources().current(); access.sources().restore(SourceCatalog()); access.browseSession().reset()
         server = MockWebServer(); server.start()
-        access.sources().upsert(SourceProfile(UUID.randomUUID().toString(), "Paged", ImmichConfig(server.url("/").toString(), "pagination-contract-key")), true)
+        access.sources().upsert(immichProfile("Paged", ImmichConfig(server.url("/").toString(), "pagination-contract-key")), true)
         source = SwitchingMediaSource(app, LocalMediaSource(app), access.immichSettings(), FloatingDispatchers())
     }
     @After fun cleanup() = runBlocking {
@@ -47,6 +50,7 @@ class ImmichPaginationDeviceTest {
         val total = 1205
         server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
             override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
+                if (request.path == "/api/server/features") return MockResponse().setBody("""{"smartSearch":true,"ocr":true}""")
                 if (request.path == "/api/tags") return MockResponse().setBody("[]")
                 val body = JSONObject(request.body.readUtf8()); val page = body.getInt("page"); pages += page
                 assertEquals("skill 😂", body.getString("query")); assertEquals(100, body.getInt("size"))
@@ -64,17 +68,22 @@ class ImmichPaginationDeviceTest {
         assertEquals((1..13).toList(), pages); assertEquals(14, server.requestCount)
     }
     @Test fun filteredOnlyPagesAdvanceAndDuplicateEmojiTagNamesKeepAnySemanticsAndContextRank(): Unit = runBlocking {
-        server.enqueue(MockResponse().setBody("""[{"id":"tag-one","name":"😂","value":"one/😂"},{"id":"tag-two","name":"😂","value":"two/😂"}]"""))
+        server.enqueue(MockResponse().setBody("""{"smartSearch":true,"ocr":true}"""))
+        val tags="""[{"id":"tag-one","name":"😂","value":"one/😂"},{"id":"tag-two","name":"😂","value":"two/😂"}]"""
+        server.enqueue(MockResponse().setBody(tags))
         server.enqueue(MockResponse().setBody(response(listOf(asset(1, visibility = "hidden")), "2")))
+        server.enqueue(MockResponse().setBody(tags))
         server.enqueue(MockResponse().setBody(response(listOf(asset(2, "AUDIO")), "3")))
+        server.enqueue(MockResponse().setBody(tags))
         server.enqueue(MockResponse().setBody(response(listOf(asset(3), asset(4), asset(5, visibility = "archive")), "4")))
         // Metadata returns IDs in a different order; the smart-search ranking must win.
         server.enqueue(MockResponse().setBody(response(listOf(asset(5), asset(3)))))
         val result = source.page(MediaQuery("happy 😂", filter = "😂"))
         assertEquals(listOf(UUID(0, 3).toString(), UUID(0, 5).toString()), result.items.map { it.remote!!.assetId })
         assertEquals("immich-smart-page:4", result.nextCursor)
-        assertEquals("/api/tags", server.takeRequest().path)
+        assertEquals("/api/server/features",server.takeRequest().path)
         for (page in 1..3) {
+            assertEquals("/api/tags",server.takeRequest().path)
             val request = server.takeRequest(); assertEquals("/api/search/smart", request.path)
             val body = JSONObject(request.body.readUtf8()); assertEquals(page, body.getInt("page")); assertFalse(body.has("tagIds"))
             assertEquals("happy 😂", body.getString("query"))
@@ -84,12 +93,13 @@ class ImmichPaginationDeviceTest {
         assertEquals(3, filter.getJSONArray("or").length()); assertEquals(3, lookup.getInt("size")); assertFalse(lookup.has("query"))
     }
     @Test fun invalidOrEmptyContinuationsFailOnceWithoutRequestLoops(): Unit = runBlocking {
-        server.enqueue(MockResponse().setBody("[]"))
+        server.enqueue(MockResponse().setBody("""{"smartSearch":true,"ocr":true}"""))
         for (body in listOf(response(listOf(asset(1)), "1"), response(emptyList(), "2"))) {
             server.enqueue(MockResponse().setBody(body))
             try { source.page(MediaQuery("GIF")); fail("Invalid continuation accepted") }
             catch (_: IllegalArgumentException) { }
             catch (_: IllegalStateException) { }
+            catch (_: SourceReadException) { }
         }
         assertEquals(3, server.requestCount)
     }
@@ -107,6 +117,7 @@ class ImmichPaginationDeviceTest {
         val image = app.assets.open(sample.asset).use { it.readBytes() }
         server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
             override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
+                if (request.path == "/api/server/features") return MockResponse().setBody("""{"smartSearch":true,"ocr":true}""")
                 if (request.path == "/api/tags") return MockResponse().setBody("[]")
                 if (request.path?.contains("/thumbnail") == true) return MockResponse().setBody(Buffer().write(image)).setHeader("Content-Type", "image/png")
                 if (request.path == "/api/search/metadata") return MockResponse().setBody(response((1..100).map(::asset)))

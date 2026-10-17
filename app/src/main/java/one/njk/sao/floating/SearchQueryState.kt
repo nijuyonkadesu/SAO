@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import android.os.Bundle
 
 /** Android saved instance state only; no preferences or files for browsing controls. */

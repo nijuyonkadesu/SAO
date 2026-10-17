@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.source.*
+
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -36,7 +38,7 @@ class RaysSettingsViewModel @Inject constructor(@ApplicationContext private val 
             }
             mutable.value = mutable.value.copy(loaded = true)
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { mutable.value = mutable.value.copy(loaded = true, status = R.string.immich_storage_error) }
+        catch (_: Exception) { mutable.value = mutable.value.copy(loaded = true, status = R.string.source_setup_storage_error) }
     } }
     fun check(save: Boolean) = work {
         require(name.isNotBlank())
@@ -49,7 +51,7 @@ class RaysSettingsViewModel @Inject constructor(@ApplicationContext private val 
     } } }
     private fun work(block: suspend () -> Unit) {
         if (!state.value.loaded || state.value.working) return
-        mutable.value = mutable.value.copy(working = true, status = R.string.immich_checking)
+        mutable.value = mutable.value.copy(working = true, status = R.string.source_setup_checking)
         viewModelScope.launch {
             try { block() }
             catch (cancelled: CancellationException) { throw cancelled }

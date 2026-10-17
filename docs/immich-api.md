@@ -2,10 +2,11 @@
 
 Research date: 2026-10-09. Latest stable at that date: **v3.3.1**, released 2026-10-08.
 
-The floating picker previously used seven bundled sample images/GIFs. It now has a dedicated
-`:immich` Android library (Retrofit suspend API, Moshi DTOs, scoped OkHttp client), with an app-side
-`SwitchingMediaSource` that routes to samples or the selected named source profile. Normal launcher
-behavior remains unchanged. The client has no dependency on the picker, Hilt, Views, or Compose.
+The Immich Retrofit/Moshi client now lives in the separately installed `:immich-extension` APK.
+SAO's generic `ExtensionMediaSource` talks to named extension profiles over Binder; its production
+APK contains no Immich client, configuration UI or credentials. The extension retains API negotiation
+and authenticated streaming; SAO owns request scheduling, pagination, retries, playback and media
+caching. [Installation, profiles and versioned extension contract](source-extensions.md).
 
 ## Sources and compatibility
 
@@ -207,8 +208,8 @@ Connection settings are AES-GCM encrypted using Android Keystore and atomically 
 download to account/settings-scoped cache filenames; exports include account scope and asset
 revision so another account or edited version cannot reuse stale bytes. Cache downloads are
 atomic, concurrency-limited and bounded (8 MiB preview / 64 MiB original).
-Cached media is trimmed toward 192 MiB after downloads, retaining recently requested files to
-avoid interfering with in-flight decoding; active/recent transfers can temporarily exceed that target.
+Completed host media is trimmed to a shared 192 MiB LRU budget after downloads. Up to three
+bounded staging transfers may temporarily add to that budget. The extension itself has no media cache.
 Network/file reads
 run on IO, cancellation closes streaming bodies, and bitmap transformations use the existing
 bounded CPU dispatcher. Media leaves SAO through its existing FileProvider flow.
@@ -241,37 +242,20 @@ management remain separate capabilities. A scoped API key is sufficient for this
 
 ## Named source ownership and failures
 
-`SourceProfiles` owns an encrypted catalog and selected profile ID. Each profile has a stable UUID,
-user name and typed configuration. The old encrypted Immich connection migrates once; credentials,
-smart-search opt-out, album scope and Samples selection are preserved. Migration writes the new
-catalog atomically before removing the legacy file. Browse position/query remain in memory.
+`SourceProfiles` retains named public references and the selected profile ID. Each extension owns
+its private profiles/configuration; an Immich profile maps to a server, API key and album scope.
+The generic host codec/factory handles every extension kind. An existing encrypted Immich record
+is forwarded once to the same-signed extension, then replaced only after acknowledgement.
 
-`SourceConfigurationCodec` handles persistence per provider kind. A Hilt map of lazy
-`MediaSourceFactory` providers creates a single active session on first page/filter/media demand.
-`ImmichMediaSource` contains only Immich browsing/cache behavior; `SwitchingMediaSource` handles
-selection, ownership and disposal. Adding another kind requires its codec/factory/source, not a
-class per account. Unknown provider settings survive an older build without activation.
+A profile revision changes when its private configuration changes; renaming keeps it stable.
+Switching profiles cancels old requests and rejects late media/clipboard publication. Configuration
+changes or deletion remove that profile's host media cache. Query/scroll/sequence state stays in
+memory. New searches fetch new results. Source failures never silently select another profile.
 
-Each runtime identity combines profile UUID with a connection/settings fingerprint. Renaming does
-not recreate a client and can be saved without contacting an offline server. Switching, changing credentials/settings or deleting the selected profile
-cancels in-flight work and closes the old HTTP client's calls, pool and executor. Requests remain
-children of their caller's coroutine and also observe session cancellation. Late result/clipboard
-publication is checked against the current identity. Deleting the selected profile selects Samples.
-The downloaded-media and result caches remain; file/export identities now include profile and
-configuration scope. Same server/asset IDs in different accounts cannot reuse bytes.
-
-`ReadRetry` is restricted to provider reads and connection checks: at most one additional attempt,
-with cancellable 500–1000 ms jittered delay, for IO/socket timeouts and HTTP 408/429/502/503/504.
-Authentication, validation and TLS errors are not retried. Short numeric Retry-After delays are
-honored; long or date-based cooldowns surface the failure for a later explicit retry. There is no
-background polling or retry loop. OkHttp's read-only socket recovery remains distinct; mutation
-requests still have automatic transport retries disabled. Downloads have three permits and striped
-file locks; tag loading is serialized to avoid concurrent duplicate fetches.
-
-The architecture follows [Android's data-layer guidance](https://developer.android.com/topic/libraries/architecture/data-layer)
-and [Kotlin's cancellation model](https://kotlinlang.org/docs/cancellation-and-timeouts.html).
-Picker query/source paging uses [flatMapLatest](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.flow/flat-map-latest.html)
-to cancel superseded result streams.
+The host retries eligible reads at most once after 500–1000 ms jitter, respecting short numeric
+Retry-After values and surfacing longer cooldowns for manual retry. Authentication, TLS, invalid
+responses and mutations do not retry. The extension disables its own transport retries and does
+not run background polling. Full [ownership, error codes and lifecycle rules](source-extensions.md).
 
 ## MP4 playback and Context parity (2026-10-10)
 

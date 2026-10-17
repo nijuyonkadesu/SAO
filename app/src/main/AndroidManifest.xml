@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+    <permission android:name="one.njk.sao.permission.SOURCE_EXTENSION" android:protectionLevel="signature" />
     <permission android:name="${applicationId}.permission.NATIVE_CONTROL" android:protectionLevel="signature" />
     <uses-permission android:name="${applicationId}.permission.NATIVE_CONTROL" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -12,6 +13,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <queries>
+        <intent><action android:name="one.njk.sao.source.EXTENSION" /></intent>
         <package android:name="com.skyd.rays" />
         <package android:name="com.skyd.rays.debug" />
         <package android:name="com.whatsapp" />
@@ -42,7 +44,7 @@
         tools:targetApi="31">
         <activity android:name=".floating.RaysSettingsActivity" android:exported="false" />
         <activity android:name=".floating.SourceSettingsActivity" android:exported="false" />
-        <activity android:name=".floating.ImmichSettingsActivity" android:exported="false" />
+        <activity android:name=".floating.SourceSetupActivity" android:exported="false" />
         <activity android:name=".floating.TelegramAppsActivity" android:exported="false" />
         <activity android:name=".floating.FloatingSettingsActivity" android:exported="false" />
         <activity android:name=".floating.PickerActivity" android:exported="false"

@@ -1,0 +1,2 @@
+-keep class one.njk.sao.source.ISourceExtension$Stub { *; }
+-keep class one.njk.sao.source.ISourceCallback$Stub { *; }

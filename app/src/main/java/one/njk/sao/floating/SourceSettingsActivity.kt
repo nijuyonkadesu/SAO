@@ -1,5 +1,6 @@
 package one.njk.sao.floating
 
+
 import android.os.Bundle
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -18,6 +19,7 @@ import one.njk.sao.databinding.ActivitySourceSettingsBinding
 @AndroidEntryPoint
 class SourceSettingsActivity : AppCompatActivity() {
     private val model: SourceProfilesViewModel by viewModels()
+    override fun onResume() { super.onResume(); model.refreshExtensions() }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val binding = ActivitySourceSettingsBinding.inflate(layoutInflater); setContentView(binding.root)
