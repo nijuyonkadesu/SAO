@@ -1,0 +1,19 @@
+<resources>
+<string name="source_extension_install">Install a SAO source extension APK, then return here to add a connection.</string>
+<string name="source_extension_missing">Source extension unavailable. Install or enable its APK.</string>
+<string name="source_extension_failed">The source could not complete the request. Retry or open its settings.</string>
+<string name="source_extension_update">Source protocol incompatible. Update SAO or this extension.</string>
+<string name="source_profile_changed">This source profile changed or was removed. Refresh sources or open its settings.</string>
+<string name="source_extension_auth">The source rejected its credentials or permissions. Open the source settings.</string>
+<string name="source_extension_rate_limit">The source asked SAO to wait. Retry later.</string>
+<string name="source_extension_tls">Could not verify the source’s secure connection. Check its settings.</string>
+<string name="source_extension_untrusted">This extension’s signing identity is not trusted.</string>
+<string name="source_extension_network">The source could not be reached or timed out. Tap to retry.</string>
+<string name="source_media_missing">This media is no longer available from the source.</string>
+<string name="source_setup_storage_error">Could not read or save the source configuration.</string>
+<string name="source_setup_checking">Checking connection…</string>
+<string name="source_back">Back</string>
+<string name="source_test">Test connection</string>
+<string name="source_media_too_large">This media exceeds SAO’s transfer size limit.</string>
+<string name="source_invalid_response">The source returned an invalid response. Retry or check its server and extension version.</string>
+</resources>

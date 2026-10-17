@@ -93,6 +93,8 @@ class CarouselAdapter(
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/*"
                 putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = android.content.ClipData.newUri(context.contentResolver, "SAO image", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(Intent.createChooser(shareIntent, "Share Image"))
         }
@@ -101,13 +103,14 @@ class CarouselAdapter(
             val filename = getFilename(url)
             val ext = getFileExtension(url)
             val shareDir = File(context.cacheDir, "share_cache")
+            shareDir.mkdirs()
 
             val path = file.copyTo(
                 File(shareDir,
                     "$filename.$ext"),
                 true)
 
-            return FileProvider.getUriForFile(context, "one.njk.sao.fileprovider",path)
+            return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider",path)
         }
 
         fun saveToPicturesDir(file: File, url: String) {

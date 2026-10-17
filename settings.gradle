@@ -17,3 +17,8 @@ dependencyResolutionManagement {
 }
 rootProject.name = "SAO"
 include ':app'
+include ':immich'
+
+include ':source-api'
+include ':immich-provider'
+include ':immich-extension'

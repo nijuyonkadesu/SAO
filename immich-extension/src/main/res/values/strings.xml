@@ -1,0 +1,30 @@
+<resources>
+  <string name="immich_title">Immich library</string>
+  <string name="immich_back">Back</string>
+  <string name="immich_setup_description">Use images, GIFs and videos from your Immich server in the floating picker.</string>
+  <string name="immich_server_url">Server URL (https://photos.example.com)</string>
+  <string name="immich_api_key">API key</string>
+  <string name="immich_search_description">Search filenames, descriptions and tags, including emoji. Smart search also finds photos by meaning when your server supports it.</string>
+  <string name="immich_album_scope">Media collection</string>
+  <string name="immich_album_hint">Test the connection to load your albums.</string>
+  <string name="immich_all_photos">All media</string>
+  <string name="immich_saved_album">Saved album</string>
+  <string name="immich_credentials_description">Create an Immich API key with asset.read, asset.view, asset.download and tag.read. Add album.read to choose an album. The key is encrypted on this device. Use HTTPS to protect it in transit.</string>
+  <string name="immich_test">Test connection</string>
+  <string name="immich_save">Save and use Immich</string>
+  <string name="immich_checking">Checking connection…</string>
+  <string name="immich_connected">Connection verified. Choose a collection, then save.</string>
+  <string name="immich_saved">Immich is now the picker’s media source.</string>
+  <string name="immich_invalid_connection">Enter a valid server URL and API key.</string>
+  <string name="immich_version_unsupported">This integration requires Immich 3.2 or 3.3. Other versions need a compatible API adapter.</string>
+  <string name="immich_permissions_missing">The API key needs asset.read, asset.view, asset.download and tag.read.</string>
+  <string name="immich_album_unavailable">The selected album is unavailable. Test with All photos, then choose an accessible album.</string>
+  <string name="immich_auth_error">The server rejected the API key or its permissions.</string>
+  <string name="immich_server_error">The server could not complete the request. Check its address and version.</string>
+  <string name="immich_network_error">Could not reach Immich. Check the connection and server address.</string>
+  <string name="immich_storage_error">Could not read or save the connection. Enter it again, or use sample photos.</string>
+  <string name="source_name">Source name</string>
+  <string name="source_delete">Remove connection</string>
+  <string name="source_removed">Connection removed.</string>
+  <string name="connection_status_version">%1$s (%2$s)</string>
+</resources>

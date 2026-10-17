@@ -1,0 +1,17 @@
+<resources>
+    <string name="sources_title">Media sources</string>
+    <string name="sources_description">Add named connections and choose the library to browse. Each connection keeps its own credentials and media.</string>
+    <string name="source_name">Source name</string>
+    <string name="source_add">Add source</string>
+    <string name="source_edit">Edit %1$s</string>
+    <string name="source_delete">Remove this source</string>
+    <string name="source_removed">Source removed. Samples are available when no source is selected.</string>
+    <string name="source_samples_description">Built-in sample media</string>
+    <string name="source_selected">%1$s, selected</string>
+    <string name="source_unavailable">This source needs a provider supported by this version of SAO.</string>
+    <string name="source_hold_release">Drag up or down · release to switch</string>
+    <string name="source_hold_choose">Choose media source</string>
+    <string name="source_hold_next">Next media source</string>
+    <string name="source_hold_previous">Previous media source</string>
+    <string name="source_hold_accessibility">Media source: %1$s. Tap to choose, or hold and drag vertically.</string>
+</resources>

@@ -1,0 +1,4 @@
+<resources>
+    <string name="emoji_suggestion_keyword">: %1$s</string>
+    <string name="emoji_suggestion_insert">Insert %1$s emoji</string>
+</resources>

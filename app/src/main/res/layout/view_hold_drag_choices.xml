@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto" android:id="@+id/hold_choice_card"
+    android:layout_width="240dp" android:layout_height="wrap_content"
+    android:importantForAccessibility="noHideDescendants" android:clipToOutline="true"
+    app:cardCornerRadius="24dp" app:cardElevation="8dp" app:strokeWidth="1dp"
+    app:strokeColor="?attr/colorOutlineVariant" app:cardBackgroundColor="?attr/colorSurfaceContainerHigh">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="8dp">
+        <TextView android:id="@+id/hold_choice_title" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:paddingHorizontal="12dp" android:paddingVertical="4dp"
+            android:text="@string/search_type" android:textAppearance="?attr/textAppearanceLabelMedium"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+        <FrameLayout android:id="@+id/hold_choice_viewport" android:layout_width="match_parent"
+            android:layout_height="144dp" android:clipChildren="true">
+            <com.google.android.material.card.MaterialCardView android:id="@+id/hold_choice_highlight"
+                android:layout_width="match_parent" android:layout_height="48dp" android:layout_gravity="center_vertical"
+                app:cardCornerRadius="16dp" app:strokeWidth="0dp" app:cardElevation="0dp"
+                app:cardBackgroundColor="?attr/colorPrimaryContainer">
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="start|center_vertical"
+                    android:layout_marginStart="12dp" android:src="@drawable/ic_picker_check" app:tint="?attr/colorOnPrimaryContainer" />
+            </com.google.android.material.card.MaterialCardView>
+            <LinearLayout android:id="@+id/hold_choice_rows" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="vertical" />
+        </FrameLayout>
+        <TextView android:id="@+id/hold_choice_hint" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:paddingHorizontal="12dp" android:paddingVertical="6dp"
+            android:text="@string/search_hold_release" android:textAppearance="?attr/textAppearanceLabelSmall"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

@@ -1,0 +1,20 @@
+<resources>
+    <string name="source_immich">Immich</string>
+    <string name="source_rays">Rays</string>
+    <string name="source_rays_debug">Rays (development)</string>
+    <string name="rays_title">Rays library</string>
+    <string name="rays_description">Browse images, GIFs, and videos from the installed Rays app. Search uses its titles, tags, and search settings. Your library stays on this device.</string>
+    <string name="rays_authorization">In Rays, open Settings → API (Experimental) → API grant. Enable the API, add %1$s, and enable its switch. Then return here to test and save.</string>
+    <string name="rays_open">Open Rays</string>
+    <string name="rays_save">Save and use Rays</string>
+    <string name="rays_setup_description">Allow SAO in Rays, then test the connection.</string>
+    <string name="rays_connected">Connected. Rays library access is enabled.</string>
+    <string name="rays_saved">Source saved and selected.</string>
+    <string name="rays_invalid_name">Enter a source name.</string>
+    <string name="rays_not_installed">Rays is unavailable. Install or enable it, then retry.</string>
+    <string name="rays_update_required">This Rays build needs the paged library API update. Update Rays, then retry.</string>
+    <string name="rays_access_denied">Allow SAO in Rays → Settings → API → API grant, then retry. Older Rays builds also need the API update.</string>
+    <string name="rays_connection_error">Rays could not complete the request. Open Rays, then retry.</string>
+    <string name="rays_invalid_response">Rays returned an unsupported library response. Update Rays, then retry.</string>
+    <string name="rays_source_description">Rays · local titles and tags</string>
+</resources>

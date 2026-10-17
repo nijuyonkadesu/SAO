@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries><package android:name="com.discord" /></queries>
+    <application android:label="Discord native composer probe" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity android:name=".ProbeActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <provider android:name=".ProbeProvider" android:authorities="one.njk.sao.discordprobe.fixtures" android:exported="false" android:grantUriPermissions="true" />
+    </application>
+    <instrumentation android:name="one.njk.sao.floating.nativebridge.NativeDiscordProbe" android:targetPackage="one.njk.sao.discordprobe" />
+</manifest>

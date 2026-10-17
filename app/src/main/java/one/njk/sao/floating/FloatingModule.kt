@@ -1,0 +1,24 @@
+package one.njk.sao.floating
+
+import one.njk.sao.source.*
+
+import dagger.multibindings.IntoMap
+import dagger.multibindings.StringKey
+import dagger.Binds
+import dagger.Module
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class FloatingModule {
+    @Binds abstract fun mediaSource(backends: SwitchingMediaSource): MediaSource
+    @Binds @IntoMap @StringKey("rays")
+    abstract fun raysFactory(factory: RaysSourceFactory): MediaSourceFactory
+    @Binds @IntoMap @StringKey("rays")
+    abstract fun raysCodec(codec: RaysConfigurationCodec): SourceConfigurationCodec
+    @Binds @IntoMap @StringKey("extension")
+    abstract fun extensionFactory(factory: ExtensionSourceFactory): MediaSourceFactory
+    @Binds @IntoMap @StringKey("extension")
+    abstract fun extensionCodec(codec: ExtensionConfigurationCodec): SourceConfigurationCodec
+}

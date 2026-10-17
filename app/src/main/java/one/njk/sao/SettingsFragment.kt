@@ -13,20 +13,22 @@ import one.njk.sao.viewmodels.ArtsViewModel
 @AndroidEntryPoint
 class SettingsFragment: Fragment() {
 
-    private lateinit var binding: FragmentSettingsBinding
+    private var _binding: FragmentSettingsBinding? = null
+    private val binding get() = requireNotNull(_binding)
     private val viewModel: ArtsViewModel by activityViewModels()
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        binding = FragmentSettingsBinding.inflate(inflater, container, false)
+        _binding = FragmentSettingsBinding.inflate(inflater, container, false)
         return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding.apply {
+            languageSelect.isActivated = true // English is the currently supported language.
             viewModel.nsfwMode.observe(viewLifecycleOwner){
                 nsfwToggle.isChecked = it
                 nsfwToggle.text = when(it){
@@ -37,5 +39,10 @@ class SettingsFragment: Fragment() {
             nsfwToggle.setOnClickListener { viewModel.toggleNsfwMode() }
             exportingToggle.setOnClickListener { viewModel.exportFav() }
         }
+    }
+
+    override fun onDestroyView() {
+        _binding = null
+        super.onDestroyView()
     }
 }

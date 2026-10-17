@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+    <LinearLayout android:id="@+id/options_header" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+        <com.google.android.material.button.MaterialButton android:id="@+id/options_back" style="@style/Widget.Material3.Button.TextButton" android:layout_width="48dp" android:layout_height="48dp" android:minWidth="0dp" android:padding="0dp" android:contentDescription="@string/search_back" app:icon="@drawable/ic_picker_back" app:iconPadding="0dp" app:iconGravity="textStart"/>
+        <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="@string/search_options" android:textAppearance="?attr/textAppearanceTitleMedium"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/options_reset" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/search_reset"/>
+    </LinearLayout>
+    <HorizontalScrollView android:id="@+id/options_tabs" android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none">
+        <com.google.android.material.chip.ChipGroup android:id="@+id/options_sections" android:layout_width="wrap_content" android:layout_height="wrap_content" app:singleLine="true" app:singleSelection="true" app:selectionRequired="true">
+            <com.google.android.material.chip.Chip android:id="@+id/section_type" style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/search_type"/>
+            <com.google.android.material.chip.Chip android:id="@+id/section_people" style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/search_people"/>
+            <com.google.android.material.chip.Chip android:id="@+id/section_places" style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/search_places"/>
+            <com.google.android.material.chip.Chip android:id="@+id/section_media" style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/search_media"/>
+        </com.google.android.material.chip.ChipGroup>
+    </HorizontalScrollView>
+    <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <androidx.core.widget.NestedScrollView android:id="@+id/type_panel" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="8dp">
+                <TextView android:id="@+id/type_description" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/search_type_description" android:textAppearance="?attr/textAppearanceBodyMedium" android:layout_marginBottom="12dp"/>
+                <com.google.android.material.chip.ChipGroup android:id="@+id/search_modes" android:layout_width="match_parent" android:layout_height="wrap_content" app:singleSelection="true" app:selectionRequired="true">
+                    <com.google.android.material.chip.Chip android:id="@+id/mode_context" style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/search_mode_context"/>
+                    <com.google.android.material.chip.Chip android:id="@+id/mode_filename" style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/search_mode_filename"/>
+                    <com.google.android.material.chip.Chip android:id="@+id/mode_description" style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/search_mode_description"/>
+                    <com.google.android.material.chip.Chip android:id="@+id/mode_path" style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/search_mode_path"/>
+                    <com.google.android.material.chip.Chip android:id="@+id/mode_ocr" style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/search_mode_ocr"/>
+                </com.google.android.material.chip.ChipGroup>
+                <TextView android:id="@+id/type_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:visibility="gone" android:accessibilityLiveRegion="polite"/>
+                <com.google.android.material.button.MaterialButton android:id="@+id/type_retry" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/search_retry" android:visibility="gone"/>
+                <com.google.android.material.button.MaterialButton android:id="@+id/options_lucky" style="@style/Widget.Material3.Button.TonalButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:layout_marginTop="12dp" android:text="@string/search_lucky" app:icon="@drawable/ic_picker_shuffle"/>
+                <TextView android:id="@+id/lucky_description" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/search_lucky_description" android:textAppearance="?attr/textAppearanceBodyMedium" android:layout_marginTop="8dp"/>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+        <LinearLayout android:id="@+id/people_panel" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:visibility="gone" android:paddingHorizontal="8dp">
+            <com.google.android.material.textfield.TextInputLayout android:id="@+id/people_name_field" app:boxBackgroundMode="outline" app:endIconMode="clear_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/search_people_name" android:layout_marginBottom="12dp">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/people_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="text" android:singleLine="true" android:imeOptions="actionSearch|flagNoExtractUi"/>
+            </com.google.android.material.textfield.TextInputLayout>
+            <HorizontalScrollView android:id="@+id/selected_people_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:visibility="gone">
+                <com.google.android.material.chip.ChipGroup android:id="@+id/selected_people" android:layout_width="wrap_content" android:layout_height="wrap_content" app:singleLine="true"/>
+            </HorizontalScrollView>
+            <TextView android:id="@+id/people_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:textAppearance="?attr/textAppearanceBodyMedium" android:accessibilityLiveRegion="polite"/>
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/people_list" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/people_more" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="48dp" android:text="@string/search_more_people" android:visibility="gone"/>
+        </LinearLayout>
+        <androidx.core.widget.NestedScrollView android:id="@+id/places_panel" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone" android:fillViewport="true">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="8dp">
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/search_places_description" android:textAppearance="?attr/textAppearanceBodyMedium" android:layout_marginBottom="12dp"/>
+                <com.google.android.material.textfield.TextInputLayout android:id="@+id/country_field" style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/search_country" android:layout_marginBottom="12dp">
+                    <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/country" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="none" android:singleLine="true" android:imeOptions="actionSearch|flagNoExtractUi"/>
+                </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.textfield.TextInputLayout android:id="@+id/state_field" style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/search_state" android:layout_marginBottom="12dp">
+                    <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/state" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="none" android:singleLine="true" android:imeOptions="actionSearch|flagNoExtractUi"/>
+                </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.textfield.TextInputLayout android:id="@+id/city_field" style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/search_city" android:layout_marginBottom="12dp">
+                    <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/city" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="none" android:singleLine="true" android:imeOptions="actionSearch|flagNoExtractUi"/>
+                </com.google.android.material.textfield.TextInputLayout>
+                <TextView android:id="@+id/places_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:accessibilityLiveRegion="polite"/>
+                <com.google.android.material.button.MaterialButton android:id="@+id/places_retry" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="48dp" android:text="@string/search_retry" android:visibility="gone"/>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+        <androidx.core.widget.NestedScrollView android:id="@+id/media_panel" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone" android:fillViewport="true">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="8dp">
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/search_media_description" android:textAppearance="?attr/textAppearanceBodyMedium" android:layout_marginBottom="12dp"/>
+                <com.google.android.material.chip.ChipGroup android:id="@+id/media_choices" android:layout_width="match_parent" android:layout_height="wrap_content" app:singleSelection="true" app:selectionRequired="true">
+                    <com.google.android.material.chip.Chip android:id="@+id/media_all" style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/search_media_all"/>
+                    <com.google.android.material.chip.Chip android:id="@+id/media_images" style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/search_media_images"/>
+                    <com.google.android.material.chip.Chip android:id="@+id/media_videos" style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/search_media_videos"/>
+                </com.google.android.material.chip.ChipGroup>
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </FrameLayout>
+</LinearLayout>

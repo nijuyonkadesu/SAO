@@ -21,6 +21,9 @@
 #-renamesourcefileattribute SourceFile
 
 -keep class one.njk.sao.models.Waifu { *; }
+-keep class one.njk.sao.floating.nativebridge.SaoXposedModule { *; }
+-keep class one.njk.sao.floating.nativebridge.SaoXposedModule$* { *; }
+-dontwarn io.github.libxposed.**
 -keep class one.njk.sao.models.Waifus { *; }
 
 -keep,allowobfuscation,allowshrinking class one.njk.sao.data.ApiResult
