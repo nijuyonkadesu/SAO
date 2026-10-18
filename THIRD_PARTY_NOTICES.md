@@ -2,7 +2,7 @@
 
 ## Local Context search
 
-The Local Sticker extension uses the default [Immich ONNX export](https://huggingface.co/immich-app/ViT-B-32__openai/tree/a857c8de2c07bbcfa6646adfcf31b798845afa1e) of OpenAI CLIP ViT-B/32, downloaded separately. CLIP is copyright OpenAI, 2021, [MIT](local-extension/src/main/assets/licenses/clip.txt). `ClipTokenizer` implements its byte-level BPE using the matching Hugging Face tokenizer vocabulary and merges. Inference uses Microsoft's [ONNX Runtime](https://github.com/microsoft/onnxruntime), [MIT](local-extension/src/main/assets/licenses/onnxruntime.txt). These license texts are bundled in the extension APK.
+The Local Sticker extension uses the default [Immich ONNX export](https://huggingface.co/immich-app/ViT-B-32__openai/tree/a857c8de2c07bbcfa6646adfcf31b798845afa1e) of OpenAI CLIP ViT-B/32 and an optional [8-bit ONNX export](https://huggingface.co/Xenova/clip-vit-base-patch32/tree/d15189d7028b43f1d3e65039190477f6af591c2a), downloaded separately into a user-owned folder. CLIP is copyright OpenAI, 2021, [MIT](local-extension/src/main/assets/licenses/clip.txt). `ClipTokenizer` implements its byte-level BPE using the matching Hugging Face tokenizer vocabulary and merges. Inference uses Microsoft's [ONNX Runtime](https://github.com/microsoft/onnxruntime), [MIT](local-extension/src/main/assets/licenses/onnxruntime.txt). These license texts are bundled in the extension APK.
 
 ## Material Symbols
 

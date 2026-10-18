@@ -15,6 +15,12 @@
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/index_help" android:textAppearance="?attr/textAppearanceBodyMedium" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="@string/context_title" android:textAppearance="?attr/textAppearanceTitleLarge" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/context_help" android:textAppearance="?attr/textAppearanceBodyMedium" />
+        <com.google.android.material.textfield.TextInputLayout style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:hint="@string/model_choice">
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/model_choice" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="none" android:importantForAutofill="no" />
+        </com.google.android.material.textfield.TextInputLayout>
+        <TextView android:id="@+id/model_help" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textAppearance="?attr/textAppearanceBodyMedium" />
+        <TextView android:id="@+id/model_location" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textAppearance="?attr/textAppearanceBodyMedium" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/choose_model_folder" style="?attr/materialButtonOutlinedStyle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/choose_model_folder" />
         <TextView android:id="@+id/model_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textAppearance="?attr/textAppearanceBodyMedium" />
         <com.google.android.material.progressindicator.LinearProgressIndicator xmlns:app="http://schemas.android.com/apk/res-auto"
             android:id="@+id/model_progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:max="1000" app:trackThickness="4dp" app:trackCornerRadius="2dp" />

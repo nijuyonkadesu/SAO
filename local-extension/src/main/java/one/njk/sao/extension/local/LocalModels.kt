@@ -5,7 +5,7 @@ import java.util.Locale
 
 data class Folder(val uri: String, val name: String, val paused: Boolean=false, val lastScan: Long=0)
 data class Library(val id: String, val name: String, val revision: String, val folders: List<Folder>,
-    val paused: Boolean = false, val lastScan: Long = 0, val contextSearch: Boolean=false)
+    val paused: Boolean = false, val lastScan: Long = 0, val contextSearch: Boolean=false, val contextModel: String=ClipModels.MODEL)
 data class LocalAsset(val id: Long, val profile: String, val root: String, val uri: String,
     val filename: String, val path: String, val mime: String, val modified: Long, val size: Long,
     val signature: String, val animated: Boolean = false, val labels: String = "", val ocr: String = "",

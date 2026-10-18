@@ -11,8 +11,8 @@ class LocalContextSearch(private val store: LocalStore,private val text: ClipTex
     private data class Match(val id: Long,val signature: String,val score: Double)
     private val order=compareByDescending<Match> { it.score }.thenBy { it.id }
     suspend fun page(library: Library, source: String, query: MediaQuery, cursor: String?): MediaPage {
-        val embedding=text.encode(query.text)
-        val key=digest(SourceWire.query(query).toString()+library.revision+ClipModels.MODEL)
+        val embedding=text.encode(query.text,ClipCatalog.get(library.contextModel))
+        val key=digest(SourceWire.query(query).toString()+library.revision+library.contextModel)
         val boundary=cursor?.let {
             try {
                 val value=JSONObject(String(android.util.Base64.decode(it,android.util.Base64.URL_SAFE),Charsets.UTF_8))
@@ -29,7 +29,7 @@ class LocalContextSearch(private val store: LocalStore,private val text: ClipTex
         VectorMath.Scorer(embedding).use { scorer -> while(true) {
             job.ensureActive()
             var processed=0
-            store.vectors(library.id,query,after,until).use { rows ->
+            store.vectors(library.id,query,after,until,library.contextModel).use { rows ->
             while(rows.moveToNext()) {
                 if(processed++%64==0) job.ensureActive()
                 val id=rows.getLong(0); after=id

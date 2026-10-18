@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(sao_vectors LANGUAGES CXX)
-add_library(sao_vectors SHARED vector_math.cpp)
+add_library(sao_vectors SHARED vector_math.cpp model_memory.cpp)
 target_compile_features(sao_vectors PRIVATE cxx_std_17)
 target_compile_options(sao_vectors PRIVATE -O3 -fno-rtti -fno-exceptions)

@@ -12,7 +12,7 @@ Choose a category, scroll till you find your favourite pic, share or save! Uses 
 
 The floating picker supports separately installed source extensions. Install SAO and the Immich extension APK, then add named profiles under **Settings → Media sources**. Each extension owns its credentials; SAO handles browsing, media caching and chat insertion. [Setup and extension contract](docs/source-extensions.md).
 
-The [Local Sticker extension](docs/local-sticker-source.md) supports named folders with per-album progress/pause/restart, offline labels/OCR, optional CLIP Context search and metadata corrections.
+The [Local Sticker extension](docs/local-sticker-source.md) supports named folders with per-album progress/pause/restart, offline labels/OCR, optional FP32/8-bit CLIP Context search with reusable external model folders, and metadata corrections.
 
 ## Stack
 - [x] Retrofit - network client

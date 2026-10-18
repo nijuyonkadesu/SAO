@@ -15,12 +15,12 @@ import one.njk.sao.source.digest
 import java.util.UUID
 
 /** Extension-private durable metadata. Callers perform all database work on IO. Originals stay in SAF. */
-class LocalStore private constructor(private val context: android.app.Application) : SQLiteOpenHelper(context, "local-library.db", null, 5) {
+class LocalStore private constructor(private val context: android.app.Application) : SQLiteOpenHelper(context, "local-library.db", null, 6) {
     val changes = MutableStateFlow(0L)
     init { setWriteAheadLoggingEnabled(true) }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE profiles(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision TEXT NOT NULL, paused INTEGER NOT NULL DEFAULT 0, last_scan INTEGER NOT NULL DEFAULT 0, context_search INTEGER NOT NULL DEFAULT 0, reset_request TEXT NOT NULL DEFAULT '')")
+        db.execSQL("CREATE TABLE profiles(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision TEXT NOT NULL, paused INTEGER NOT NULL DEFAULT 0, last_scan INTEGER NOT NULL DEFAULT 0, context_search INTEGER NOT NULL DEFAULT 0, reset_request TEXT NOT NULL DEFAULT '', context_model TEXT NOT NULL DEFAULT '${ClipModels.MODEL}')")
         db.execSQL("CREATE TABLE folders(profile TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, uri TEXT NOT NULL, name TEXT NOT NULL, error TEXT, paused INTEGER NOT NULL DEFAULT 0, last_scan INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(profile,uri))")
         db.execSQL("CREATE TABLE assets(id INTEGER PRIMARY KEY AUTOINCREMENT, profile TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, root TEXT NOT NULL, uri TEXT NOT NULL, filename TEXT NOT NULL, filename_search TEXT NOT NULL, path TEXT NOT NULL, path_search TEXT NOT NULL, mime TEXT NOT NULL, modified INTEGER NOT NULL, size INTEGER NOT NULL, signature TEXT NOT NULL, animated INTEGER NOT NULL DEFAULT 0, labels TEXT NOT NULL DEFAULT '', ocr TEXT NOT NULL DEFAULT '', ocr_override TEXT, ocr_search TEXT NOT NULL DEFAULT '', title TEXT, description TEXT, tags TEXT, searchable TEXT NOT NULL DEFAULT '', pending INTEGER NOT NULL DEFAULT 1, failure TEXT, seen TEXT NOT NULL, UNIQUE(profile,uri))")
         db.execSQL("CREATE INDEX asset_order ON assets(profile,modified DESC,id DESC)")
@@ -42,6 +42,7 @@ class LocalStore private constructor(private val context: android.app.Applicatio
         if(old<3) { db.execSQL("ALTER TABLE profiles ADD COLUMN context_search INTEGER NOT NULL DEFAULT 0"); createEmbeddings(db) }
         if(old<4) db.execSQL("CREATE INDEX asset_profile_id ON assets(profile,id)")
         if(old<5) db.execSQL("ALTER TABLE profiles ADD COLUMN reset_request TEXT NOT NULL DEFAULT ''")
+        if(old<6) db.execSQL("ALTER TABLE profiles ADD COLUMN context_model TEXT NOT NULL DEFAULT '${ClipModels.MODEL}'")
     }
     private var lastSignal = 0L
     @Synchronized private fun changed(profile: String?=null, force: Boolean=true) {
@@ -67,7 +68,7 @@ class LocalStore private constructor(private val context: android.app.Applicatio
         val folders=rows("SELECT uri,name,paused,last_scan FROM folders WHERE profile=? ORDER BY rowid",listOf(id)).use { f -> buildList {
             while(f.moveToNext()) add(Folder(f.text("uri"),f.text("name"),f.number("paused")!=0L,f.number("last_scan")))
         } }
-        return Library(id,c.text("name"),c.text("revision"),folders,c.number("paused")!=0L,c.number("last_scan"),c.number("context_search")!=0L)
+        return Library(id,c.text("name"),c.text("revision"),folders,c.number("paused")!=0L,c.number("last_scan"),c.number("context_search")!=0L,c.text("context_model"))
     }
     fun library(id: String) = rows("SELECT * FROM profiles WHERE id=?",listOf(id)).use { c ->
         if(!c.moveToFirst()) throw ExtensionFailure("PROFILE_MISSING") else library(c)
@@ -75,16 +76,17 @@ class LocalStore private constructor(private val context: android.app.Applicatio
     fun active(id: String, revision: String) = rows("SELECT paused,revision FROM profiles WHERE id=?",listOf(id)).use {
         it.moveToFirst() && it.getInt(0)==0 && it.getString(1)==revision
     }
-    fun save(id: String, name: String, folders: List<Folder>, contextSearch: Boolean?=null): Library {
+    fun save(id: String, name: String, folders: List<Folder>, contextSearch: Boolean?=null, contextModel: String?=null): Library {
         UUID.fromString(id); require(name.isNotBlank() && folders.isNotEmpty())
         require(folders.distinctBy { it.uri }.size==folders.size)
         transaction { db ->
             val prior=libraries().firstOrNull { it.id==id }
             val same=prior?.folders?.map { it.uri }?.toSet()==folders.map { it.uri }.toSet()
             val enabled=contextSearch ?: prior?.contextSearch ?: false
-            val revision=prior?.revision?.takeIf { same && enabled==prior.contextSearch } ?: UUID.randomUUID().toString()
-            if(prior==null) db.insertOrThrow("profiles",null,ContentValues().apply { put("id",id); put("name",name.trim()); put("revision",revision); put("context_search",if(enabled) 1 else 0) })
-            else db.update("profiles",ContentValues().apply { put("name",name.trim()); put("revision",revision); put("context_search",if(enabled) 1 else 0) },"id=?",arrayOf(id))
+            val model=contextModel ?: prior?.contextModel ?: ClipModels.MODEL; ClipCatalog.get(model)
+            val revision=prior?.revision?.takeIf { same && enabled==prior.contextSearch && model==prior.contextModel } ?: UUID.randomUUID().toString()
+            if(prior==null) db.insertOrThrow("profiles",null,ContentValues().apply { put("id",id); put("name",name.trim()); put("revision",revision); put("context_search",if(enabled) 1 else 0); put("context_model",model) })
+            else db.update("profiles",ContentValues().apply { put("name",name.trim()); put("revision",revision); put("context_search",if(enabled) 1 else 0); put("context_model",model) },"id=?",arrayOf(id))
             val removed=prior?.folders.orEmpty().filter { old -> folders.none { it.uri==old.uri } }
             removed.forEach { db.delete("assets","profile=? AND root=?",arrayOf(id,it.uri)); db.delete("folders","profile=? AND uri=?",arrayOf(id,it.uri)) }
             folders.forEach { f ->
@@ -114,7 +116,7 @@ class LocalStore private constructor(private val context: android.app.Applicatio
             sum(CASE WHEN e.vector IS NOT NULL AND e.error IS NULL THEN 1 ELSE 0 END),
             sum(CASE WHEN e.error IS NOT NULL THEN 1 ELSE 0 END)
             FROM assets a LEFT JOIN embeddings e ON e.asset=a.id AND e.signature=a.signature AND e.model=?
-            WHERE a.profile=? GROUP BY a.root""",listOf(ClipModels.MODEL,id)).use { c -> buildMap {
+            WHERE a.profile=? GROUP BY a.root""",listOf(library.contextModel,id)).use { c -> buildMap {
             while(c.moveToNext()) put(c.getString(0),IndexStatus(c.getInt(1),c.getInt(2),c.getInt(3),false,0,
                 images=c.getInt(4),animated=c.getInt(5),videos=c.getInt(6),contextProcessed=c.getInt(7),contextFailed=c.getInt(8)))
         } }
@@ -273,17 +275,17 @@ class LocalStore private constructor(private val context: android.app.Applicatio
             "profile=? AND pending=1 AND root IN (SELECT uri FROM folders WHERE profile=? AND paused=0) AND EXISTS (SELECT 1 FROM profiles WHERE id=? AND revision=? AND paused=0)",arrayOf(library.id,library.id,library.id,library.revision))
         changed(library.id)
     }
-    fun pendingEmbedding(profile: String, after: Long=0): LocalAsset? = rows("""SELECT a.* FROM assets a
+    fun pendingEmbedding(profile: String, after: Long=0, model: String=library(profile).contextModel): LocalAsset? = rows("""SELECT a.* FROM assets a
         JOIN folders f ON f.profile=a.profile AND f.uri=a.root
         LEFT JOIN embeddings e ON e.asset=a.id AND e.model=? AND e.signature=a.signature
-        WHERE a.profile=? AND a.id>? AND f.paused=0 AND e.asset IS NULL ORDER BY a.id LIMIT 1""",listOf(ClipModels.MODEL,profile,after.toString())).use { if(it.moveToFirst()) asset(it) else null }
-    fun embedded(asset: LocalAsset, vector: FloatArray?, error: String?) {
+        WHERE a.profile=? AND a.id>? AND f.paused=0 AND e.asset IS NULL ORDER BY a.id LIMIT 1""",listOf(model,profile,after.toString())).use { if(it.moveToFirst()) asset(it) else null }
+    fun embedded(asset: LocalAsset, vector: FloatArray?, error: String?, model: String=library(asset.profile).contextModel) {
         require(vector==null || vector.size==512 && vector.all { it.isFinite() })
         transaction { db ->
             if(!rows("SELECT 1 FROM assets WHERE id=? AND signature=?",listOf(asset.id.toString(),asset.signature)).use { it.moveToFirst() }) return@transaction
             val bytes=vector?.let { values -> java.nio.ByteBuffer.allocate(values.size*4).order(java.nio.ByteOrder.LITTLE_ENDIAN).apply { asFloatBuffer().put(values) }.array() }
             db.insertWithOnConflict("embeddings",null,ContentValues().apply {
-                put("asset",asset.id); put("model",ClipModels.MODEL); put("signature",asset.signature); put("vector",bytes); put("error",error)
+                put("asset",asset.id); put("model",model); put("signature",asset.signature); put("vector",bytes); put("error",error)
             },SQLiteDatabase.CONFLICT_REPLACE)
         }; changed(asset.profile,false)
     }
@@ -292,13 +294,13 @@ class LocalStore private constructor(private val context: android.app.Applicatio
             SELECT a.id,?,a.signature,'MODEL_UNAVAILABLE' FROM assets a JOIN folders f ON f.profile=a.profile AND f.uri=a.root
             WHERE a.profile=? AND f.paused=0 AND EXISTS (SELECT 1 FROM profiles WHERE id=? AND revision=? AND paused=0)
             AND NOT EXISTS (SELECT 1 FROM embeddings e WHERE e.asset=a.id AND e.model=? AND e.signature=a.signature)""",
-            arrayOf(ClipModels.MODEL,library.id,library.id,library.revision,ClipModels.MODEL))
+            arrayOf(library.contextModel,library.id,library.id,library.revision,library.contextModel))
         changed(library.id)
     }
     fun lastAssetId(profile: String)=rows("SELECT coalesce(max(id),0) FROM assets WHERE profile=?",listOf(profile)).use { it.moveToFirst(); it.getLong(0) }
     /** Bounded keyset reads avoid Android CursorWindow repeatedly walking a large BLOB result set. */
-    fun vectors(profile: String, query: MediaQuery, after: Long, until: Long): Cursor {
-        val args=mutableListOf(ClipModels.MODEL,profile,after.toString(),until.toString())
+    fun vectors(profile: String, query: MediaQuery, after: Long, until: Long, model: String=library(profile).contextModel): Cursor {
+        val args=mutableListOf(model,profile,after.toString(),until.toString())
         val where=mutableListOf("e.model=?","a.profile=?","a.id>?","a.id<=?","e.signature=a.signature","e.vector IS NOT NULL","e.error IS NULL")
         when(query.constraints.media) {
             SearchMedia.IMAGES -> where+="a.mime LIKE 'image/%'"

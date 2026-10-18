@@ -1,47 +1,50 @@
 package one.njk.sao.extension.local
 
+import android.provider.DocumentsContract
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import kotlinx.coroutines.*
 import org.junit.*
 import org.junit.Assert.*
-import java.io.File
-import java.io.RandomAccessFile
 
-/** Explicit network opt-in: fetches public tokenizer bytes only, never user media. */
+/** Explicit network opt-in: fetches a public tokenizer into our shared test folder, never user media. */
 class ClipDownloadDeviceTest {
     @Test fun partialTransferResumesAndCorruptArtifactCanBeRepaired()=runBlocking {
         Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("verifyModelDownload")=="true")
         val app=InstrumentationRegistry.getInstrumentation().targetContext
-        assertTrue(ClipModels.ready(app))
-        val tokenizer=ClipModels.parts.single { it.path.endsWith("tokenizer.json") }
-        val target=ClipModels.file(app,tokenizer.path)
-        val backup=File(app.cacheDir,"clip-tokenizer-backup").apply { target.copyTo(this,true) }
-        val marker=ClipModels.file(app,"ready")
-        val partial=File(target.path+".partial")
+        val model=ClipCatalog.lite; val storage=ModelStorage.get(app,model)!!
+        require(DocumentsContract.getTreeDocumentId(storage.tree).endsWith("SAO-model-fixtures/CLIP-8bit"))
+        assertTrue(storage.ready())
+        val tokenizer=model.parts.single { it.path.endsWith("tokenizer.json") }
+        val original=storage.document(tokenizer.path)!!
+        val backup=storage.input(original).use { it.readBytes() }
         val manager=WorkManager.getInstance(app)
         suspend fun finish()=withTimeout(90_000) {
-            while(manager.getWorkInfosForUniqueWork(ClipModels.WORK).get().any { !it.state.isFinished }) delay(100)
+            while(manager.getWorkInfosForUniqueWork(ClipModels.work(model)).get().any { !it.state.isFinished }) delay(100)
         }
+        fun invalidate() { app.getSharedPreferences("context-models",0).edit().remove("verified:${model.id}").commit() }
         try {
-            ClipModels.cancel(app); finish(); marker.delete()
-            target.copyTo(partial,true); target.delete()
-            RandomAccessFile(partial,"rw").use { it.setLength(tokenizer.size-65536) }
-            ClipModels.download(app)
-            withTimeout(90_000) { while(!ClipModels.ready(app)) delay(100) }; finish()
-            assertTrue(ClipModels.verify(target,tokenizer))
-            marker.delete(); target.copyTo(partial,true); target.delete()
-            RandomAccessFile(partial,"rw").use { it.write(0) }
-            ClipModels.download(app)
-            withTimeout(90_000) { while(manager.getWorkInfosForUniqueWork(ClipModels.WORK).get().none { it.state==WorkInfo.State.FAILED }) delay(100) }
-            assertFalse(ClipModels.ready(app)); assertFalse("Bad completed partial must not poison every retry",partial.exists())
-            ClipModels.download(app)
-            withTimeout(90_000) { while(!ClipModels.ready(app)) delay(100) }; finish()
-            assertTrue(ClipModels.verify(target,tokenizer))
+            ClipModels.cancel(app,model); finish(); invalidate()
+            val partial=DocumentsContract.renameDocument(app.contentResolver,original,"tokenizer.json.partial")!!
+            storage.output(partial,tokenizer.size-65536).close()
+            ClipModels.download(app,model)
+            withTimeout(90_000) { while(!storage.ready()) delay(100) }; finish()
+            assertTrue(storage.verify(storage.document(tokenizer.path)!!,tokenizer))
+            invalidate()
+            val bad=DocumentsContract.renameDocument(app.contentResolver,storage.document(tokenizer.path)!!,"tokenizer.json.partial")!!
+            storage.output(bad,0).use { it.write(ByteArray(tokenizer.size.toInt())) }
+            ClipModels.download(app,model)
+            withTimeout(90_000) { while(manager.getWorkInfosForUniqueWork(ClipModels.work(model)).get().none { it.state==WorkInfo.State.FAILED }) delay(100) }
+            assertFalse(storage.ready()); assertNull("Bad completed partial must not poison retries",storage.document("tokenizer.json.partial"))
+            ClipModels.download(app,model)
+            withTimeout(90_000) { while(!storage.ready()) delay(100) }; finish()
+            assertTrue(storage.verify(storage.document(tokenizer.path)!!,tokenizer))
         } finally {
-            ClipModels.cancel(app); finish()
-            backup.copyTo(target,true); backup.delete(); partial.delete(); marker.writeText(ClipModels.MODEL)
+            ClipModels.cancel(app,model); finish()
+            storage.document("tokenizer.json.partial")?.let { DocumentsContract.deleteDocument(app.contentResolver,it) }
+            storage.output(storage.document(tokenizer.path,true)!!,0).use { it.write(backup) }
+            assertTrue(storage.validate())
         }
     }
 }

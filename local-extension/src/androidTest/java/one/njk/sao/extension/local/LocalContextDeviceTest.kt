@@ -41,7 +41,7 @@ class LocalContextDeviceTest {
         return dot/sqrt(first.sumOf { it.toDouble()*it }*second.sumOf { it.toDouble()*it })
     }
     @Test fun tokenizerAndTextEncoderMatchImmichTokenizerAndOfficialOnnxOutputs()=runBlocking {
-        val tokenizer=ClipTokenizer(ClipModels.file(app,"textual/tokenizer.json"))
+        val tokenizer=ClipTokenizer(ClipModels.tokenizer(app,ClipCatalog.immich))
         val cases=references().getJSONArray("textual")
         ClipEncoder(app,false).use { encoder ->
             for(index in 0 until cases.length()) {

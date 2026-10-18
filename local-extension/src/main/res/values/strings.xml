@@ -20,15 +20,15 @@
     <string name="album_embedding">Creating Context index…</string>
     <string name="album_indexing">Indexing media…</string>
     <string name="context_title">Context search</string>
-    <string name="context_help">Match descriptions such as “a happy person wearing a blue shirt” using Immich’s default CLIP model, ViT-B-32__openai. This is separate from tags and OCR.</string>
+    <string name="context_help">Match descriptions such as “a happy person wearing a blue shirt” using an image and text model. This is separate from tags and OCR.</string>
     <string name="download_model">Download model</string>
-    <string name="model_download_size">Download 609 MB of verified model files? This download can use mobile data. Afterward, indexing and Context searches run entirely on this device. Save the library to apply Context search.</string>
+    <string name="model_download_size">Download %1$d MB of verified model files into your selected folder? This download can use mobile data. Afterward, indexing and Context searches run entirely on this device. Save the library to apply Context search.</string>
     <string name="model_ready">CLIP model ready. Save the library to apply your search setting.</string>
-    <string name="model_downloading">Downloading model · %1$d / 609 MB</string>
-    <string name="model_waiting">Waiting for network, battery or storage · %1$d / 609 MB</string>
-    <string name="model_failed">Model download failed. Download again to resume verified files.</string>
-    <string name="model_paused">Model download paused · %1$d / 609 MB</string>
-    <string name="model_missing">Download the model once to enable Context search.</string>
+    <string name="model_downloading">Preparing model · %1$d / %2$d MB</string>
+    <string name="model_waiting">Waiting for battery, storage or network · %1$d / %2$d MB</string>
+    <string name="model_failed">Could not prepare this model. Check folder access and that files match the selected model. Choose a writable folder on this device; use an empty folder if existing files do not match.</string>
+    <string name="model_paused">Model download paused · %1$d / %2$d MB</string>
+    <string name="model_missing">Choose a model folder, then download once or reuse its existing model files.</string>
     <string name="use_context">Use Context search for this library</string>
     <string name="album_scanning">Scanning for media…</string>
     <string name="album_waiting_scan">Waiting to continue scanning</string>
@@ -80,4 +80,13 @@
     <string name="save_metadata">Save corrections</string>
     <string name="reset_metadata">Reset to automatic metadata</string>
     <string name="thumbnail">Media preview</string>
+    <string name="model_choice">Search model</string>
+    <string name="model_immich">Immich default · 609 MB</string>
+    <string name="model_lite">CLIP 8-bit · 155 MB</string>
+    <string name="model_immich_help">ViT-B-32__openai, the same default model as Immich. Larger download and memory use.</string>
+    <string name="model_lite_help" formatted="false">Same OpenAI CLIP family with quantized weights. About 75% smaller download and lower weight memory; rankings can differ. Changing models rebuilds Context only. Labels, OCR and corrections stay.</string>
+    <string name="model_folder_help">Choose a dedicated folder on this device. Downloaded files stay there after uninstalling; select the same folder after reinstalling to reuse them.</string>
+    <string name="choose_model_folder">Choose model folder</string>
+    <string name="model_location">Model folder: %1$s</string>
+    <string name="model_legacy">Using an earlier internal download. Choose a folder to move it outside the app without downloading again.</string>
 </resources>

@@ -148,10 +148,11 @@ class LocalLibraryDeviceTest {
             db.execSQL("INSERT INTO profiles VALUES('fixture',123)")
             db.execSQL("INSERT INTO folders VALUES('fixture','tree','Reactions',NULL)")
             db.execSQL("INSERT INTO assets VALUES(1,'fixture','😂')")
-            store.onUpgrade(db,1,5)
+            store.onUpgrade(db,1,6)
             db.rawQuery("SELECT name,paused,last_scan FROM folders",null).use {
                 assertTrue(it.moveToFirst()); assertEquals("Reactions",it.getString(0)); assertEquals(0,it.getInt(1)); assertEquals(123,it.getLong(2))
             }
+            db.rawQuery("SELECT context_model FROM profiles",null).use { assertTrue(it.moveToFirst()); assertEquals(ClipModels.MODEL,it.getString(0)) }
             db.rawQuery("SELECT tags FROM assets",null).use { assertTrue(it.moveToFirst()); assertEquals("😂",it.getString(0)) }
         } } finally { file.delete() }
     }

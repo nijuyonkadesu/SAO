@@ -23,6 +23,7 @@ import one.njk.sao.source.ExtensionProtocol
 
 class LocalSettingsActivity : AppCompatActivity() {
     private val model by lazy { ViewModelProvider(this)[LocalSettingsViewModel::class.java] }
+    private val modelPicker=registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if(uri!=null) model.modelFolder(uri) }
     private val picker=registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if(uri!=null) model.folder(uri) }
     override fun onCreate(savedInstanceState: Bundle?) {
         val caller=callingPackage
@@ -40,8 +41,11 @@ class LocalSettingsActivity : AppCompatActivity() {
         binding.rescan.setOnClickListener { model.rescan() }
         binding.pauseIndexing.setOnClickListener { model.pause() }
         binding.contextSearch.setOnCheckedChangeListener { _,checked -> if(!renderingContext) model.useContext(checked) }
+        binding.modelChoice.setSimpleItems(ClipCatalog.all.map { getString(it.label) }.toTypedArray())
+        binding.modelChoice.setOnItemClickListener { _,_,position,_ -> model.selectModel(position) }
+        binding.chooseModelFolder.setOnClickListener { modelPicker.launch(ModelStorage.tree(this,model.state.value.selectedModel)) }
         binding.downloadModel.setOnClickListener {
-            MaterialAlertDialogBuilder(this).setTitle(R.string.download_model).setMessage(R.string.model_download_size)
+            MaterialAlertDialogBuilder(this).setTitle(R.string.download_model).setMessage(getString(R.string.model_download_size,(model.state.value.selectedModel.bytes+999_999)/1_000_000))
                 .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.download_model) { _,_ -> model.downloadModel() }.show()
         }
         binding.pauseDownload.setOnClickListener { model.pauseDownload() }
@@ -55,17 +59,28 @@ class LocalSettingsActivity : AppCompatActivity() {
             }
             binding.indexStatus.bind(state.index,state.library?.paused==true,state.indexWork)
             val modelStatus=state.model
+            val label=getString(state.selectedModel.label)
+            if(binding.modelChoice.text.toString()!=label) binding.modelChoice.setText(label,false)
+            binding.modelChoice.isEnabled=!state.working
+            binding.modelHelp.setText(if(state.selectedModel.quantized) R.string.model_lite_help else R.string.model_immich_help)
+            binding.modelLocation.text=when {
+                modelStatus.location!=null -> getString(R.string.model_location,modelStatus.location)
+                modelStatus.legacy -> getString(R.string.model_legacy)
+                else -> getString(R.string.model_folder_help)
+            }
+            val total=(state.selectedModel.bytes+999_999)/1_000_000
             binding.modelStatus.text=when {
                 modelStatus.ready -> getString(R.string.model_ready)
-                modelStatus.work==IndexWork.RUNNING -> getString(R.string.model_downloading,modelStatus.bytes/1_000_000)
-                modelStatus.work==IndexWork.WAITING -> getString(R.string.model_waiting,modelStatus.bytes/1_000_000)
+                modelStatus.work==IndexWork.RUNNING -> getString(R.string.model_downloading,modelStatus.bytes/1_000_000,total)
+                modelStatus.work==IndexWork.WAITING -> getString(R.string.model_waiting,modelStatus.bytes/1_000_000,total)
                 modelStatus.failed -> getString(R.string.model_failed)
-                modelStatus.bytes>0 -> getString(R.string.model_paused,modelStatus.bytes/1_000_000)
+                modelStatus.bytes>0 -> getString(R.string.model_paused,modelStatus.bytes/1_000_000,total)
                 else -> getString(R.string.model_missing)
             }
             binding.modelProgress.isVisible=!modelStatus.ready && (modelStatus.bytes>0 || modelStatus.work!=IndexWork.IDLE)
-            binding.modelProgress.setProgressCompat((modelStatus.bytes*1000/ClipModels.TOTAL).toInt(),false)
-            binding.downloadModel.isVisible=!modelStatus.ready && modelStatus.work==IndexWork.IDLE
+            binding.modelProgress.setProgressCompat((modelStatus.bytes*1000/state.selectedModel.bytes).toInt(),false)
+            binding.downloadModel.isVisible=!modelStatus.ready && modelStatus.location!=null && modelStatus.work==IndexWork.IDLE
+            binding.chooseModelFolder.isEnabled=!state.working && modelStatus.work==IndexWork.IDLE
             binding.pauseDownload.isVisible=!modelStatus.ready && modelStatus.work!=IndexWork.IDLE
             binding.downloadModel.isEnabled=!state.working; binding.pauseDownload.isEnabled=!state.working
             binding.contextSearch.isEnabled=modelStatus.ready && !state.working

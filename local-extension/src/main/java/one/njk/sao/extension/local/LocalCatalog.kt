@@ -57,9 +57,10 @@ class LocalCatalog(private val store: LocalStore, private val library: Library, 
 
 class LocalExtensionService : ExtensionService() {
     private val store by lazy { LocalStore.get(this) }
-    private val textSession by lazy { ClipTextSession(applicationContext) }
+    private val textSessionHolder=lazy { ClipTextSession(applicationContext) }
+    private val textSession by textSessionHolder
     private val contextSearch by lazy { LocalContextSearch(store,textSession) }
-    override fun onDestroy() { super.onDestroy(); textSession.close() }
+    override fun onDestroy() { if(textSessionHolder.isInitialized()) textSession.close(); super.onDestroy() }
     override fun acceptsCaller(uid: Int) = super.acceptsCaller(uid)?.takeIf { it in setOf("one.njk.sao","one.njk.sao.testing",packageName) }
     override fun descriptor()=JSONObject().put("name","Local Sticker")
     override suspend fun execute(profile: String, operation: String, payload: JSONObject, caller: String): JSONObject {
@@ -91,7 +92,7 @@ class LocalExtensionService : ExtensionService() {
                 FolderIndexer.schedule(this,library)
                 val updates=store.changesUri(library)
                 grantUriPermission(caller,updates,Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                val context=library.contextSearch && ClipModels.ready(this)
+                val context=library.contextSearch && ClipModels.ready(this,ClipCatalog.get(library.contextModel))
                 val modes=setOf(SearchMode.FILENAME,SearchMode.DESCRIPTION,SearchMode.PATH,SearchMode.OCR)+(if(context) setOf(SearchMode.CONTEXT) else emptySet())
                 SourceWire.capabilities(SourceCapabilities(modes,setOf(SearchFacet.MEDIA,SearchFacet.EMOJI_TAGS),random=true,sequence=true,
                     defaultMode=if(context) SearchMode.CONTEXT else SearchMode.DESCRIPTION,changesUri=updates.toString()))
@@ -100,7 +101,7 @@ class LocalExtensionService : ExtensionService() {
                 FolderIndexer.schedule(this,library)
                 val query=SourceWire.query(payload.getJSONObject("query")); val cursor=SourceWire.nullable(payload,"cursor")
                 if(query.mode==SearchMode.CONTEXT && query.text.isNotBlank() && query.randomRequest==null) {
-                    if(!library.contextSearch || !ClipModels.ready(this)) throw ExtensionFailure("UNSUPPORTED")
+                    if(!library.contextSearch || !ClipModels.ready(this,ClipCatalog.get(library.contextModel))) throw ExtensionFailure("UNSUPPORTED")
                     SourceWire.page(contextSearch.page(library,source,query,cursor))
                 } else SourceWire.page(catalog.page(query,cursor))
             }
@@ -129,8 +130,8 @@ class LocalExtensionService : ExtensionService() {
 }
 internal fun mediaScope(context: Context, library: Library): Uri = Uri.Builder().scheme("content").authority("${context.packageName}.media").appendPath(library.id).appendPath(library.revision).build()
 internal fun releaseUnusedGrants(context: Context, store: LocalStore) {
-    val used=store.libraries().flatMap { it.folders }.map { it.uri }.toSet()
+    val used=store.libraries().flatMap { it.folders }.map { it.uri }.toSet()+ModelStorage.usedTrees(context)
     context.contentResolver.persistedUriPermissions.filter { it.uri.toString() !in used }.forEach {
-        try { context.contentResolver.releasePersistableUriPermission(it.uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: SecurityException) { }
+        try { context.contentResolver.releasePersistableUriPermission(it.uri,(if(it.isReadPermission) Intent.FLAG_GRANT_READ_URI_PERMISSION else 0) or (if(it.isWritePermission) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)) } catch (_: SecurityException) { }
     }
 }

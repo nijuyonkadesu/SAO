@@ -40,19 +40,19 @@ class FolderIndexer(context: Context, parameters: WorkerParameters) : CoroutineW
                 }
                 store.scanFinished(id,generation); scanning=false
             }
-            val contextReady=library.contextSearch && ClipModels.ready(applicationContext)
+            val contextReady=library.contextSearch && ClipModels.ready(applicationContext,ClipCatalog.get(library.contextModel))
             var embeddingAfter=0L
             while(true) {
                 ensureActive(); if(!current(store,library)) return@index Result.success()
                 val labels=store.pending(id)
-                val contextual=if(contextReady) store.pendingEmbedding(id,embeddingAfter) else null
+                val contextual=if(contextReady) store.pendingEmbedding(id,embeddingAfter,library.contextModel) else null
                 if(contextReady && contextual==null) embeddingAfter=store.lastAssetId(id)
                 if(labels==null && contextual==null) break
                 if(SystemClock.elapsedRealtime()>=deadline) { continueLater(library,true); return@index Result.success() }
                 // Complete both stages for early files before moving through the rest of a large album.
                 // Close one model before loading the other to bound native memory use.
                 if(contextual!=null && (labels==null || contextual.id<labels.id)) {
-                    val encoder=try { ClipEncoder(applicationContext,true) }
+                    val encoder=try { ClipEncoder(applicationContext,true,ClipCatalog.get(library.contextModel)) }
                         catch (_: Exception) { store.embeddingsUnavailable(library); continue }
                         catch (_: LinkageError) { store.embeddingsUnavailable(library); continue }
                     encoder.use {
@@ -64,12 +64,12 @@ class FolderIndexer(context: Context, parameters: WorkerParameters) : CoroutineW
                             try {
                                 val vector=encoder.image(applicationContext,asset)
                                 ensureActive(); if(!current(store,library)) return@index Result.success()
-                                store.embedded(asset,vector,null)
+                                store.embedded(asset,vector,null,library.contextModel)
                             } catch(cancelled: CancellationException) { throw cancelled }
-                            catch(_: SecurityException) { store.embedded(asset,null,"PERMISSION_REQUIRED") }
-                            catch(_: Exception) { store.embedded(asset,null,"EMBEDDING_FAILED") }
+                            catch(_: SecurityException) { store.embedded(asset,null,"PERMISSION_REQUIRED",library.contextModel) }
+                            catch(_: Exception) { store.embedded(asset,null,"EMBEDDING_FAILED",library.contextModel) }
                             embeddingAfter=asset.id
-                            next=store.pendingEmbedding(id,embeddingAfter)
+                            next=store.pendingEmbedding(id,embeddingAfter,library.contextModel)
                         }
                     }
                 } else {

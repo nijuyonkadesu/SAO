@@ -6,19 +6,21 @@ import java.text.Normalizer
 import java.util.Locale
 
 /** CLIP byte-level BPE from the pinned Hugging Face tokenizer, including its Unicode normalization. */
-class ClipTokenizer(file: File) {
+class ClipTokenizer(json: String) {
+    constructor(file: File): this(file.readText())
     private val vocabulary: Map<String,Int>
     private val ranks: Map<String,Int>
     private val bytes=Array(256) { "" }
     private val whitespace=Regex("[\\p{Z}\\x09-\\x0D\\x1C-\\x1F\\x85]+")
     private val words=Regex("<\\|startoftext\\|>|<\\|endoftext\\|>|'s|'t|'re|'ve|'m|'ll|'d|[\\p{L}]+|[\\p{N}]|[^\\s\\p{L}\\p{N}]+")
     init {
-        val model=JSONObject(file.readText()).getJSONObject("model")
+        val model=JSONObject(json).getJSONObject("model")
         val vocab=model.getJSONObject("vocab")
         vocabulary=vocab.keys().asSequence().associateWith(vocab::getInt)
         val merges=model.getJSONArray("merges")
         ranks=(0 until merges.length()).associate { index ->
-            val pair=merges.getJSONArray(index); "${pair.getString(0)} ${pair.getString(1)}" to index
+            val pair=merges.get(index)
+            (if(pair is org.json.JSONArray) "${pair.getString(0)} ${pair.getString(1)}" else pair.toString()) to index
         }
         val printable=(33..126).toList()+(161..172).toList()+(174..255).toList()
         var extra=256

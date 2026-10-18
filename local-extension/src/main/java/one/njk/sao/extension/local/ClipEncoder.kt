@@ -2,6 +2,8 @@ package one.njk.sao.extension.local
 
 import ai.onnxruntime.*
 import android.content.Context
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
@@ -10,28 +12,35 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.nio.FloatBuffer
 import java.nio.IntBuffer
+import java.nio.LongBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.*
 
-/** Same FP32 encoders, tensor layout and normalization as Immich's default CLIP pipeline. */
-class ClipEncoder(context: Context, private val visual: Boolean) : AutoCloseable {
-    private val tokenizer=if(visual) null else ClipTokenizer(ClipModels.file(context,"textual/tokenizer.json"))
+/** Verified encoder pair. SAF descriptors avoid whole-file byte arrays and internal copies. */
+class ClipEncoder(context: Context, private val visual: Boolean,private val model: ClipModel=ClipCatalog.immich) : AutoCloseable {
+    private val tokenizer=if(visual) null else ClipTokenizer(ClipModels.tokenizer(context,model))
     private val environment=runtimeEnvironment
-    private val session=OrtSession.SessionOptions().use { options ->
-        options.setIntraOpNumThreads(2); options.setInterOpNumThreads(1)
-        options.addConfigEntry("session.intra_op.allow_spinning","0")
-        environment.createSession(ClipModels.file(context,if(visual) "visual/model.onnx" else "textual/model.onnx").path,options)
+    private val session=ClipModels.descriptor(context,model,if(visual) model.visual else model.textual).use { descriptor ->
+        OrtSession.SessionOptions().use { options ->
+            options.setIntraOpNumThreads(2); options.setInterOpNumThreads(1)
+            options.addConfigEntry("session.intra_op.allow_spinning","0")
+            // ONNX parses this self-contained model synchronously; release the mapping immediately afterward.
+            ModelMemory.Mapping(descriptor.fd).use { mapping -> environment.createSession(mapping.bytes,options) }
+        }
     }
     suspend fun text(value: String): FloatArray {
         check(!visual)
-        OnnxTensor.createTensor(environment,IntBuffer.wrap(tokenizer!!.encode(value)),longArrayOf(1,77)).use { return infer("text",it) }
+        val tokens=tokenizer!!.encode(value)
+        val tensor=if(model.quantized) OnnxTensor.createTensor(environment,LongBuffer.wrap(LongArray(tokens.size) { tokens[it].toLong() }),longArrayOf(1,77))
+            else OnnxTensor.createTensor(environment,IntBuffer.wrap(tokens),longArrayOf(1,77))
+        tensor.use { return infer(if(model.quantized) "input_ids" else "text",it) }
     }
     suspend fun image(context: Context, asset: LocalAsset): FloatArray {
         check(visual)
         val bitmap=MediaBitmaps.read(context,Uri.parse(asset.uri),asset.mime,2048,Color.BLACK)
         val input=try { withContext(Dispatchers.Default) { pixels(bitmap) } } finally { bitmap.recycle() }
         currentCoroutineContext().ensureActive()
-        OnnxTensor.createTensor(environment,FloatBuffer.wrap(input),longArrayOf(1,3,224,224)).use { return infer("image",it) }
+        OnnxTensor.createTensor(environment,FloatBuffer.wrap(input),longArrayOf(1,3,224,224)).use { return infer(if(model.quantized) "pixel_values" else "image",it) }
     }
     private suspend fun infer(name: String, input: OnnxTensor): FloatArray=coroutineScope {
         OrtSession.RunOptions().use { options ->
@@ -66,22 +75,22 @@ class ClipEncoder(context: Context, private val visual: Boolean) : AutoCloseable
             val source=IntArray(width*height); bitmap.getPixels(source,0,width,0,0,width,height)
             val intermediate=IntArray(height*224*3)
             for(y in 0 until height) for(x in 0 until 224) for(channel in 0..2) {
-                val filter=horizontal[x]; var sum=0.0
-                for(k in filter.values.indices) sum+=((source[y*width+filter.start+k] shr (16-channel*8)) and 255)*filter.values[k]
-                intermediate[(y*224+x)*3+channel]=floor(sum+0.5).toInt().coerceIn(0,255)
+                val filter=horizontal[x]; var sum=1L shl 21
+                for(k in filter.values.indices) sum+=((source[y*width+filter.start+k] shr (16-channel*8)) and 255).toLong()*filter.values[k]
+                intermediate[(y*224+x)*3+channel]=(sum shr 22).toInt().coerceIn(0,255)
             }
             val mean=floatArrayOf(.48145466f,.4578275f,.40821073f)
             val std=floatArrayOf(.26862954f,.26130258f,.27577711f)
             val result=FloatArray(3*224*224)
             for(y in 0 until 224) for(x in 0 until 224) for(channel in 0..2) {
-                val filter=vertical[y]; var sum=0.0
-                for(k in filter.values.indices) sum+=intermediate[((filter.start+k)*224+x)*3+channel]*filter.values[k]
-                val value=floor(sum+0.5).toInt().coerceIn(0,255)/255f
+                val filter=vertical[y]; var sum=1L shl 21
+                for(k in filter.values.indices) sum+=intermediate[((filter.start+k)*224+x)*3+channel].toLong()*filter.values[k]
+                val value=(sum shr 22).toInt().coerceIn(0,255)/255f
                 result[channel*224*224+y*224+x]=value*(1f/std[channel])-mean[channel]/std[channel]
             }
             return result
         }
-        private data class Filter(val start: Int,val values: DoubleArray)
+        private data class Filter(val start: Int,val values: IntArray)
         private fun weights(input: Int,output: Int,offset: Int): List<Filter> {
             val scale=input.toDouble()/output; val support=max(1.0,scale)*2
             return List(224) { position ->
@@ -92,33 +101,44 @@ class ClipEncoder(context: Context, private val visual: Boolean) : AutoCloseable
                     val x=abs((start+k-center+.5)/max(1.0,scale))
                     when { x<1 -> (1.5*x-2.5)*x*x+1; x<2 -> ((-.5*x+2.5)*x-4)*x+2; else -> 0.0 }
                 }
-                val sum=weights.sum(); weights.indices.forEach { weights[it]/=sum }
-                Filter(start,weights)
+                val sum=weights.sum()
+                // Pillow uses signed, rounded 22-bit coefficients in each 8-bit resampling pass.
+                Filter(start,IntArray(weights.size) { index ->
+                    val value=weights[index]/sum*(1 shl 22)
+                    (value+if(value<0) -.5 else .5).toInt()
+                })
             }
         }
     }
 }
 
 /** Reuse model weights, never query results. Release native memory after idle or service destruction. */
-class ClipTextSession(private val context: Context) {
+class ClipTextSession(private val context: Context,private val idleMillis: Long=30_000) : ComponentCallbacks2 {
     private val mutex=Mutex()
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private val closed=AtomicBoolean(false)
     private var encoder: ClipEncoder?=null
+    private var loadedKey: String?=null
     private var release: Job?=null
-    suspend fun encode(text: String): FloatArray=mutex.withLock {
+    init { context.registerComponentCallbacks(this) }
+    suspend fun encode(text: String,model: ClipModel=ClipCatalog.immich): FloatArray=withContext(Dispatchers.IO) { mutex.withLock {
         check(!closed.get()); release?.cancel()
         try {
-            currentCoroutineContext().ensureActive()
-            val engine=encoder ?: ClipEncoder(context,false).also { encoder=it }
+            ensureActive()
+            val key=model.id+ModelStorage.tree(context,model)
+            if(key!=loadedKey) { unload(); loadedKey=key }
+            val engine=encoder ?: ClipEncoder(context,false,model).also { encoder=it }
             engine.text(text)
-        } finally {
-            release=scope.launch { delay(30_000); mutex.withLock { encoder?.close(); encoder=null } }
-        }
-    }
+        } finally { release=scope.launch { delay(idleMillis); mutex.withLock { unload() } } }
+    } }
+    private fun unload() { encoder?.close(); encoder=null; loadedKey=null }
+    internal suspend fun isLoaded()=mutex.withLock { encoder!=null }
+    override fun onTrimMemory(level: Int) { if(level>=ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) scope.launch { mutex.withLock { unload() } } }
+    override fun onLowMemory() { onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_COMPLETE) }
+    override fun onConfigurationChanged(configuration: Configuration) { }
     fun close() {
         if(!closed.compareAndSet(false,true)) return
-        release?.cancel()
-        scope.launch { try { mutex.withLock { encoder?.close(); encoder=null } } finally { scope.cancel() } }
+        context.unregisterComponentCallbacks(this); release?.cancel()
+        scope.launch { try { mutex.withLock { unload() } } finally { scope.cancel() } }
     }
 }
