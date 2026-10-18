@@ -6,7 +6,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import retrofit2.HttpException
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
@@ -20,7 +19,7 @@ object ReadRetry {
         catch (error: Exception) {
             currentCoroutineContext().ensureActive()
             if (error is CancellationException || !transient(error)) throw error
-            val retryAfter = (error as? ExtensionFailure)?.retryAfter ?: (error as? HttpException)?.response()?.headers()?.get("Retry-After")
+            val retryAfter = (error as? ExtensionFailure)?.retryAfter
             // Respect long/date-based server cooldowns by requiring a later explicit retry.
             val serverDelay = retryAfter?.toLongOrNull()?.takeIf { it in 0..5 }?.times(1000)
             if (retryAfter != null && serverDelay == null) throw error
@@ -31,7 +30,6 @@ object ReadRetry {
     }
     private fun transient(error: Exception): Boolean = when (error) {
         is ExtensionFailure -> error.code in setOf("NETWORK","DISCONNECTED") || error.code in setOf("HTTP_408","HTTP_429","HTTP_502","HTTP_503","HTTP_504")
-        is HttpException -> error.code() in setOf(408, 429, 502, 503, 504)
         is SSLException -> false
         is InterruptedIOException -> error is SocketTimeoutException
         is IOException -> true

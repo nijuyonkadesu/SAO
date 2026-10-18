@@ -35,4 +35,15 @@ class ClipboardPublisher @Inject constructor(@ApplicationContext private val con
                 request.current(version)
             }
         }
+    suspend fun publishFilename(item: MediaItem, request: ClipboardRequest, version: Long): Boolean =
+        withContext(dispatchers.clipboard) {
+            publications.withLock {
+                val name=item.filename?.takeIf { it.isNotBlank() } ?: return@withLock false
+                if(!request.current(version)) return@withLock false
+                context.getSystemService(ClipboardManager::class.java).setPrimaryClip(
+                    ClipData.newPlainText(context.getString(one.njk.sao.R.string.media_filename),name))
+                request.current(version)
+            }
+        }
+
 }

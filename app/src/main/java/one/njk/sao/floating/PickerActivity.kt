@@ -86,6 +86,8 @@ class PickerActivity : AppCompatActivity() {
         binding = ActivityPickerBinding.inflate(layoutInflater)
         setContentView(binding.root)
         dockMarquees = PickerMarquees(lifecycleScope, binding.selectionTitle, binding.selectionMessage)
+        ResultHoldAction(binding.selectionTitle, { !carousel.centeredItem?.filename.isNullOrBlank() },
+            { options.longPressMs.toLong() }, {}, { carousel.centeredItem?.let(model::copyFilename) })
         window.setLayout(-1, -1)
         metrics = windowManager.maximumWindowMetrics
         binding.root.setOnClickListener { finish() }
@@ -448,7 +450,7 @@ class PickerActivity : AppCompatActivity() {
             NativeBridgeRegistry.supports(targetPackage, nativeSession, mime)) Rendition.MEDIA else null
     }
     private fun nativeMediaMime(item: MediaItem): String {
-        val original = if (item.hasMotion) item.mimeType else "image/jpeg"
+        val original = item.mimeType
         return VideoCompatibility.mime(original) { NativeBridgeRegistry.supports(targetPackage, nativeSession, it) }
     }
     private fun renderDock() {

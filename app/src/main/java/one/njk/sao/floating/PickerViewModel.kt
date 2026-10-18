@@ -112,7 +112,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
             try {
                 val choice = DeliveryPolicy.clipboard(item, prefer ?: preferences.current().preferStickers, target)
                 val media = exports.prepare(item, choice.rendition)
-                if (source.identity.first() == (item.remote?.sourceId ?: "local") && clipboard.publish(item, media, request, version)) copyStatus.value = when {
+                if (source.owns(item) && clipboard.publish(item, media, request, version)) copyStatus.value = when {
                     item.isVideo -> one.njk.sao.R.string.picker_video_copied
                     item.animated -> one.njk.sao.R.string.picker_gif_copied
                     choice.mediaFallback -> one.njk.sao.R.string.picker_media_fallback
@@ -124,12 +124,24 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
             catch (error: Exception) { if (request.current(version)) copyStatus.value = (error as? SourceReadException)?.messageRes ?: one.njk.sao.R.string.picker_copy_failed }
         }
     }
+    fun copyFilename(item: MediaItem) {
+        if(item.filename.isNullOrBlank()) return
+        selectForAction(item)
+        val version=request.next(); copying?.cancel()
+        copying=viewModelScope.launch {
+            try {
+                if(source.owns(item) && clipboard.publishFilename(item,request,version))
+                    copyStatus.value=one.njk.sao.R.string.media_filename_copied
+            } catch(cancelled: CancellationException) { throw cancelled }
+            catch(_: Exception) { if(request.current(version)) copyStatus.value=one.njk.sao.R.string.picker_copy_failed }
+        }
+    }
     suspend fun prepareClipboard(target: MessagingTarget): Boolean {
         val item = selection.value ?: return false
         val version = request.next(); copying?.cancel()
         val choice = DeliveryPolicy.clipboard(item, preferredOverride ?: preferences.current().preferStickers, target)
         val media = exports.prepare(item, choice.rendition)
-        return source.identity.first() == (item.remote?.sourceId ?: "local") && clipboard.publish(item, media, request, version)
+        return source.owns(item) && clipboard.publish(item, media, request, version)
     }
     override fun onCleared() { session.releaseSequence(visibilityOwner); request.next(); pickerVisible(false) }
 
@@ -146,7 +158,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         visibleState.flatMapLatest { visible -> if(visible) source.changes.catch { error -> if(error is CancellationException) throw error } else kotlinx.coroutines.flow.emptyFlow() }
             .sample(1000)
             .collect {
-                if(pickerShowing && query.value.randomRequest==null && session.results(source.identity.first(),query.value)!=null) pageRequests.trySend(true)
+                if(pickerShowing && !state.value.error && !state.value.loading && !state.value.loadingMore && query.value.randomRequest==null && session.results(source.identity.first(),query.value)!=null) pageRequests.trySend(true)
             }
     } }
     private val resultsState = combine(query.debounce(180), source.identity, refresh) { value, id, _ -> value to id }
@@ -163,12 +175,12 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
                 emit(PickerState(query = query, sourceId = sourceId))
                 val page = source.page(query)
                 if (source.identity.first() != sourceId) throw CancellationException("Source changed")
-                snapshot = PickerResultsSnapshot(sourceId, query, uniqueItems(page.items), page.nextCursor)
+                snapshot = PickerResultsSnapshot(sourceId, query, uniqueItems(page.items), page.nextCursor, interrupted = page.interrupted)
                 session.rememberResults(snapshot)
             }
             var current = requireNotNull(snapshot)
-            var pageError = false
-            var pageErrorMessage: Int? = null
+            var pageError = current.interrupted
+            var pageErrorMessage: Int? = if(current.interrupted) one.njk.sao.R.string.source_all_interrupted else null
             while (true) {
                 emit(PickerState(current.items, loading = false, error = pageError, query = query, hasMore = current.nextCursor != null, sourceId = sourceId, errorMessage = pageErrorMessage))
                 requestingPage = false
@@ -180,14 +192,14 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
                     if (source.identity.first() != sourceId) throw CancellationException("Source changed")
                     val seen = if(updated) emptySet() else current.seenCursors + listOfNotNull(cursor)
                     val merged = if(updated) {
-                        val latest=page.items.associateBy { it.remote?.assetId ?: it.id }
-                        current.items.map { latest[it.remote?.assetId ?: it.id] ?: it } + page.items
+                        val latest=page.items.associateBy { it.identityKey }
+                        current.items.map { latest[it.identityKey] ?: it } + page.items
                     } else if(cursor==null) page.items else current.items + page.items
                     current = PickerResultsSnapshot(sourceId, query,
                         uniqueItems(merged),
-                        page.nextCursor?.takeUnless { it in seen }, seen)
+                        page.nextCursor?.takeUnless { it in seen }, seen, page.interrupted)
                     session.rememberResults(current)
-                    pageError = false; pageErrorMessage = null
+                    pageError = page.interrupted; pageErrorMessage = if(page.interrupted) one.njk.sao.R.string.source_all_interrupted else null
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (error: Exception) { pageError = true; pageErrorMessage = (error as? SourceReadException)?.messageRes }
             }
@@ -222,11 +234,11 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
     fun retry() {
         if (!pickerShowing || !session.ownsSequence(visibilityOwner)) return
         if (sequence.state.value != null) sequence.retry()
-        else if (state.value.items.isNotEmpty()) pageRequests.trySend(false) else refresh.value++
+        else if (state.value.items.isNotEmpty() || state.value.hasMore) pageRequests.trySend(false) else refresh.value++
     }
     private suspend fun uniqueItems(items: List<MediaItem>) = withContext(dispatchers.cpu) {
         // Stable remote asset identity avoids duplicates if its revision changes between pages.
-        items.distinctBy { it.remote?.assetId ?: it.id }
+        items.distinctBy { it.identityKey }
     }
     private fun searchQuery(value: MediaQuery) {
         if (!session.ownsSequence(visibilityOwner) || query.value == value) return

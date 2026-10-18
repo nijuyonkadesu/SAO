@@ -38,7 +38,7 @@ class ImmichExtensionService : ExtensionService() {
         ImmichAdapter(connection.config,identity,FloatingDispatchers()).use { source ->
             return when (operation) {
                 ExtensionProtocol.CAPABILITIES -> SourceWire.capabilities(source.searchModes().let { modes -> SourceCapabilities(modes,SearchFacet.entries.toSet(),random=true,sequence=true,
-                    defaultMode=if(SearchMode.CONTEXT in modes) SearchMode.CONTEXT else SearchMode.FILENAME) })
+                    defaultMode=if(SearchMode.CONTEXT in modes) SearchMode.CONTEXT else SearchMode.FILENAME, categories=ImmichHomeCategories.values) })
                 ExtensionProtocol.SEARCH -> SourceWire.page(source.page(SourceWire.query(payload.getJSONObject("query")),SourceWire.nullable(payload,"cursor")))
                 ExtensionProtocol.FILTERS -> JSONObject().put("values",SourceWire.strings(source.filters()))
                 ExtensionProtocol.PEOPLE -> source.people(payload.optString("name"),payload.optInt("page",1),identity).let {

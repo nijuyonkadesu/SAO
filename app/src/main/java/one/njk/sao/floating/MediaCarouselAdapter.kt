@@ -33,7 +33,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     private val source: MediaSource, private val prefetch: (Int) -> Unit = {},
     private val holdDelay: () -> Long = { HoldDragSelector.HOLD_MS },
     private val canHold: () -> Boolean = { false }, private val held: (MediaItem) -> Unit = {},
-    private val select: (MediaItem) -> Unit) :
+    private val home: Boolean = false, private val select: (MediaItem) -> Unit) :
     ListAdapter<MediaItem, MediaCarouselAdapter.Holder>(object : DiffUtil.ItemCallback<MediaItem>() {
         override fun areItemsTheSame(a: MediaItem, b: MediaItem) = a.id == b.id
         override fun areContentsTheSame(a: MediaItem, b: MediaItem) = a == b
@@ -73,6 +73,13 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     }
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = Holder(
         ItemFloatingMediaBinding.inflate(LayoutInflater.from(parent.context), parent, false)).also { holder ->
+        if(home) holder.binding.apply {
+            root.layoutParams.width = (300 * parent.resources.displayMetrics.density).toInt()
+            preview.setPadding(0, 0, 0, 0)
+            preview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+            (videoPreview.layoutParams as ViewGroup.MarginLayoutParams).setMargins(0, 0, 0, 0)
+            videoPreview.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+        }
         holder.hold = ResultHoldAction(holder.binding.root, { canHold() && holder.item != null }, holdDelay,
             { holder.item?.let(select) }, { holder.item?.let(held) }, ignoreHold = { showUploadTime })
     }

@@ -1,195 +1,125 @@
 package one.njk.sao.viewmodels
 
 import android.util.Log
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
-import coil3.ImageLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.*
 import one.njk.sao.BuildConfig
-import one.njk.sao.data.WaifuApiRepository
+import one.njk.sao.R
 import one.njk.sao.database.Bookmark
 import one.njk.sao.database.BookmarksDao
 import one.njk.sao.database.SettingsDataStore
-import one.njk.sao.models.ConfigState
-import one.njk.sao.models.Waifu
-import java.util.concurrent.atomic.AtomicBoolean
+import one.njk.sao.floating.PickerBrowseKey
+import one.njk.sao.floating.PickerState
+import one.njk.sao.floating.SourceReadException
+import one.njk.sao.source.*
 import javax.inject.Inject
 
-enum class CategoryType { SFW, NSFW }
-val sfwCategories = listOf(
-    "waifu",
-    "neko",
-    "shinobu",
-    "megumin",
-    "bully",
-    "cuddle",
-    "cry",
-    "hug",
-    "awoo",
-    "kiss",
-    "lick",
-    "pat",
-    "smug",
-    "bonk",
-    "yeet",
-    "blush",
-    "smile",
-    "wave",
-    "highfive",
-    "handhold",
-    "nom",
-    "bite",
-    "glomp",
-    "slap",
-    "kill",
-    "kick",
-    "happy",
-    "wink",
-    "poke",
-    "dance",
-    "cringe"
-)
-val nsfwCategories = listOf("waifu", "neko", "trap", "blowjob")
+data class HomeState(val browse: PickerState = PickerState(), val categories: List<SourceCategory> = emptyList(),
+    val categoryId: String? = null)
 
+/** One live result set, retained across view recreation; no query-result or scroll preference writes. */
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
-class ArtsViewModel @Inject constructor(
-    private val waifuRepository: WaifuApiRepository,
-    val imageLoader: ImageLoader,
-    private val settingsDataStore: SettingsDataStore,
-    private val bookmarksDao: BookmarksDao
-) : ViewModel() {
-    // TODO: 3 Survive process deaths (using savedstate handle & lifecycle methods)
-    // TODO: 4 write Proguard (for type / class preservation)
-    private val waifus = mutableListOf<Waifu>()
-
-    private val _availableCategories = MutableLiveData(sfwCategories)
-    val availableCategories: LiveData<List<String>> = _availableCategories
-
-    // Type & Category state
-    val configState = MutableStateFlow(
-        ConfigState(CategoryType.SFW, "waifu", 1))
-
-    // Previously chosen values
-    private var _previousType = CategoryType.SFW
-    private var _previousCategory = "waifu"
-
-    // Chip index offset to properly select previously chosen chip
-    var chipIndexOffset = 0
-    val displayType
-    get() = configState.map {
-        it.type.uppercase()
-    }.asLiveData()
-
-    private var broJustNowICalled = AtomicBoolean(false)
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val waifuList: LiveData<List<Waifu>> = configState.flatMapLatest { state ->
-
-        cleanListIfNeeded(state)
-
-        val freshWaifus = waifuRepository.getWaifus(state.type, state.category, listOf("nsfw")).data
-        if(BuildConfig.DEBUG)
-            Log.d("url", "${state.type}, ${state.category}, items: ${freshWaifus?.size}")
-
-        freshWaifus?.let {
-            waifus.addAll(it)
+class ArtsViewModel @Inject constructor(private val source: MediaSource,
+    private val settingsDataStore: SettingsDataStore, private val bookmarksDao: BookmarksDao,
+    private val saved: SavedStateHandle, private val dispatchers: FloatingDispatchers) : ViewModel() {
+    private val category = MutableStateFlow(saved.get<String>("home_category"))
+    private val requests = Channel<Boolean>(Channel.CONFLATED)
+    private var paging = false
+    private var retained: HomeState? = null
+    private var cursor: String? = null
+    private val seen = mutableSetOf<String>()
+    var focusedId: String? = saved["home_focus"]
+        private set
+    private var applied: PickerBrowseKey? = null
+    private data class Browse(val sourceId: String, val capabilities: SourceCapabilities, val category: SourceCategory?)
+    val state = combine(source.identity, source.capabilities, category, settingsDataStore.currentModeFlow()) { id, declared, chosen, adult ->
+        val caps=declared.copy(categories=declared.categories.filter { adult || !it.adult })
+        if(caps.sourceId != id) null else Browse(id, caps,
+            caps.categories.firstOrNull { it.id == chosen } ?: caps.categories.firstOrNull())
+    }.filterNotNull().distinctUntilChanged().flatMapLatest { spec -> flow {
+        val query = spec.capabilities.normalize(spec.category?.query ?: MediaQuery())
+        val key = PickerBrowseKey(spec.sourceId, query, null)
+        while(requests.tryReceive().isSuccess) { /* Discard old-source requests. */ }
+        paging = false
+        if(applied != key) {
+            if(applied != null) focus(null)
+            applied = key; retained = null; cursor = null; seen.clear()
         }
-        // technically, the files you've seen already can be send here as exclude,
-        // so that you'll never see those files again... but... ah, it grows too big soon
-
-        flowOf(waifus.toList()).flowOn(Dispatchers.Default).conflate()
-    }.asLiveData()
-
-    fun updateType(category: String, offset: Int) {
-        chipIndexOffset = offset
-        configState.value = configState.value.copy(
-            category = category
-        )
-    }
-    fun toggleType(){
-        if(nsfwMode.value == false) return
-        chipIndexOffset = 0
-        val categoryType = when(configState.value.categoryType){
-            CategoryType.SFW -> {
-                _availableCategories.value = nsfwCategories
-                CategoryType.NSFW
-            }
-            CategoryType.NSFW -> {
-                _availableCategories.value = sfwCategories
-                CategoryType.SFW
-            }
+        var current = retained ?: HomeState(PickerState(query=query,sourceId=spec.sourceId),
+            spec.capabilities.categories,spec.category?.id)
+        if(current.browse.loading) {
+            emit(current)
+            try {
+                val page = source.page(query)
+                if(source.identity.first() != spec.sourceId) throw CancellationException("Source changed")
+                cursor = page.nextCursor
+                current = current.copy(browse=current.browse.copy(items=page.items.distinctBy { it.identityKey },
+                    loading=false,hasMore=cursor!=null,error=page.interrupted,
+                    errorMessage=if(page.interrupted) R.string.source_all_interrupted else null))
+            } catch(cancelled: CancellationException) { throw cancelled }
+            catch(error: Exception) { current = current.copy(browse=current.browse.copy(loading=false,error=true,
+                errorMessage=(error as? SourceReadException)?.messageRes)) }
         }
-        configState.value = configState.value.copy(
-            categoryType = categoryType,
-            category = "waifu"
-        )
-    }
+        while(true) {
+            retained = current; paging = false; emit(current)
+            val changed = requests.receive()
+            emit(current.copy(browse=current.browse.copy(loadingMore=true)))
+            try {
+                val page = source.page(query,if(changed) null else cursor)
+                if(source.identity.first() != spec.sourceId) throw CancellationException("Source changed")
+                if(changed) seen.clear() else cursor?.let { seen += it }
+                val items = withContext(dispatchers.cpu) {
+                    val old = if(changed) {
+                        val latest=page.items.associateBy { it.identityKey }
+                        current.browse.items.map { latest[it.identityKey] ?: it }
+                    } else current.browse.items
+                    (old + page.items).distinctBy { it.identityKey }
+                }
+                cursor = page.nextCursor?.takeUnless { it in seen }
+                current = current.copy(browse=current.browse.copy(items=items,loadingMore=false,error=page.interrupted,
+                    hasMore=cursor!=null,errorMessage=if(page.interrupted) R.string.source_all_interrupted else null))
+            } catch(cancelled: CancellationException) { throw cancelled }
+            catch(error: Exception) { current = current.copy(browse=current.browse.copy(loadingMore=false,error=true,
+                errorMessage=(error as? SourceReadException)?.messageRes)) }
+        }
+    } }.stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),HomeState())
 
-    /**
-     * Compare previously chosen type & category to decide whether to clear
-     * [waifus] list or not
-     */
-    private fun cleanListIfNeeded(state: ConfigState) {
-        if(_previousCategory != state.category) {
-            _previousType = state.categoryType
-            _previousCategory = state.category
-            waifus.clear()
-        } else if(_previousType != state.categoryType) {
-            _previousType = state.categoryType
-            waifus.clear()
+    internal fun current(key: PickerBrowseKey) = applied == key && state.value.browse.let {
+        it.sourceId == key.sourceId && it.query == key.query && !it.loading
+    }
+    fun chooseCategory(id: String) {
+        if(category.value == id) return
+        category.value = id; saved["home_category"] = id
+    }
+    fun focus(id: String?) { if(focusedId == id) return; focusedId = id; saved["home_focus"] = id }
+    fun loadMore(position: Int) {
+        val value = state.value.browse
+        if(!paging && !value.loading && !value.loadingMore && !value.error && value.hasMore && position >= value.items.size-10) {
+            paging = true; requests.trySend(false)
         }
     }
-
-    fun getNextSetOfWaifus(){
-        if(!broJustNowICalled.get()){
-            broJustNowICalled.set(true)
-            configState.value = configState.value.copy(page = configState.value.page + 1)
-            if(BuildConfig.DEBUG)
-                Log.d("url", "Requesting New Waifus!")
-            calmDownBro()
+    fun refreshCurrent() {
+        val value=state.value.browse
+        if(!paging && !value.loading && !value.loadingMore && !value.error && value.query.randomRequest==null) {
+            paging=true; requests.trySend(true)
         }
     }
-    private fun calmDownBro(){
-        viewModelScope.launch {
-            delay(3000)
-            broJustNowICalled.set(false)
-        }
-    }
+    fun retry() { if(!paging) { paging = true; requests.trySend(false) } }
 
-    // ---------------- SETTINGS functions --------------------------------------
+    // Existing settings and bookmark storage remain available.
     val nsfwMode = settingsDataStore.currentModeFlow().asLiveData()
-    fun toggleNsfwMode() {
-        viewModelScope.launch {
-            settingsDataStore.toggleMode()
-        }
-    }
-
-    // --------------- BOOKMARK functions ---------------------------------------
-    fun bookmark(url: String){
-        viewModelScope.launch(Dispatchers.IO) {
-            bookmarksDao.save(Bookmark(url))
-        }
-    }
-
-    fun exportFav(){
-        viewModelScope.launch(Dispatchers.IO) {
-            if(BuildConfig.DEBUG)
-                Log.d("fav", "${bookmarksDao.get()}")
-        }
-    }
-    // TODO : import & export to an external file
-    // TODO: maybe, move the download operation to viewmodel
+    fun toggleNsfwMode() { viewModelScope.launch { settingsDataStore.toggleMode() } }
+    fun bookmark(item: MediaItem) { viewModelScope.launch(dispatchers.io) {
+        bookmarksDao.save(Bookmark("sao-source:" + SourceWire.item(item).toString()))
+    } }
+    fun exportFav() { viewModelScope.launch(dispatchers.io) {
+        if(BuildConfig.DEBUG) Log.d("fav", "${bookmarksDao.get()}")
+    } }
 }

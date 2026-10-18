@@ -2,6 +2,9 @@ package one.njk.sao.source
 
 enum class SearchFacet { PEOPLE, PLACES, MEDIA, EMOJI_TAGS }
 
+/** A small provider-authored home collection; the host submits its query without interpreting it. */
+data class SourceCategory(val id: String, val label: String, val query: MediaQuery = MediaQuery(), val adult: Boolean = false)
+
 /** The host knows capabilities, never provider kinds. Unknown future capabilities are ignored. */
 data class SourceCapabilities(
     val modes: Set<SearchMode> = emptySet(),
@@ -13,6 +16,7 @@ data class SourceCapabilities(
     val sourceId: String? = null,
     /** Optional read-granted content URI for local index changes; observed only while browsing. */
     val changesUri: String? = null,
+    val categories: List<SourceCategory> = emptyList(),
 ) {
     val searchOptions get() = modes.isNotEmpty() || facets.isNotEmpty()
     fun normalize(query: MediaQuery): MediaQuery = query.copy(

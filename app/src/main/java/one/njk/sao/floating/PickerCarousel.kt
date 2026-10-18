@@ -8,6 +8,7 @@ import com.google.android.material.carousel.CarouselLayoutManager
 import com.google.android.material.carousel.CarouselSnapHelper
 import com.google.android.material.carousel.FullScreenCarouselStrategy
 import com.google.android.material.carousel.HeroCarouselStrategy
+import com.google.android.material.carousel.MultiBrowseCarouselStrategy
 
 internal data class PickerBrowseKey(val sourceId: String, val query: MediaQuery, val sequenceId: String?)
 
@@ -17,7 +18,8 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
     private val focused: (PickerBrowseKey) -> String?,
     private val focusChanged: (PickerBrowseKey, String?, Int) -> Unit,
     private val centerChanged: () -> Unit,
-    private val remember: () -> Unit, private val dragging: () -> Unit) : AutoCloseable {
+    private val remember: () -> Unit, private val dragging: () -> Unit,
+    private val home: Boolean = false) : AutoCloseable {
     private val snap = CarouselSnapHelper(false)
     private var key: PickerBrowseKey? = null
     private var displayed: PickerBrowseKey? = null
@@ -55,8 +57,8 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
     }
 
     private fun manager(fullScreen: Boolean) = CarouselLayoutManager(
-        if (fullScreen) FullScreenCarouselStrategy() else HeroCarouselStrategy()).apply {
-        carouselAlignment = CarouselLayoutManager.ALIGNMENT_CENTER
+        if (fullScreen) FullScreenCarouselStrategy() else if(home) MultiBrowseCarouselStrategy() else HeroCarouselStrategy()).apply {
+        carouselAlignment = if(home) CarouselLayoutManager.ALIGNMENT_START else CarouselLayoutManager.ALIGNMENT_CENTER
     }
 
     fun render(state: PickerState) {

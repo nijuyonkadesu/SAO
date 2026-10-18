@@ -5,9 +5,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import java.io.IOException
 import javax.net.ssl.SSLException
-import okhttp3.ResponseBody.Companion.toResponseBody
-import retrofit2.HttpException
-import retrofit2.Response
+import one.njk.sao.source.ExtensionFailure
 
 class ReadRetryTest {
     @Test fun networkReadRetriesOnceAndPersistentFailureStops(): Unit = runBlocking {
@@ -19,7 +17,7 @@ class ReadRetryTest {
         assertEquals(2, attempts)
     }
     @Test fun authenticationAndTlsFailuresAreNotRetried(): Unit = runBlocking {
-        for (error in listOf(SSLException("TLS"), HttpException(Response.error<String>(401, "".toResponseBody())))) {
+        for (error in listOf(SSLException("TLS"), ExtensionFailure("HTTP_401"))) {
             var attempts = 0
             try { ReadRetry.run { attempts++; throw error }; fail("Expected failure") } catch (_: Exception) { }
             assertEquals(1, attempts)

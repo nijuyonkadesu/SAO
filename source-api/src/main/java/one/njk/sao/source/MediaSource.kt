@@ -1,5 +1,6 @@
 package one.njk.sao.source
 
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import java.io.InputStream
@@ -12,6 +13,8 @@ interface MediaSource {
     val advancedSearch: Flow<Boolean> get() = flowOf(false)
     val randomBrowse: Flow<Boolean> get() = flowOf(false)
     val sequenceBrowse: Flow<Boolean> get() = flowOf(false)
+    /** Checks that an item still belongs to the active session (including composite sources). */
+    suspend fun owns(item: MediaItem): Boolean = identity.first() == (item.remote?.sourceId ?: "local")
     suspend fun openSequence(anchor: MediaItem): MediaSequence = throw UnsupportedOperationException("Sequence browsing is unavailable")
     suspend fun searchModes(): Set<SearchMode> = setOf(SearchMode.CONTEXT)
     suspend fun people(name: String, page: Int = 1, expectedSourceId: String? = null): PeoplePage = PeoplePage(emptyList())

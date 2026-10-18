@@ -73,3 +73,13 @@ The optional emoji row is configured in SAO and searches emoji as text. The empt
 <img src="floating-no-sources.png" width="220" alt="Empty floating picker with Add source guidance" /> <img src="floating-custom-emoji.png" width="220" alt="Custom emoji shortcuts above the existing media carousel" /> <img src="floating-emoji-shortcuts-settings.png" width="220" alt="Emoji shortcut toggle and editable list in SAO settings" />
 
 <img src="local-source-import-methods.png" width="260" alt="Folder, Photo and Files picker options in Local Sticker" /> <img src="local-source-selected-collection.png" width="260" alt="Named selected-media collection with format counts and processing controls" />
+
+## Home source collections
+
+The original large-card carousel now reads installed extension profiles and their category presets. Its card dimensions, category chips and bottom actions remain; home shares GIF/video playback and focal-card selection with the floating picker. Long-press the title to copy the source filename. These captures use a synthetic localhost fixture, including a test-pattern MP4.
+
+| Home in light mode | Provider category in dark mode | Muted video preview |
+| --- | --- | --- |
+| <img src="home-source-light.png" width="260" alt="Original home carousel with a source Collection heading, large image card, extension category chips and existing bottom actions" /> | <img src="home-source-category-dark.png" width="260" alt="The same home carousel in dark mode with the extension's Happy category selected" /> | <img src="home-source-video-dark.png" width="260" alt="Synthetic MP4 playing inside the original home card with a Video badge" /> |
+
+[Home, experimental All source and original-file exports](../home-source-browser.md).

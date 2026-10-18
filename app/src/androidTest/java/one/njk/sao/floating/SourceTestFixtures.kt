@@ -58,7 +58,8 @@ internal suspend fun SourceProfiles.restore(catalog: SourceCatalog) {
         }
     }
     current().profiles.forEach { remove(it.id) }
-    catalog.profiles.forEach { upsert(it) }; select(catalog.selectedId)
+    catalog.profiles.filterNot { it.id == ALL_SOURCE_ID }.forEach { upsert(it) }
+    enableAll(catalog.profiles.any { it.id == ALL_SOURCE_ID }); select(catalog.selectedId)
 }
 
 /** Cross-process controls: the real extension Activity is launched for result by SAO's proxy. */

@@ -102,10 +102,9 @@ dependencies {
     // Navigation graph support
     implementation libs.bundles.nav
 
-    // Coroutines, coil, dagger hilt, retrofit
+    // Coroutines, Coil and dependency injection
     implementation libs.coroutines
     implementation libs.bundles.coil
-    implementation libs.bundles.retrofit
     implementation libs.dagger.android
     ksp libs.dagger.compiler
 

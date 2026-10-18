@@ -15,7 +15,7 @@ class LocalCatalog(private val store: LocalStore, private val library: Library, 
             asset.effectiveTags.take(20).map { it.take(40) },asset.effectiveTags.filter { isEmoji(it) }.take(20),asset.animated,
             RemoteMedia(source,asset.id.toString(),false,asset.modified.takeIf { it>0 }?.let { Instant.ofEpochMilli(it).toString() },
                 mapOf("original" to "original","video" to "original","preview" to if(fullPreview) "original" else "preview",
-                    "raster" to if(asset.mime in setOf("image/png","image/webp")) "original" else "preview")))
+                    "raster" to if(asset.mime in setOf("image/png","image/webp")) "original" else "preview")), filename=asset.filename)
     }
     fun page(query: MediaQuery, cursor: String?): MediaPage {
         if(query.randomRequest!=null && cursor!=null) return MediaPage(emptyList())
@@ -95,7 +95,7 @@ class LocalExtensionService : ExtensionService() {
                 val context=library.contextSearch && ClipModels.ready(this,ClipCatalog.get(library.contextModel))
                 val modes=setOf(SearchMode.FILENAME,SearchMode.DESCRIPTION,SearchMode.PATH,SearchMode.OCR)+(if(context) setOf(SearchMode.CONTEXT) else emptySet())
                 SourceWire.capabilities(SourceCapabilities(modes,setOf(SearchFacet.MEDIA,SearchFacet.EMOJI_TAGS),random=true,sequence=true,
-                    defaultMode=if(context) SearchMode.CONTEXT else SearchMode.DESCRIPTION,changesUri=updates.toString()))
+                    defaultMode=if(context) SearchMode.CONTEXT else SearchMode.DESCRIPTION,changesUri=updates.toString(),categories=LocalHomeCategories.values))
             }
             ExtensionProtocol.SEARCH -> {
                 FolderIndexer.schedule(this,library)

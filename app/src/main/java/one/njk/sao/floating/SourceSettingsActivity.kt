@@ -28,6 +28,7 @@ class SourceSettingsActivity : AppCompatActivity() {
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(padding + bars.left, padding + bars.top, padding + bars.right, padding + bars.bottom); insets
         }
+        binding.allSources.setOnCheckedChangeListener { _, checked -> model.enableAll(checked) }
         binding.back.setOnClickListener { finish() }
         binding.addSource.setOnClickListener { addMediaSource() }
         val adapter = SourceListAdapter(model::select) { id ->
@@ -35,6 +36,8 @@ class SourceSettingsActivity : AppCompatActivity() {
         }
         binding.sourceList.layoutManager = LinearLayoutManager(this); binding.sourceList.adapter = adapter
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.state.collect { state ->
+            binding.allSources.isChecked = state.allEnabled
+            binding.allSources.isEnabled = state.loaded && !state.saving
             adapter.submitList(sourceRows(state.catalog)); binding.status.isVisible = state.error
             binding.sourceList.isEnabled = state.loaded && !state.saving
             binding.addSource.isEnabled = state.loaded && !state.saving

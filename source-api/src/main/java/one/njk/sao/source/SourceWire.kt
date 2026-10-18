@@ -12,12 +12,19 @@ object SourceWire {
     fun capabilities(value: SourceCapabilities) = JSONObject().put("modes", strings(value.modes.map { it.name }))
         .put("facets", strings(value.facets.map { it.name })).put("random", value.random).put("sequence", value.sequence)
         .put("defaultMode", value.defaultMode.name).put("changes",value.changesUri)
+        .put("categories", JSONArray(value.categories.map { JSONObject().put("id",it.id).put("label",it.label).put("query",query(it.query)).put("adult",it.adult) }))
     fun capabilities(json: JSONObject): SourceCapabilities {
         val modes = enums<SearchMode>(json.optJSONArray("modes"))
         val default = SearchMode.entries.firstOrNull { it.name == json.optString("defaultMode") && it in modes }
             ?: modes.firstOrNull() ?: SearchMode.CONTEXT
+        val categories = json.optJSONArray("categories")
+        require(categories == null || categories.length() <= 40)
         return SourceCapabilities(modes,enums<SearchFacet>(json.optJSONArray("facets")),
-            json.optBoolean("random"),json.optBoolean("sequence"),default,changesUri=nullable(json,"changes"))
+            json.optBoolean("random"),json.optBoolean("sequence"),default,changesUri=nullable(json,"changes"),
+            categories=if(categories==null) emptyList() else List(categories.length()) { index ->
+                val row=categories.getJSONObject(index)
+                SourceCategory(row.getString("id"),row.getString("label"),query(row.getJSONObject("query")),row.optBoolean("adult"))
+            }.distinctBy { it.id })
     }
     fun profile(value: ExtensionProfile) = JSONObject().put("id", value.id).put("name", value.name)
         .put("revision", value.revision).put("summary", value.summary)
@@ -39,7 +46,7 @@ object SourceWire {
                 SearchMedia.entries.firstOrNull { it.name == c.optString("media") } ?: SearchMedia.ALL), nullable(json,"random"))
     }
     fun item(value: MediaItem) = JSONObject().put("id", value.id).put("title", value.title).put("asset", value.asset)
-        .put("mime", value.mimeType).put("tags", strings(value.tags)).put("emojis", strings(value.emojis)).put("animated",value.animated)
+        .put("mime", value.mimeType).put("tags", strings(value.tags)).put("emojis", strings(value.emojis)).put("animated",value.animated).put("filename",value.filename)
         .put("remote", value.remote?.let { JSONObject().put("source",it.sourceId).put("asset",it.assetId).put("edited",it.edited).put("uploaded",it.uploadedAt).put("cacheKeys",JSONObject(it.cacheKeys)) })
     fun item(json: JSONObject): MediaItem {
         val ref = json.optJSONObject("remote")
@@ -49,7 +56,7 @@ object SourceWire {
                 val keys = it.optJSONObject("cacheKeys")
                 val variants = keys?.keys()?.asSequence()?.associateWith { name -> keys.getString(name) }.orEmpty()
                 RemoteMedia(it.getString("source"),it.getString("asset"),it.optBoolean("edited"),nullable(it,"uploaded"),variants)
-            })
+            },nullable(json,"filename"))
     }
     fun page(value: MediaPage) = JSONObject().put("items", JSONArray(value.items.map(::item))).put("next",value.nextCursor)
     fun page(json: JSONObject): MediaPage {

@@ -31,7 +31,7 @@ class SourceListAdapter(private val select: (String?) -> Unit, private val onEdi
             root.strokeColor = MaterialColors.getColor(root, androidx.appcompat.R.attr.colorPrimary)
             root.contentDescription = if (row.selected) root.context.getString(R.string.source_selected, row.name) else row.name
             root.setOnClickListener { select(row.id) }
-            edit.isVisible = row.id != null
+            edit.isVisible = row.id != null && row.id != ALL_SOURCE_ID
             edit.contentDescription = root.context.getString(R.string.source_edit, row.name)
             edit.setOnClickListener { row.id?.let(onEdit) }
         }

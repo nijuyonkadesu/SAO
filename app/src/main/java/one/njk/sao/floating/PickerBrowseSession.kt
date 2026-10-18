@@ -11,7 +11,7 @@ import javax.inject.Singleton
 
 data class PickerBrowseState(val query: MediaQuery = MediaQuery(), val focusedId: String? = null)
 data class PickerResultsSnapshot(val sourceId: String, val query: MediaQuery, val items: List<MediaItem>,
-    val nextCursor: String?, val seenCursors: Set<String> = emptySet())
+    val nextCursor: String?, val seenCursors: Set<String> = emptySet(), val interrupted: Boolean = false)
 
 /** Process-local browsing state, with no Activity, ViewModel, view, bitmap or disk storage. */
 @Singleton

@@ -33,6 +33,7 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
     private val mediaCache: SourceMediaCache? = null) {
     private val mutex = Mutex()
     private var loaded = false
+    private var available: Set<String>? = null
     private val value = MutableStateFlow(SourceCatalog())
     private val file = EncryptedSettingsFile(context, "source-profiles-v1", "sao-source-profiles-v1")
     private val legacy = EncryptedSettingsFile(context, "immich-connection-v1", "sao-immich-connection-v1")
@@ -52,10 +53,18 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
         val remaining = it.profiles.filterNot { profile -> profile.id == id }
         SourceCatalog(remaining, it.selectedId?.takeUnless { selected -> selected == id } ?: remaining.firstOrNull()?.id)
     }
+    suspend fun enableAll(enabled: Boolean) = update { it.withAllSource(enabled, available) }
+    /** Installation changes are process state, not preference writes. */
+    suspend fun available(ids: Set<String>) = withContext(dispatchers.io) { mutex.withLock {
+        val old = load()
+        available = ids
+        value.value = old.withAllSource(available = ids)
+    } }
     private suspend fun update(transform: (SourceCatalog) -> SourceCatalog) = withContext(dispatchers.io) { mutex.withLock {
         val old = load(); val next = transform(old)
         if (old != next) {
-            write(next); value.value = next
+            val resolved = next.withAllSource(available = available)
+            write(resolved); value.value = resolved
             old.profiles.filter { before -> next.profiles.none { it.identity == before.identity } }
                 .forEach { mediaCache?.remove(it.identity) }
         }
@@ -86,18 +95,21 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
             SourceProfile(row.getString("id"), row.getString("name"), codecs[kind]?.decode(configuration)
                 ?: UnknownSourceConfiguration(kind, configuration.toString()))
         }
-        return SourceCatalog(profiles, json.optString("selected").takeIf { id -> profiles.any { it.id == id } })
+        val selected = json.optString("selected")
+        val catalog = SourceCatalog(profiles, selected.takeIf { id -> profiles.any { it.id == id } })
+            .withAllSource(json.optBoolean("allEnabled"), available)
+        return if(selected == ALL_SOURCE_ID && catalog.profiles.any { it.id == ALL_SOURCE_ID }) catalog.copy(selectedId = selected) else catalog
     }
     private fun write(catalog: SourceCatalog) {
         val rows = JSONArray()
-        catalog.profiles.forEach { profile ->
+        catalog.profiles.filterNot { it.id == ALL_SOURCE_ID }.forEach { profile ->
             val config = profile.configuration
             val json = if (config is UnknownSourceConfiguration) JSONObject(config.json)
                 else checkNotNull(codecs[config.kind]).encode(config)
             rows.put(JSONObject().put("id", profile.id).put("name", profile.name)
                 .put("kind", config.kind).put("configuration", json))
         }
-        file.write(JSONObject().put("version", 1).put("profiles", rows).put("selected", catalog.selectedId.orEmpty()))
+        file.write(JSONObject().put("version", 1).put("profiles", rows).put("selected", catalog.selectedId.orEmpty()).put("allEnabled",catalog.profiles.any { it.id == ALL_SOURCE_ID }))
     }
 }
 

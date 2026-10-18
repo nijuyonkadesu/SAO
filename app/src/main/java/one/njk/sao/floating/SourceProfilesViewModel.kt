@@ -15,7 +15,7 @@ import one.njk.sao.R
 import javax.inject.Inject
 
 data class SourcesState(val catalog: SourceCatalog = SourceCatalog(), val loaded: Boolean = false,
-    val saving: Boolean = false, val error: Boolean = false)
+    val saving: Boolean = false, val error: Boolean = false, val allEnabled: Boolean = false)
 
 @HiltViewModel
 class SourceProfilesViewModel @Inject constructor(private val profiles: SourceProfiles, private val extensions: SourceExtensions) : ViewModel() {
@@ -25,13 +25,15 @@ class SourceProfilesViewModel @Inject constructor(private val profiles: SourcePr
     private fun installed(profile: one.njk.sao.source.SourceProfile, keys: Set<String>) = when(val config=profile.configuration) {
         is ExtensionConfig -> config.component.flattenToString() in keys
         is RaysConfig -> config.packageName in keys
+        is AllSourceConfiguration -> config.members.isNotEmpty()
         else -> false
     }
     init { viewModelScope.launch {
         try { combine(profiles.catalogs,available) { catalog,keys ->
             val visible=if(keys==null) emptyList() else catalog.profiles.filter { installed(it,keys) }
-            one.njk.sao.source.SourceCatalog(visible,catalog.selectedId?.takeIf { id -> visible.any { it.id==id } }) to (keys!=null)
-        }.collect { (catalog,loaded) -> mutable.value = mutable.value.copy(catalog=catalog,loaded=loaded,error=false) } }
+            Triple(one.njk.sao.source.SourceCatalog(visible,catalog.selectedId?.takeIf { id -> visible.any { it.id==id } }),
+                keys!=null, catalog.profiles.any { it.id == ALL_SOURCE_ID })
+        }.collect { (catalog,loaded,allEnabled) -> mutable.value = mutable.value.copy(catalog=catalog,loaded=loaded,error=false,allEnabled=allEnabled) } }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { mutable.value = mutable.value.copy(loaded = true, error = true) }
     } }
@@ -50,10 +52,21 @@ class SourceProfilesViewModel @Inject constructor(private val profiles: SourcePr
                     catch(_: Exception) { failed=true }
                 }
                 val catalog=profiles.current()
-                if(catalog.selected?.let { installed(it,keys) }!=true) profiles.select(catalog.profiles.firstOrNull { installed(it,keys) }?.id)
+                profiles.available(catalog.profiles.filter { installed(it,keys) && it.id != ALL_SOURCE_ID }.map { it.id }.toSet())
+                val resolved=profiles.current()
+                if(resolved.selected?.let { installed(it,keys) }!=true) profiles.select(resolved.profiles.firstOrNull { installed(it,keys) }?.id)
                 mutable.value=mutable.value.copy(error=failed)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { mutable.value = mutable.value.copy(error = true) }
+        }
+    }
+    fun enableAll(enabled: Boolean) {
+        if (!state.value.loaded || state.value.saving || state.value.allEnabled == enabled) return
+        mutable.value = mutable.value.copy(saving = true)
+        viewModelScope.launch {
+            try { profiles.enableAll(enabled); mutable.value = mutable.value.copy(saving = false, error = false) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { mutable.value = mutable.value.copy(saving = false, error = true) }
         }
     }
     fun select(id: String?) {
@@ -72,6 +85,7 @@ internal fun Context.sourceRows(catalog: SourceCatalog): List<SourceListAdapter.
             val config = profile.configuration
             val detail = when (config) {
                 is ExtensionConfig -> listOf(config.providerName,config.summary).filter(String::isNotBlank).joinToString(" · ")
+                is AllSourceConfiguration -> getString(R.string.source_all_description)
                 is RaysConfig -> getString(R.string.rays_source_description)
                 else -> getString(R.string.source_extension_missing)
             }

@@ -12,6 +12,8 @@ data class MediaItem(
     val emojis: List<String>,
     val animated: Boolean = false,
     val remote: RemoteMedia? = null,
+    /** Original filename, independent of a user-edited title or description. */
+    val filename: String? = null,
 ) {
     val preview get() = "file:///android_asset/$asset"
     val isVideo get() = mimeType.startsWith("video/")
@@ -21,7 +23,12 @@ data class MediaItem(
 data class RemoteMedia(val sourceId: String, val assetId: String, val edited: Boolean, val uploadedAt: String? = null,
     /** Opaque per-asset cache identities; variants with identical bytes share a key. */
     val cacheKeys: Map<String, String> = emptyMap())
-data class MediaPage(val items: List<MediaItem>, val nextCursor: String? = null)
+data class MediaPage(val items: List<MediaItem>, val nextCursor: String? = null,
+    /** Successful items are usable; continuation requires an explicit retry. */
+    val interrupted: Boolean = false)
+
+/** Stable across asset revisions and distinct across accounts/providers. */
+val MediaItem.identityKey get() = remote?.let { it.sourceId to it.assetId } ?: ("local" to id)
 
 enum class SearchMode { CONTEXT, FILENAME, DESCRIPTION, PATH, OCR }
 enum class SearchMedia { ALL, IMAGES, VIDEOS }

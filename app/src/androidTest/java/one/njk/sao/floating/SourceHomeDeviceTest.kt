@@ -1,0 +1,438 @@
+package one.njk.sao.floating
+
+import android.content.ClipboardManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.drawable.Animatable
+import android.os.SystemClock
+import android.view.View
+import android.widget.TextView
+import androidx.lifecycle.ViewModelProvider
+import androidx.recyclerview.widget.RecyclerView
+import androidx.test.core.app.ActivityScenario
+import androidx.test.platform.app.InstrumentationRegistry
+import com.google.android.material.chip.ChipGroup
+import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import okhttp3.mockwebserver.*
+import okio.Buffer
+import one.njk.sao.MainActivity
+import one.njk.sao.R
+import one.njk.sao.immichprovider.ImmichConfig
+import one.njk.sao.source.*
+import one.njk.sao.viewmodels.ArtsViewModel
+import org.json.JSONArray
+import org.json.JSONObject
+import org.junit.Assert.*
+import org.junit.Test
+import java.io.ByteArrayOutputStream
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
+import javax.inject.Provider
+import kotlin.math.roundToInt
+
+/** Synthetic data only. Never connects to a user's media server. */
+class SourceHomeDeviceTest {
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val app = instrumentation.targetContext
+    private val access get() = EntryPointAccessors.fromApplication(app,FloatingTestAccess::class.java)
+    private fun profile(name: String) = SourceProfile(UUID.randomUUID().toString(), name,
+        ExtensionConfig("fixture.source","fixture.source.Service",name,"1","Fixture"))
+
+    @Test fun ordinaryPhotosKeepOriginalPixelsAlphaMimeAndBytesWhileStickersRemain512(): Unit = runBlocking {
+        for(mime in listOf("image/jpeg","image/png")) {
+            val bitmap = Bitmap.createBitmap(3000,1800,Bitmap.Config.ARGB_8888)
+            bitmap.eraseColor(if(mime=="image/png") Color.TRANSPARENT else Color.rgb(26,87,163))
+            bitmap.setPixel(1500,900,Color.RED)
+            val bytes = ByteArrayOutputStream().use { out ->
+                bitmap.compress(if(mime=="image/png") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG,97,out)
+                out.toByteArray()
+            }
+            bitmap.recycle()
+            val item = MediaItem("original_${UUID.randomUUID().toString().replace("-", "")}","Custom title","",mime,emptyList(),emptyList(),
+                filename="003889-photo_1075@08-08-2023_20-38-02.${if(mime=="image/png") "png" else "jpg"}")
+            var rasters = 0
+            val source = object : MediaSource {
+                override suspend fun page(query: MediaQuery,cursor: String?) = MediaPage(listOf(item))
+                override suspend fun filters() = emptyList<String>()
+                override suspend fun preview(item: MediaItem): Any = error("Preview cannot be used for an export")
+                override suspend fun original(item: MediaItem) = bytes.inputStream()
+                override suspend fun raster(item: MediaItem) = bytes.inputStream().also { rasters++ }
+            }
+            val exports = MediaExports(app,source)
+            val media = exports.prepare(item,Rendition.MEDIA)
+            try {
+                assertEquals(mime,media.mimeType); assertEquals(mime,app.contentResolver.getType(media.uri))
+                assertEquals(0,rasters)
+                assertArrayEquals(bytes,app.contentResolver.openInputStream(media.uri)!!.use { it.readBytes() })
+                val decoded = BitmapFactory.decodeFile(media.file.path)
+                assertEquals(3000,decoded.width); assertEquals(1800,decoded.height)
+                if(mime=="image/png") assertEquals(0,Color.alpha(decoded.getPixel(0,0)))
+                decoded.recycle()
+                val sticker = exports.prepare(item,Rendition.STICKER_PNG)
+                try {
+                    assertEquals(1,rasters)
+                    BitmapFactory.decodeFile(sticker.file.path).also {
+                        assertEquals(512,it.width); assertEquals(512,it.height)
+                        assertEquals(0,Color.alpha(it.getPixel(0,0))); it.recycle()
+                    }
+                } finally { sticker.file.delete() }
+            } finally { media.file.delete() }
+        }
+    }
+
+    @Test fun categoriesAndFilenamesRoundTripWithoutBreakingOlderProviders() {
+        val caps = SourceCapabilities(setOf(SearchMode.CONTEXT),categories=listOf(
+            SourceCategory("happy","Happy",MediaQuery(text="happy smiling"))))
+        assertEquals(caps,SourceWire.capabilities(SourceWire.capabilities(caps)))
+        assertTrue(SourceWire.capabilities(JSONObject().put("modes",JSONArray().put("CONTEXT"))).categories.isEmpty())
+        val item = MediaItem("test","Edited title","","image/png",emptyList(),emptyList(),filename="actual.png")
+        assertEquals(item,SourceWire.item(SourceWire.item(item)))
+        val old = SourceWire.item(item).apply { remove("filename") }
+        assertNull(SourceWire.item(old).filename)
+    }
+
+    @Test fun allRoutesIdenticalAssetIdsIndependentlyAndPaginatesEveryProfileWithoutGaps(): Unit = runBlocking {
+        val members = (1..7).map { profile("Library $it") }
+        val calls = java.util.concurrent.ConcurrentHashMap<String,Int>(); val closed = mutableSetOf<String>()
+        val active = AtomicInteger(); val peak = AtomicInteger()
+        val factory = object : MediaSourceFactory {
+            override fun create(profile: SourceProfile) = object : ManagedMediaSource {
+                override suspend fun page(query: MediaQuery,cursor: String?): MediaPage {
+                    val n=active.incrementAndGet(); peak.updateAndGet { maxOf(it,n) }
+                    try {
+                        delay(20); calls[profile.id]=(calls[profile.id] ?: 0)+1
+                        val offset=cursor?.toInt() ?: 0
+                        return MediaPage((offset until offset+2).map { number ->
+                            MediaItem("fixture_${digest(profile.id).take(8)}_$number","${profile.name} $number","","image/png",emptyList(),emptyList(),
+                                remote=RemoteMedia(profile.identity,number.toString(),false),filename="$number.png")
+                        }, (offset+2).toString().takeIf { offset<4 })
+                    } finally { active.decrementAndGet() }
+                }
+                override suspend fun filters()=emptyList<String>()
+                override suspend fun preview(item: MediaItem): Any=profile.name
+                override suspend fun original(item: MediaItem)=profile.name.byteInputStream()
+                override suspend fun raster(item: MediaItem)=original(item)
+                override fun close() { closed+=profile.id }
+            }
+        }
+        val all=AllMediaSource(SourceCatalog(members,members.first().id).withAllSource(true).profiles.last(),
+            mapOf("extension" to Provider { factory }))
+        try {
+            assertTrue(calls.isEmpty())
+            val items=mutableListOf<MediaItem>(); var cursor: String?=null
+            do {
+                val page=all.page(MediaQuery(text="same query"),cursor)
+                assertFalse(page.interrupted); items+=page.items; cursor=page.nextCursor
+            } while(cursor!=null)
+            assertEquals(42,items.size); assertEquals(42,items.map { it.identityKey }.distinct().size)
+            assertEquals(7,calls.size); assertTrue(calls.values.all { it==3 }); assertTrue(peak.get()<=3)
+            for(member in members) {
+                val item=items.first { it.remote?.sourceId==member.identity }
+                assertTrue(all.owns(item)); assertEquals(member.name,all.preview(item))
+                assertEquals(member.name,all.original(item).use { it.readBytes().toString(Charsets.UTF_8) })
+            }
+            assertFalse(all.owns(items.first().copy(remote=RemoteMedia("other","0",false))))
+        } finally { all.close() }
+        assertEquals(members.map { it.id }.toSet(),closed)
+    }
+
+    @Test fun partialFailureRetainsSuccessfulProgressAndOnlyRetriesWhenRequested(): Unit = runBlocking {
+        val members=listOf(profile("Good"),profile("Offline"))
+        var online=false; var failedCalls=0; var goodCalls=0
+        val factory=object : MediaSourceFactory {
+            override fun create(profile: SourceProfile)=object : ManagedMediaSource {
+                override suspend fun page(query: MediaQuery,cursor: String?): MediaPage {
+                    if(profile.name=="Offline") { failedCalls++; if(!online) error("Fixture offline") }
+                    else goodCalls++
+                    return MediaPage(listOf(MediaItem("fixture_${digest(profile.id).take(8)}",profile.name,"","image/png",emptyList(),emptyList(),
+                        remote=RemoteMedia(profile.identity,"same-asset-id",false))))
+                }
+                override suspend fun filters()=emptyList<String>()
+                override suspend fun preview(item: MediaItem): Any=profile.name
+                override suspend fun original(item: MediaItem)=profile.name.byteInputStream()
+                override suspend fun raster(item: MediaItem)=original(item)
+                override fun close() { }
+            }
+        }
+        val all=AllMediaSource(SourceCatalog(members).withAllSource(true).profiles.last(),mapOf("extension" to Provider { factory }))
+        try {
+            val page=all.page(MediaQuery())
+            assertTrue(page.interrupted); assertEquals(listOf("Good"),page.items.map { it.title }); assertNotNull(page.nextCursor)
+            delay(150); assertEquals(1,failedCalls); assertEquals(1,goodCalls)
+            online=true
+            val retry=all.page(MediaQuery(),page.nextCursor)
+            assertFalse(retry.interrupted); assertEquals(listOf("Offline"),retry.items.map { it.title })
+            assertNull(retry.nextCursor); assertEquals(2,failedCalls); assertEquals(1,goodCalls)
+            try { all.page(MediaQuery(text="changed"),page.nextCursor); fail("Stale cursor must be rejected") }
+            catch(_: IllegalArgumentException) { }
+        } finally { all.close() }
+    }
+
+    @Test fun allCapabilityAndObserverSetupShareTheBudgetWithoutBlockingLaterPages(): Unit = runBlocking {
+        val members=(1..12).map { profile("Observed $it") }
+        val active=AtomicInteger(); val peak=AtomicInteger(); val observers=AtomicInteger()
+        val factory=object : MediaSourceFactory {
+            override fun create(profile: SourceProfile)=object : ManagedMediaSource {
+                private val mutex=kotlinx.coroutines.sync.Mutex()
+                private var ready=false
+                private suspend fun load() {
+                    mutex.lock()
+                    try {
+                        if(!ready) {
+                            val count=active.incrementAndGet(); peak.updateAndGet { maxOf(it,count) }
+                            try { delay(20); ready=true } finally { active.decrementAndGet() }
+                        }
+                    } finally { mutex.unlock() }
+                }
+                override val capabilities=flow {
+                    load(); emit(SourceCapabilities(setOf(SearchMode.FILENAME),changesUri="content://fixture/${profile.id}"))
+                    awaitCancellation()
+                }
+                override val changes=flow { load(); observers.incrementAndGet(); emit(Unit); awaitCancellation() }
+                override suspend fun page(query: MediaQuery,cursor: String?): MediaPage { load(); return MediaPage(emptyList()) }
+                override suspend fun filters()=emptyList<String>()
+                override suspend fun preview(item: MediaItem): Any=error("Unused")
+                override suspend fun original(item: MediaItem)=error("Unused")
+                override suspend fun raster(item: MediaItem)=error("Unused")
+                override fun close() { }
+            }
+        }
+        val all=AllMediaSource(SourceCatalog(members).withAllSource(true).profiles.last(),mapOf("extension" to Provider { factory }))
+        val caps=launch { all.capabilities.collect { } }; val updates=launch { all.changes.collect { } }
+        try {
+            withTimeout(3000) { while(observers.get()!=12) delay(10) }
+            assertTrue("Observer setup must not bypass the three-request budget",peak.get()<=3)
+            withTimeout(1000) { all.page(MediaQuery()) }
+        } finally { caps.cancelAndJoin(); updates.cancelAndJoin(); all.close() }
+    }
+
+    @Test fun allRejectsCyclingChildCursorsInsteadOfFetchingForever(): Unit = runBlocking {
+        val member=profile("Cycling source")
+        val factory=object : MediaSourceFactory {
+            override fun create(profile: SourceProfile)=object : ManagedMediaSource {
+                override suspend fun page(query: MediaQuery,cursor: String?) = MediaPage(listOf(
+                    MediaItem("item_${cursor ?: "0"}","Cursor fixture","","image/png",emptyList(),emptyList())),
+                    when(cursor) { null -> "2"; "2" -> "3"; else -> "2" })
+                override suspend fun filters()=emptyList<String>()
+                override suspend fun preview(item: MediaItem): Any=error("Unused")
+                override suspend fun original(item: MediaItem)=error("Unused")
+                override suspend fun raster(item: MediaItem)=error("Unused")
+                override fun close() { }
+            }
+        }
+        val all=AllMediaSource(SourceCatalog(listOf(member)).withAllSource(true).profiles.last(),mapOf("extension" to Provider { factory }))
+        try {
+            val first=all.page(MediaQuery()); val second=all.page(MediaQuery(),first.nextCursor)
+            val third=all.page(MediaQuery(),second.nextCursor)
+            assertTrue(third.interrupted); assertTrue(third.items.isEmpty()); assertNotNull(third.nextCursor)
+        } finally { all.close() }
+    }
+
+    @Test fun routerUsesOriginalOwnerInAllAndRejectsItAfterSwitching(): Unit = runBlocking {
+        val profiles=access.sources(); val previous=profiles.current()
+        val members=listOf(profile("First"),profile("Second"))
+        val factory=object : MediaSourceFactory {
+            override fun create(profile: SourceProfile)=object : ManagedMediaSource {
+                override val capabilities=flowOf(SourceCapabilities(setOf(SearchMode.FILENAME),
+                    setOf(SearchFacet.MEDIA,SearchFacet.PEOPLE),sequence=true,
+                    categories=listOf(SourceCategory("all","All"),SourceCategory(profile.id,profile.name))))
+                override suspend fun page(query: MediaQuery,cursor: String?)=MediaPage(listOf(
+                    MediaItem("fixture_${digest(profile.id).take(8)}",profile.name,"","image/png",emptyList(),emptyList(),
+                        remote=RemoteMedia(profile.identity,"same",false))))
+                override suspend fun filters()=emptyList<String>()
+                override suspend fun preview(item: MediaItem): Any=profile.name
+                override suspend fun original(item: MediaItem)=profile.name.byteInputStream()
+                override suspend fun raster(item: MediaItem)=original(item)
+                override fun close() { }
+            }
+        }
+        val router=SwitchingMediaSource(profiles,mapOf("extension" to Provider { factory }),FloatingDispatchers())
+        try {
+            profiles.restore(SourceCatalog()); members.forEach { profiles.upsert(it) }; profiles.available(members.map { it.id }.toSet())
+            profiles.enableAll(true); profiles.select(ALL_SOURCE_ID)
+            val caps=router.capabilities.first { it.sourceId==profiles.current().identity && it.categories.isNotEmpty() }
+            assertEquals(setOf(SearchMode.FILENAME),caps.modes); assertEquals(3,caps.categories.size)
+            assertFalse(SearchFacet.PEOPLE in caps.facets)
+            val items=router.page(MediaQuery()).items
+            assertEquals(2,items.size)
+            for(item in items) { assertTrue(router.owns(item)); assertEquals(item.title,router.original(item).use { it.readBytes().toString(Charsets.UTF_8) }) }
+            val first=items.first { it.remote?.sourceId==members.first().identity }
+            profiles.select(members.last().id)
+            assertFalse(router.owns(first))
+            try { router.original(first); fail("Old All item must not route into the newly selected profile") }
+            catch(_: IllegalStateException) { }
+        } finally { router.shutdown(); profiles.restore(previous) }
+    }
+
+    @Test fun allPreferencePersistsAndDisablingItSelectsARealSource(): Unit = runBlocking {
+        val profiles=access.sources(); val previous=profiles.current()
+        val members=listOf(profile("One"),profile("Two"))
+        try {
+            profiles.restore(SourceCatalog()); members.forEach { profiles.upsert(it) }; profiles.available(members.map { it.id }.toSet())
+            profiles.enableAll(true); profiles.select(ALL_SOURCE_ID)
+            assertEquals(2,(profiles.current().selected!!.configuration as AllSourceConfiguration).members.size)
+            val fresh=SourceProfiles(app,FloatingDispatchers(),mapOf("extension" to ExtensionConfigurationCodec()))
+            assertEquals(ALL_SOURCE_ID,fresh.current().selectedId)
+            profiles.enableAll(false)
+            assertEquals(members.first().id,profiles.current().selectedId)
+            assertFalse(profiles.current().profiles.any { it.id==ALL_SOURCE_ID })
+        } finally { profiles.restore(previous) }
+    }
+
+    @Test fun homeUsesExtensionPresetsOriginalLayoutFocalSelectionAndRetainsFocusOnRecreation(): Unit = runBlocking {
+        val profiles=access.sources(); val previous=profiles.current()
+        val searches=AtomicInteger()
+        val png=instrumentation.context.assets.open("floating/happy.png").use { it.readBytes() }
+        val gif=instrumentation.context.assets.open("floating/hello.gif").use { it.readBytes() }
+        val video=instrumentation.context.assets.open("preview-video.mp4").use { it.readBytes() }
+        var lastQuery=""
+        val delayOriginal=java.util.concurrent.atomic.AtomicBoolean()
+        val originalStarted=java.util.concurrent.atomic.AtomicBoolean()
+        val server=MockWebServer().apply {
+            dispatcher=object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when {
+                    request.path=="/api/server/features" -> MockResponse().setBody("""{"smartSearch":true,"ocr":true}""")
+                    request.path=="/api/tags" -> MockResponse().setBody("[]")
+                    request.path?.contains("/thumbnail")==true -> MockResponse().setBody(Buffer().write(png))
+                    request.path?.contains("/original")==true -> MockResponse().setBody(Buffer().write(
+                        if(request.path!!.contains("000000000001")) gif else if(request.path!!.contains("000000000002")) video else png)).also { response ->
+                        if(delayOriginal.get() && request.path!!.contains("000000000003")) {
+                            originalStarted.set(true); response.setBodyDelay(1,java.util.concurrent.TimeUnit.SECONDS)
+                        }
+                    }
+                    else -> {
+                        searches.incrementAndGet()
+                        val body=JSONObject(request.body.readUtf8())
+                        lastQuery=body.optString("query")
+                        val items=JSONArray((0 until 24).map { index -> JSONObject()
+                            .put("id",UUID(42,index.toLong()).toString()).put("type",if(index==2) "VIDEO" else "IMAGE")
+                            .put("originalMimeType",when(index) { 1 -> "image/gif"; 2 -> "video/mp4"; else -> "image/png" })
+                            .put("originalFileName","fixture-$index.${when(index) { 1 -> "gif"; 2 -> "mp4"; else -> "png" }}")
+                            .put("exifInfo",JSONObject().put("description","Source image $index"))
+                            .put("updatedAt","2026-10-18T00:00:00Z") })
+                        MockResponse().setBody(JSONObject().put("assets",JSONObject().put("items",items)).toString())
+                    }
+                }
+            }; start()
+        }
+        try {
+            profiles.restore(SourceCatalog())
+            profiles.upsert(immichProfile("Home fixture",ImmichConfig(server.url("/").toString(),"home-fixture-key")),true)
+            ActivityScenario.launch<MainActivity>(IntentForHome.create(app)).use { scenario ->
+                lateinit var model: ArtsViewModel
+                scenario.onActivity { model=ViewModelProvider(it)[ArtsViewModel::class.java] }
+                await(scenario,"Home focal card") { model.focusedId!=null && it.findViewById<ChipGroup>(R.id.categories).childCount>=8 }
+                assertEquals(24,model.state.value.browse.items.size)
+                assertEquals("Collection: Home fixture", text(scenario,R.id.type))
+                scenario.onActivity { activity ->
+                    val grid=activity.findViewById<RecyclerView>(R.id.carousel_recycler_view)
+                    assertTrue(grid.adapter is MediaCarouselAdapter)
+                    assertEquals(450,(grid.height/activity.resources.displayMetrics.density).roundToInt())
+                    activity.getSystemService(ClipboardManager::class.java).clearPrimaryClip()
+                    activity.findViewById<View>(R.id.media_title).performLongClick()
+                }
+                await(scenario,"Home filename copied") { it.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.text?.toString()=="fixture-0.png" }
+                pauseSourceVisual("source-home")
+                scenario.onActivity { it.findViewById<RecyclerView>(R.id.carousel_recycler_view).scrollToPosition(1) }
+                await(scenario,"Home focused GIF animates") { activity ->
+                    val holder=activity.findViewById<RecyclerView>(R.id.carousel_recycler_view).findViewHolderForAdapterPosition(1) as? MediaCarouselAdapter.Holder
+                    (holder?.binding?.preview?.drawable as? Animatable)?.isRunning==true
+                }
+                scenario.onActivity { it.findViewById<RecyclerView>(R.id.carousel_recycler_view).scrollToPosition(2) }
+                await(scenario,"Home video plays muted") { activity ->
+                    val holder=activity.findViewById<RecyclerView>(R.id.carousel_recycler_view).findViewHolderForAdapterPosition(2) as? MediaCarouselAdapter.Holder
+                    val player=holder?.binding?.videoPreview?.player
+                    player?.isPlaying==true && player.volume==0f
+                }
+                pauseSourceVisual("source-home-video")
+                val wanted=model.state.value.browse.items[7].id
+                scenario.onActivity { it.findViewById<RecyclerView>(R.id.carousel_recycler_view).scrollToPosition(7) }
+                await(scenario,"Scroll to seventh card") { model.focusedId==wanted }
+                val count=searches.get(); scenario.recreate()
+                await(scenario,"Restore focal card") { model.focusedId==wanted && it.findViewById<TextView>(R.id.media_title).text.toString()=="Source image 7" }
+                assertEquals(count,searches.get())
+                scenario.onActivity { activity ->
+                    val chips=activity.findViewById<ChipGroup>(R.id.categories)
+                    (0 until chips.childCount).map { chips.getChildAt(it) }.first { it.tag=="happy" }.performClick()
+                }
+                await(scenario,"Provider-defined category query") { lastQuery=="happy" && !model.state.value.browse.loading }
+                pauseSourceVisual("source-home-category")
+            }
+            val preferences=access.preferences(); val oldMode=preferences.current().preferStickers
+            try {
+                preferences.preferStickers(false); access.browseSession().reset()
+                ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,"nu.gpu.nagramx",null)).use { scenario ->
+                    await(scenario,"Floating title from the same provider") { it.findViewById<TextView>(R.id.selection_title).text.toString()=="Source image 0" }
+                    scenario.onActivity { activity ->
+                        activity.getSystemService(ClipboardManager::class.java).clearPrimaryClip()
+                        activity.findViewById<View>(R.id.selection_title).performLongClick()
+                    }
+                    await(scenario,"Floating filename copied") { it.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.text?.toString()=="fixture-0.png" }
+                    scenario.onActivity { it.findViewById<View>(R.id.copy_action).performClick() }
+                    await(scenario,"Telegram media clipboard uses original PNG") { activity ->
+                        activity.getSystemService(ClipboardManager::class.java).primaryClipDescription?.hasMimeType("image/png")==true
+                    }
+                    scenario.onActivity { activity ->
+                        val uri=activity.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).uri
+                        assertArrayEquals(png,activity.contentResolver.openInputStream(uri)!!.use { it.readBytes() })
+                    }
+                    scenario.onActivity { it.findViewById<RecyclerView>(R.id.media_grid).scrollToPosition(3) }
+                    await(scenario,"Center next uncached image") { it.findViewById<TextView>(R.id.selection_title).text.toString()=="Source image 3" }
+                    delayOriginal.set(true)
+                    scenario.onActivity { it.findViewById<View>(R.id.copy_action).performClick() }
+                    withTimeout(5000) { while(!originalStarted.get()) delay(10) }
+                    scenario.onActivity { it.findViewById<View>(R.id.selection_title).performLongClick() }
+                    await(scenario,"Filename supersedes the pending image copy") { it.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.text?.toString()=="fixture-3.png" }
+                    delay(1300)
+                    scenario.onActivity { activity ->
+                        assertEquals("fixture-3.png",activity.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).text.toString())
+                    }
+                }
+            } finally { preferences.preferStickers(oldMode); access.browseSession().reset() }
+        } finally { profiles.restore(previous); server.shutdown() }
+    }
+    @Test fun manageSourcesExposesExperimentalAllAndHidesItsEditButton(): Unit = runBlocking {
+        val profiles=access.sources(); val previous=profiles.current()
+        try {
+            profiles.restore(SourceCatalog())
+            profiles.upsert(immichProfile("All settings fixture",ImmichConfig("http://127.0.0.1:9","offline-fixture-key")),true)
+            ActivityScenario.launch<SourceSettingsActivity>(android.content.Intent(app,SourceSettingsActivity::class.java)).use { scenario ->
+                await(scenario,"Sources loaded") { it.findViewById<View>(R.id.all_sources).isEnabled }
+                scenario.onActivity { it.findViewById<View>(R.id.all_sources).performClick() }
+                await(scenario,"All source appears") { activity ->
+                    val state=ViewModelProvider(activity)[SourceProfilesViewModel::class.java].state.value
+                    state.allEnabled && state.catalog.profiles.any { it.id==ALL_SOURCE_ID }
+                }
+                scenario.onActivity { activity ->
+                    val list=activity.findViewById<RecyclerView>(R.id.source_list)
+                    val adapter=list.adapter as SourceListAdapter
+                    val position=adapter.currentList.indexOfFirst { it.id==ALL_SOURCE_ID }
+                    list.scrollToPosition(position)
+                }
+                await(scenario,"All has no provider settings button") { activity ->
+                    val list=activity.findViewById<RecyclerView>(R.id.source_list)
+                    val adapter=list.adapter as SourceListAdapter
+                    val holder=list.findViewHolderForAdapterPosition(adapter.currentList.indexOfFirst { it.id==ALL_SOURCE_ID }) as? SourceListAdapter.Holder
+                    holder!=null && holder.binding.edit.visibility==View.GONE
+                }
+                scenario.onActivity { it.findViewById<View>(R.id.all_sources).performClick() }
+                await(scenario,"All removed") { activity -> !ViewModelProvider(activity)[SourceProfilesViewModel::class.java].state.value.allEnabled }
+            }
+        } finally { profiles.restore(previous) }
+    }
+
+    private fun <A: android.app.Activity> await(scenario: ActivityScenario<A>,label: String,predicate: (A)->Boolean) {
+        val until=SystemClock.elapsedRealtime()+15_000; var ready=false
+        while(!ready && SystemClock.elapsedRealtime()<until) { scenario.onActivity { ready=predicate(it) }; SystemClock.sleep(40) }
+        assertTrue(label,ready)
+    }
+    private fun text(scenario: ActivityScenario<MainActivity>,id: Int): String {
+        var result=""; scenario.onActivity { result=it.findViewById<TextView>(id).text.toString() }; return result
+    }
+    private object IntentForHome {
+        fun create(context: android.content.Context)=android.content.Intent(context,MainActivity::class.java)
+    }
+}

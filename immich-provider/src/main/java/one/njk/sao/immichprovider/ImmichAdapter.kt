@@ -65,7 +65,7 @@ class ImmichAdapter(private val config: ImmichConfig, private val sourceId: Stri
             RemoteMedia(sourceId, asset.id, asset.isEdited && !motion, asset.createdAt, mapOf(
                 "original" to "original", "video" to "original",
                 "preview" to if (motion && !mime.startsWith("video/")) "original" else "preview",
-                "raster" to if (mime in setOf("image/png","image/webp")) "original" else "preview")))
+                "raster" to if (mime in setOf("image/png","image/webp")) "original" else "preview")), filename = asset.originalFileName)
     }
     private fun mediaMime(asset: ImmichAsset): String {
         val reported = asset.originalMimeType?.substringBefore(';')?.trim()?.lowercase(java.util.Locale.ROOT)

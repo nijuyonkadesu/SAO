@@ -74,16 +74,22 @@ class SwitchingMediaSource @Inject constructor(private val profiles: SourceProfi
         active?.takeIf { it.identity == catalog.identity } ?: run {
             active?.close(); active = null
             val profile = catalog.selected
-            val source = if (profile == null) NoSource else checkNotNull(factories[profile.configuration.kind]) {
+            val source = if (profile == null) NoSource else if (profile.configuration is AllSourceConfiguration) AllMediaSource(profile, factories, dispatchers) else checkNotNull(factories[profile.configuration.kind]) {
                 "Source provider is unavailable"
             }.get().create(profile)
             Session(catalog.identity, source).also { active = it }
         }
     } }
+    private suspend fun belongs(session: Session, item: MediaItem) =
+        if(session.source is AllMediaSource) session.source.owns(item) else (item.remote?.sourceId ?: "local") == session.identity
+    override suspend fun owns(item: MediaItem): Boolean {
+        val session = session()
+        return belongs(session, item) && profiles.current().identity == session.identity
+    }
     private suspend fun <T> read(item: MediaItem? = null, expectedSourceId: String? = null, block: suspend (MediaSource) -> T): T {
         val session = session()
         if (expectedSourceId != null) check(expectedSourceId == session.identity) { "Filter belongs to a different source" }
-        if (item != null) check((item.remote?.sourceId ?: "local") == session.identity) { "Media belongs to a different source" }
+        if (item != null) check(belongs(session, item)) { "Media belongs to a different source" }
         val result = session.read(block)
         if (profiles.current().identity != session.identity) throw CancellationException("Source changed")
         return result
@@ -92,7 +98,7 @@ class SwitchingMediaSource @Inject constructor(private val profiles: SourceProfi
     override suspend fun page(query: MediaQuery, cursor: String?) = read { it.page(query, cursor) }
     override suspend fun openSequence(anchor: MediaItem): MediaSequence {
         val owner = session()
-        check((anchor.remote?.sourceId ?: "local") == owner.identity) { "Media belongs to a different source" }
+        check(belongs(owner, anchor)) { "Media belongs to a different source" }
         val sequence = owner.read { it.openSequence(anchor) }
         if (profiles.current().identity != owner.identity) {
             sequence.close(); throw CancellationException("Source changed")

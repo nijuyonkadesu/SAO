@@ -69,7 +69,8 @@ class FloatingDeviceTest {
             assertEquals("image/webp", app.contentResolver.getType(sticker.uri))
             assertTrue(sticker.file.length() <= 100 * 1024)
             val media = exports.prepare(item, Rendition.MEDIA)
-            assertEquals("image/jpeg", app.contentResolver.getType(media.uri))
+            assertEquals(item.mimeType, app.contentResolver.getType(media.uri))
+            assertArrayEquals(source.openOriginal(item).use { it.readBytes() }, media.file.readBytes())
             assertTrue(media.file.length() > 0)
             assertArrayEquals(media.file.readBytes(), app.contentResolver.openInputStream(media.uri)!!.use { it.readBytes() })
         }

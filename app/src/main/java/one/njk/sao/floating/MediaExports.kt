@@ -33,19 +33,17 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
         require(!item.hasMotion || rendition == Rendition.MEDIA) { "Animated sticker conversion is unavailable" }
         require(item.id.matches(Regex("[a-z0-9_-]+")))
         val (extension, mime) = when {
-            item.isVideo -> (android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(item.mimeType) ?: "mp4") to item.mimeType
-            item.animated -> (android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(item.mimeType) ?: "gif") to item.mimeType
-            rendition == Rendition.MEDIA -> "jpg" to "image/jpeg"
+            rendition == Rendition.MEDIA -> (android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(item.mimeType) ?: "bin") to item.mimeType
             rendition == Rendition.STICKER_WEBP -> "webp" to "image/webp"
             else -> "png" to "image/png"
         }
-        val dir = File(context.filesDir, "floating_exports/v1").apply { mkdirs() }
+        val dir = File(context.filesDir, "floating_exports/v2").apply { mkdirs() }
         val file = File(dir, "${item.id}-${rendition.name.lowercase()}.$extension")
         mutex.withLock {
             if (!file.exists()) {
                 val staging = File(dir, file.name + ".pending")
                 try {
-                    if (item.hasMotion) {
+                    if (rendition == Rendition.MEDIA) {
                         source.original(item).use { input -> staging.outputStream().use { input.copyTo(it) } }
                     } else {
                         val original = source.raster(item).use { it.readBytes() }
@@ -84,13 +82,13 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
         val result = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
         try {
             val canvas = Canvas(result)
-            canvas.drawColor(if (rendition == Rendition.MEDIA) Color.WHITE else Color.TRANSPARENT)
+            canvas.drawColor(Color.TRANSPARENT)
             val scale = 496f / maxOf(bitmap.width, bitmap.height)
             val width = bitmap.width * scale; val height = bitmap.height * scale
             canvas.drawBitmap(bitmap, null, RectF((512-width)/2, (512-height)/2,
                 (512+width)/2, (512+height)/2), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
             val format = when (rendition) {
-                Rendition.MEDIA -> Bitmap.CompressFormat.JPEG
+                Rendition.MEDIA -> error("Media exports preserve the original file")
                 Rendition.STICKER_PNG -> Bitmap.CompressFormat.PNG
                 Rendition.STICKER_WEBP -> Bitmap.CompressFormat.WEBP_LOSSY
             }
