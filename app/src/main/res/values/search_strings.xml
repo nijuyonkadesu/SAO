@@ -19,7 +19,7 @@
     <string name="search_people_empty">No people found.</string>
     <string name="search_people_loading">Loading people…</string>
     <string name="search_places_loading">Loading places…</string>
-    <string name="search_context_unavailable">Context search is disabled on this server. Choose another search type.</string>
+    <string name="search_context_unavailable">Context search is unavailable for this source. Choose another search type.</string>
     <string name="search_options_error">Could not load choices. Check the connection or API key permissions, then retry.</string>
     <string name="search_more_people">More people</string>
     <string name="search_retry">Retry</string>

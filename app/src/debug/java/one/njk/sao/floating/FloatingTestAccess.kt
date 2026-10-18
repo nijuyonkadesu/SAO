@@ -13,4 +13,7 @@ interface FloatingTestAccess {
     fun browseSession(): PickerBrowseSession
     fun sources(): SourceProfiles
     fun mediaSource(): MediaSource
+    fun preferences(): FloatingPreferences
+    fun exports(): MediaExports
+    fun clipboard(): ClipboardPublisher
 }

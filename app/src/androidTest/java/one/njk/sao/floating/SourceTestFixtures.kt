@@ -62,10 +62,10 @@ internal suspend fun SourceProfiles.restore(catalog: SourceCatalog) {
 }
 
 /** Cross-process controls: the real extension Activity is launched for result by SAO's proxy. */
-internal class ExtensionForm(profile: SourceProfile? = null) : AutoCloseable {
+internal class ExtensionForm(profile: SourceProfile? = null, installed: InstalledSourceExtension? = null) : AutoCloseable {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app = instrumentation.targetContext
-    private val extension = runBlocking { testExtensions(app).installed().single { "immich" in it.legacyKinds } }
+    private val extension = installed ?: runBlocking { testExtensions(app).installed().single { "immich" in it.legacyKinds } }
     private val scenario = ActivityScenario.launch<SourceSetupActivity>(SourceSetupActivity.intent(app,extension,(profile?.configuration as? ExtensionConfig)?.profile))
     init {
         instrumentation.uiAutomation.serviceInfo = instrumentation.uiAutomation.serviceInfo.apply {
@@ -85,6 +85,7 @@ internal class ExtensionForm(profile: SourceProfile? = null) : AutoCloseable {
             Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,value) }))
     }
     fun click(id: String) { await(id) { it.isEnabled }; check(node(id)!!.performAction(AccessibilityNodeInfo.ACTION_CLICK)) }
+    fun clickFirst(id: String) { await(id) { it.childCount>0 }; check(node(id)!!.getChild(0).performAction(AccessibilityNodeInfo.ACTION_CLICK)) }
     override fun close() {
         if (node("back") != null) click("back")
         scenario.close()

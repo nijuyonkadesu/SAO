@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.stateIn
@@ -42,8 +43,10 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
     private val dispatchers: FloatingDispatchers = FloatingDispatchers()) : ViewModel() {
     private val visibilityOwner = Any()
     private var pickerShowing = false
+    private val visibleState = MutableStateFlow(false)
     internal fun pickerVisible(visible: Boolean) {
         pickerShowing = visible
+        visibleState.value = visible
         FloatingSession.pickerVisible(visibilityOwner, visible)
         session.sequenceVisible(visibilityOwner, visible)
     }
@@ -134,10 +137,18 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         if (preferredOverride == it.preferStickers) preferredOverride = null
         if (!it.browseSequence) backToResults()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), FloatingOptions())
-    private val pageRequests = Channel<Unit>(Channel.CONFLATED)
+    // false: next page; true: merge changed local-index results without resetting the carousel.
+    private val pageRequests = Channel<Boolean>(Channel.CONFLATED)
     private var requestingPage = false
     private val refresh = MutableStateFlow(0)
     private var appliedSource: String? = null
+    init { viewModelScope.launch {
+        visibleState.flatMapLatest { visible -> if(visible) source.changes.catch { error -> if(error is CancellationException) throw error } else kotlinx.coroutines.flow.emptyFlow() }
+            .sample(1000)
+            .collect {
+                if(pickerShowing && query.value.randomRequest==null && session.results(source.identity.first(),query.value)!=null) pageRequests.trySend(true)
+            }
+    } }
     private val resultsState = combine(query.debounce(180), source.identity, refresh) { value, id, _ -> value to id }
         .flatMapLatest { (query, sourceId) -> flow {
             while (pageRequests.tryReceive().isSuccess) { /* Drop requests from the old result set. */ }
@@ -161,15 +172,19 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
             while (true) {
                 emit(PickerState(current.items, loading = false, error = pageError, query = query, hasMore = current.nextCursor != null, sourceId = sourceId, errorMessage = pageErrorMessage))
                 requestingPage = false
-                pageRequests.receive()
-                val cursor = current.nextCursor
-                emit(PickerState(current.items, loading = false, query = query, loadingMore = true, sourceId = sourceId))
+                val updated = pageRequests.receive()
+                val cursor = if(updated) null else current.nextCursor
+                if(!updated) emit(PickerState(current.items, loading = false, query = query, loadingMore = true, sourceId = sourceId))
                 try {
                     val page = source.page(query, cursor)
                     if (source.identity.first() != sourceId) throw CancellationException("Source changed")
-                    val seen = current.seenCursors + listOfNotNull(cursor)
+                    val seen = if(updated) emptySet() else current.seenCursors + listOfNotNull(cursor)
+                    val merged = if(updated) {
+                        val latest=page.items.associateBy { it.remote?.assetId ?: it.id }
+                        current.items.map { latest[it.remote?.assetId ?: it.id] ?: it } + page.items
+                    } else if(cursor==null) page.items else current.items + page.items
                     current = PickerResultsSnapshot(sourceId, query,
-                        uniqueItems(if (cursor == null) page.items else current.items + page.items),
+                        uniqueItems(merged),
                         page.nextCursor?.takeUnless { it in seen }, seen)
                     session.rememberResults(current)
                     pageError = false; pageErrorMessage = null
@@ -201,13 +216,13 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         if (sequence.state.value != null) { sequence.loadMore(position); return }
         val value = state.value
         if (value.query == query.value && value.hasMore && !value.error && !value.loading && !value.loadingMore && !requestingPage && position >= value.items.size - 10) {
-            requestingPage = true; pageRequests.trySend(Unit)
+            requestingPage = true; pageRequests.trySend(false)
         }
     }
     fun retry() {
         if (!pickerShowing || !session.ownsSequence(visibilityOwner)) return
         if (sequence.state.value != null) sequence.retry()
-        else if (state.value.items.isNotEmpty()) pageRequests.trySend(Unit) else refresh.value++
+        else if (state.value.items.isNotEmpty()) pageRequests.trySend(false) else refresh.value++
     }
     private suspend fun uniqueItems(items: List<MediaItem>) = withContext(dispatchers.cpu) {
         // Stable remote asset identity avoids duplicates if its revision changes between pages.

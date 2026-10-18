@@ -2,7 +2,7 @@
 
 Install SAO and `immich-sao.apk`, then open **Settings → Media sources → Add source → Immich**. Give each connection a name. Repeat for more servers, accounts or album scopes; those **profile names** appear in the floating picker's source switcher. Edit a source to open its extension's settings. Context remains the default when supported.
 
-Source extensions update independently of SAO. Version 1 accepts extensions signed by the same publisher as SAO; debug builds must use the same debug certificate. It does not load arbitrary third-party code into SAO. The existing Rays integration remains supported during this transition. A separate Local Sticker extension is the next phase, not included in this change.
+Source extensions update independently of SAO. Version 1 accepts extensions signed by the same publisher as SAO; debug builds must use the same debug certificate. It does not load arbitrary third-party code into SAO. The existing Rays integration remains supported during this transition. [Local Sticker](local-sticker-source.md) provides named folder collections, offline labeling/OCR and metadata corrections in a separate APK.
 
 [Profile picker and light/dark extension settings previews](screenshots/README.md#source-extension-profiles).
 
@@ -18,7 +18,7 @@ Source extensions update independently of SAO. Version 1 accepts extensions sign
 
 The small `source-api` library defines the contract. `immich-provider` translates Immich API records; `immich-extension` supplies its private store, settings Activity, bound service and streaming provider. SAO's production dependencies include neither module nor the Immich client. Common UI, player, cache and messaging libraries are not dependencies of the extension.
 
-A future Local Sticker profile can own several persisted folder grants/collections. SAO receives the same profile records and pages, without knowing about folder scanning, OCR, models or metadata overrides.
+A Local Sticker profile owns several persisted folder grants/collections. SAO receives the same profile records and pages, without knowing about folder scanning, OCR, models or metadata overrides.
 
 ## Profiles and capabilities
 
@@ -27,6 +27,8 @@ A public profile contains `id`, `name`, `revision` and a short display `summary`
 SAO namespaces source identity and cache entries by extension, profile and revision. Switching source cancels the prior session and its requests. An item from another source cannot be exported through the new session. Removing/reconfiguring a source removes its old host media cache. Missing or disabled APKs retain their public source reference and report an error; the host can remove that unavailable reference.
 
 Capabilities declare supported search modes (`CONTEXT`, `FILENAME`, `DESCRIPTION`, `PATH`, `OCR`), facets (`PEOPLE`, `PLACES`, `MEDIA`, `EMOJI_TAGS`), a default mode, random browsing and chronological neighbours. SAO disables unsupported controls and normalizes requests against this declaration. Immich checks server features; unavailable Context/OCR modes are disabled and Filename becomes the fallback. There is no provider-name switch in the generic search UI. Emoji text is passed intact to Context, not copied into metadata fields.
+
+An optional v1 `changes` capability carries a granted, source-owned content URI. SAO validates its owning package and observes it only while the picker is visible. Notifications are coalesced to at most one local refresh per second; matching items/metadata merge without clearing the list or focus. Random batches remain stable. Older v1 clients ignore this optional field. Extensions without it need no observer or extra API calls.
 
 ## IPC contract v1
 
@@ -59,6 +61,7 @@ Callbacks return a safe `{ "code": "…", "retryAfter": "…" }` failure, never 
 | `DISCONNECTED` | One delayed rebind for reads; then report the disconnected extension |
 | `UNTRUSTED`, `INCOMPATIBLE`, `INVALID_RESPONSE` | Stop; explain signing/update/protocol problem |
 | `PROFILE_MISSING`, `PROFILE_CHANGED` | Stop stale work; refresh sources or reopen configuration |
+| `PERMISSION_REQUIRED`, `MEDIA_CHANGED` | Restore source folder access, or search again for the current file |
 | `HTTP_401`, `HTTP_403` | No automatic retry; ask to fix extension credentials/permissions |
 | `HTTP_404`, `MEDIA_TOO_LARGE` | Report unavailable media or the transfer-size limit |
 | `NETWORK`, `HTTP_408/429/502/503/504` | At most one delayed retry per read |
@@ -82,6 +85,6 @@ Completed media have a shared **192 MiB** LRU budget. Transfers are limited to t
 
 Sign the extension's optimized release APK with the same certificate as SAO before installing **both APKs** using Android CLI. The extension is approximately 3.1 MiB; development builds without shrinking are larger. Cross-process instrumentation uses localhost synthetic fixtures for profile isolation, capability recovery, API headers, streams/cache, cancellation and extension settings; it never accesses a configured personal library. Live-server tests remain explicit opt-in.
 
-Validation passed: 51 JVM tests and 55 Android 15 emulator tests covering the extracted source, search controls, pagination, sequence restoration and video paths. All four modules passed lint with zero errors; profile selection and extension settings were visually checked in light/dark themes. Host DEX inspection confirms that Immich implementation classes are absent from SAO.
+Validation passed: 51 JVM tests and 64 distinct Android 15 emulator checks covering source lifecycle, search, pagination, sequence restoration, video, local indexing, corrections and visible-only index notifications. The real folder-picker flow also passed against the optimized Local Sticker APK, including offline model initialization after shrinking. Host, source SDK and Local Sticker lint passed with zero errors; profile selection and extension settings were visually checked in light/dark themes. Host DEX inspection confirms that Immich and Local Sticker implementation classes and local ML models are absent from SAO.
 
 Protocol design follows Android's [bound-service lifecycle](https://developer.android.com/develop/background-work/services/bound-services), [AIDL threading rules](https://developer.android.com/develop/background-work/services/aidl) and [targeted package visibility](https://developer.android.com/training/package-visibility/declaring). Installed APK metadata/version/signing discovery takes inspiration from [Mihon's extension loader](https://github.com/mihonapp/mihon/blob/main/app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt); SAO uses separate-process IPC rather than loading extension classes into the host.

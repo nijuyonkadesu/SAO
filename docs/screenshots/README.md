@@ -57,3 +57,9 @@ Immich now runs in a separately installed APK. Named profiles remain in SAO's ex
 | Profiles in SAO | Extension settings | Extension settings in dark mode |
 | --- | --- | --- |
 | <img src="source-extension-profiles.png" width="260" alt="Fixture and Work library profiles served by the installed Immich extension" /> | <img src="immich-extension-settings.png" width="260" alt="Extension-owned connection form with a verified synthetic server" /> | <img src="immich-extension-settings-dark.png" width="260" alt="The same verified connection form using Material dark colors" /> |
+
+The separate [Local Sticker extension](../local-sticker-source.md) indexes named folders automatically with offline labels/OCR. These images show synthetic PNG/GIF/video fixtures and generated metadata; [dark settings](local-source-settings-dark.png) were checked too.
+
+| Named folders and indexing | Automatically generated metadata | Optional corrections |
+| --- | --- | --- |
+| <img src="local-source-settings.png" width="260" alt="Named Local Sticker library with folder collections, indexing status and rescan/pause controls" /> | <img src="local-source-metadata.png" width="260" alt="PNG, GIF, MP4 and WebM entries with generated Smile, emoji and video-frame labels" /> | <img src="local-source-editor.png" width="260" alt="Editable title, description, tags and detected text for a synthetic WebM frame" /> |

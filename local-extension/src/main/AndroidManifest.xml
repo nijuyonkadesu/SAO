@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
+    <queries><package android:name="one.njk.sao" /><package android:name="one.njk.sao.testing" /></queries>
+    <application android:label="SAO · Local Sticker" android:theme="@style/Theme.LocalExtension" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@drawable/ic_extension">
+        <service android:name="androidx.work.impl.foreground.SystemForegroundService" tools:node="remove" />
+        <service android:name=".LocalExtensionService" android:label="Local Sticker" android:exported="true" android:permission="one.njk.sao.permission.SOURCE_EXTENSION">
+            <intent-filter><action android:name="one.njk.sao.source.EXTENSION" /></intent-filter>
+            <meta-data android:name="one.njk.sao.source.API_VERSION" android:value="1" />
+            <meta-data android:name="one.njk.sao.source.SETTINGS" android:value="one.njk.sao.extension.local.LocalSettingsActivity" />
+        </service>
+        <activity android:name=".LocalSettingsActivity" android:exported="true" android:permission="one.njk.sao.permission.SOURCE_EXTENSION" />
+        <activity android:name=".MetadataActivity" android:exported="false" />
+        <activity android:name=".MetadataEditorActivity" android:exported="false" />
+        <provider android:name=".LocalMediaProvider" android:authorities="${applicationId}.media" android:exported="false" android:grantUriPermissions="true" />
+    </application>
+</manifest>

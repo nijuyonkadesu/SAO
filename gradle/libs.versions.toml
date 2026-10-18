@@ -33,6 +33,10 @@ coil = ["coil", "coil-gif", "coil-network"]
 retrofit = ["retrofit-moshi", "moshi"]
 
 [libraries]
+work-runtime = { module = "androidx.work:work-runtime-ktx", version = "2.11.2" }
+mlkit-labeling = { module = "com.google.mlkit:image-labeling", version = "17.0.9" }
+mlkit-ocr = { module = "com.google.mlkit:text-recognition", version = "16.0.1" }
+
 javax-inject = { module = "javax.inject:javax.inject", version = "1" }
 media3-transformer = { module = "androidx.media3:media3-transformer", version.ref = "media3" }
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }

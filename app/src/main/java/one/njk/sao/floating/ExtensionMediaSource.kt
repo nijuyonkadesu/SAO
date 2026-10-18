@@ -3,6 +3,7 @@ package one.njk.sao.floating
 import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
@@ -22,6 +23,18 @@ class ExtensionMediaSource(private val context: Context, private val profile: So
     private val capabilityLock = Mutex()
     private var supported: SourceCapabilities? = null
     private val capabilityState = MutableStateFlow(SourceCapabilities())
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    override val changes = flow {
+        val uri=loadCapabilities().changesUri?.let(::validate) ?: return@flow
+        emitAll(kotlinx.coroutines.flow.callbackFlow {
+            val observer=object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) { trySend(Unit) }
+            }
+            context.contentResolver.registerContentObserver(uri,true,observer)
+            trySend(Unit)
+            awaitClose { context.contentResolver.unregisterContentObserver(observer) }
+        })
+    }
     override val capabilities = flow {
         try { loadCapabilities() } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { /* A later explicit search retries and updates this flow. */ }

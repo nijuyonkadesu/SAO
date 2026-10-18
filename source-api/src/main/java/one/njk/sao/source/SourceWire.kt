@@ -11,13 +11,13 @@ object SourceWire {
     private inline fun <reified T : Enum<T>> enums(json: JSONArray?) = strings(json).mapNotNull { name -> enumValues<T>().firstOrNull { it.name == name } }.toSet()
     fun capabilities(value: SourceCapabilities) = JSONObject().put("modes", strings(value.modes.map { it.name }))
         .put("facets", strings(value.facets.map { it.name })).put("random", value.random).put("sequence", value.sequence)
-        .put("defaultMode", value.defaultMode.name)
+        .put("defaultMode", value.defaultMode.name).put("changes",value.changesUri)
     fun capabilities(json: JSONObject): SourceCapabilities {
         val modes = enums<SearchMode>(json.optJSONArray("modes"))
         val default = SearchMode.entries.firstOrNull { it.name == json.optString("defaultMode") && it in modes }
             ?: modes.firstOrNull() ?: SearchMode.CONTEXT
         return SourceCapabilities(modes,enums<SearchFacet>(json.optJSONArray("facets")),
-            json.optBoolean("random"),json.optBoolean("sequence"),default)
+            json.optBoolean("random"),json.optBoolean("sequence"),default,changesUri=nullable(json,"changes"))
     }
     fun profile(value: ExtensionProfile) = JSONObject().put("id", value.id).put("name", value.name)
         .put("revision", value.revision).put("summary", value.summary)

@@ -6,6 +6,7 @@ import java.io.InputStream
 
 /** Network-capable catalog contract. A source exposes pages, never an unbounded library read. */
 interface MediaSource {
+    val changes: Flow<Unit> get() = kotlinx.coroutines.flow.emptyFlow()
     val capabilities: Flow<SourceCapabilities> get() = flowOf(SourceCapabilities())
     val identity: Flow<String> get() = flowOf("local")
     val advancedSearch: Flow<Boolean> get() = flowOf(false)

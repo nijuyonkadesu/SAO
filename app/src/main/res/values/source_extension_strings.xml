@@ -1,4 +1,6 @@
 <resources>
+<string name="source_folder_permission">Folder access was revoked. Open the source settings and choose that folder again.</string>
+<string name="source_media_changed">This file changed. Search again to use its current version.</string>
 <string name="source_extension_install">Install a SAO source extension APK, then return here to add a connection.</string>
 <string name="source_extension_missing">Source extension unavailable. Install or enable its APK.</string>
 <string name="source_extension_failed">The source could not complete the request. Retry or open its settings.</string>

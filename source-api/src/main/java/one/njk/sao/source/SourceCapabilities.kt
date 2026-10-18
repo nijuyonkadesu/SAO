@@ -11,6 +11,8 @@ data class SourceCapabilities(
     val defaultMode: SearchMode = SearchMode.CONTEXT,
     /** Host-attached owner; omitted from provider wire records. Null means not loaded yet. */
     val sourceId: String? = null,
+    /** Optional read-granted content URI for local index changes; observed only while browsing. */
+    val changesUri: String? = null,
 ) {
     val searchOptions get() = modes.isNotEmpty() || facets.isNotEmpty()
     fun normalize(query: MediaQuery): MediaQuery = query.copy(

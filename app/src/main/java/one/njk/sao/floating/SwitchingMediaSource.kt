@@ -48,6 +48,8 @@ class SwitchingMediaSource @Inject constructor(private val local: LocalMediaSour
     private var active: Session? = null
     override val identity = profiles.catalogs.map { it.identity }
         .catch { error -> if (error is CancellationException) throw error; emit("unavailable") }.distinctUntilChanged()
+    override val changes = profiles.catalogs.map { it.identity }.distinctUntilChanged()
+        .flatMapLatest { flow { emitAll(session().source.changes) }.catch { error -> if(error is CancellationException) throw error } }
     override val capabilities = profiles.catalogs.map { it.identity }.distinctUntilChanged()
         .flatMapLatest { id -> flow {
             emitAll(session().source.capabilities.map { it.copy(sourceId = id) })

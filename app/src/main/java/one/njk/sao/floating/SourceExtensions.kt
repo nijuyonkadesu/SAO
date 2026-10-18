@@ -98,5 +98,7 @@ internal fun ExtensionFailure.messageResource(): Int = when(code) {
     "NETWORK", "TIMEOUT" -> one.njk.sao.R.string.source_extension_network
     "MEDIA_TOO_LARGE" -> one.njk.sao.R.string.source_media_too_large
     "HTTP_404" -> one.njk.sao.R.string.source_media_missing
+    "PERMISSION_REQUIRED" -> one.njk.sao.R.string.source_folder_permission
+    "MEDIA_CHANGED" -> one.njk.sao.R.string.source_media_changed
     else -> one.njk.sao.R.string.source_extension_failed
 }
