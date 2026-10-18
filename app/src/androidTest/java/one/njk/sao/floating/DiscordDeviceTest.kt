@@ -56,7 +56,7 @@ class DiscordDeviceTest {
         webm = instrumentation.context.assets.open("preview-video.webm").use { it.readBytes() }
         mp4 = instrumentation.context.assets.open("preview-video.mp4").use { it.readBytes() }
         val sample = LocalMediaSource(app).all().first { !it.animated }
-        val poster = app.assets.open(sample.asset).use { it.readBytes() }
+        val poster = InstrumentationRegistry.getInstrumentation().context.assets.open(sample.asset).use { it.readBytes() }
         server = MockWebServer().apply {
             dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse = when {
@@ -208,7 +208,7 @@ class DiscordDeviceTest {
         val videos = remote.page(MediaQuery()).items
         assertEquals(listOf("video/webm", "video/mp4"), videos.map { it.mimeType })
         val cases = listOf(
-            Triple(MediaExports(app, local).prepare(gif, Rendition.MEDIA), app.assets.open(gif.asset).use { it.readBytes() }, "gif"),
+            Triple(MediaExports(app, local).prepare(gif, Rendition.MEDIA), InstrumentationRegistry.getInstrumentation().context.assets.open(gif.asset).use { it.readBytes() }, "gif"),
             Triple(MediaExports(app, remote).prepare(videos[0], Rendition.MEDIA), webm, "webm"),
             Triple(MediaExports(app, remote).prepare(videos[1], Rendition.MEDIA), mp4, "mp4"),
         )
@@ -320,7 +320,7 @@ class DiscordDeviceTest {
             assertTrue("GIF must copy as an image URI", copied)
             scenario.onActivity {
                 val uri = it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).uri
-                assertArrayEquals(app.assets.open(gif.asset).use { stream -> stream.readBytes() },
+                assertArrayEquals(InstrumentationRegistry.getInstrumentation().context.assets.open(gif.asset).use { stream -> stream.readBytes() },
                     it.contentResolver.openInputStream(uri)!!.use { stream -> stream.readBytes() })
                 assertTrue(it.findViewById<TextView>(R.id.selection_message).text.toString().endsWith(it.getString(R.string.picker_discord_paste_inactive)))
                 assertFalse(it.findViewById<View>(R.id.sticker_action).isEnabled)

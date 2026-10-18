@@ -28,7 +28,7 @@ class SourceUpdatesDeviceTest {
             override suspend fun page(query: MediaQuery,cursor: String?): MediaPage { reads.incrementAndGet(); return MediaPage(rows) }
             override suspend fun filters()=emptyList<String>()
             override suspend fun preview(item: MediaItem): Any=item.preview
-            override suspend fun original(item: MediaItem)=app.assets.open(item.asset)
+            override suspend fun original(item: MediaItem)=InstrumentationRegistry.getInstrumentation().context.assets.open(item.asset)
             override suspend fun raster(item: MediaItem)=original(item)
         }
         lateinit var model: PickerViewModel

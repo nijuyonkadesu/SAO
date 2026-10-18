@@ -6,8 +6,6 @@
     <string name="floating_settings_manage">Manage</string>
     <string name="floating_settings_choose">Choose</string>
     <string name="floating_settings_add">Add</string>
-    <string name="floating_settings_sample_pack">WhatsApp sample pack</string>
-    <string name="floating_settings_sample_pack_description">Add SAO’s fixed sample pack to WhatsApp’s sticker menu.</string>
     <string name="floating_settings_permissions">Permissions</string>
     <string name="floating_settings_accessibility">Accessibility access</string>
     <string name="floating_settings_accessibility_description">In Android Accessibility settings, find “Paste assistance” and turn it on.</string>
@@ -48,7 +46,6 @@
     <string name="floating_copy_gif">Copy GIF</string>
     <string name="floating_insert">Insert with Paste assistance</string>
     <string name="floating_telegram_sticker">Send as Telegram sticker</string>
-    <string name="floating_add_pack">Add sample pack to WhatsApp</string>
     <string name="floating_share">Share media…</string>
     <string name="floating_share_target">Share media to %1$s</string>
     <string name="floating_native_send">Insert sticker via LSPosed</string>
@@ -75,4 +72,9 @@
     <string name="picker_native_hooks_unavailable">This app version’s composer hooks could not be loaded.</string>
     <string name="picker_native_media_accepted">The app accepted the native media insertion.</string>
     <string name="picker_native_image_hint">Paste uses this app’s native image handler.</string>
+    <string name="emoji_shortcuts_title">Emoji shortcuts</string>
+    <string name="emoji_shortcuts_help">Show your chosen emoji below the source in the floating picker. Tap one to search.</string>
+    <string name="emoji_shortcuts_edit">Choose emoji</string>
+    <string name="emoji_shortcuts_input">Emoji in display order</string>
+    <string name="emoji_shortcuts_edit_help">Enter up to 32 emoji. Spaces and commas are optional; repeated emoji appear once.</string>
 </resources>

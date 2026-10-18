@@ -9,21 +9,28 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import one.njk.sao.source.ExtensionProtocol
 import java.util.UUID
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class LocalSettingsViewModel(app: Application, saved: SavedStateHandle) : AndroidViewModel(app) {
+class LocalSettingsViewModel(app: Application, private val saved: SavedStateHandle) : AndroidViewModel(app) {
     data class State(val loaded: Boolean=false,val working: Boolean=false,val folders: List<Folder> = emptyList(),
         val library: Library?=null,val index: IndexStatus?=null,val folderIndexes: Map<String,IndexStatus> = emptyMap(),
         val indexWork: IndexWork=IndexWork.IDLE,val model: ClipModels.Status=ClipModels.Status(),val useContext: Boolean=false,
-        val selectedModel: ClipModel=ClipCatalog.immich,val error: Int?=null,val finished: Boolean=false)
+        val selectedModel: ClipModel=ClipCatalog.immich,val importMethod: ImportMethod=ImportMethod.FOLDER,val error: Int?=null,val finished: Boolean=false)
     private val store=LocalStore.get(app)
     private val mutable=MutableStateFlow(State())
     private val selectedModel=MutableStateFlow(ClipCatalog.immich)
     val state=mutable.asStateFlow()
     val editing: String?=saved[ExtensionProtocol.PROFILE]
-    val profile=editing ?: UUID.randomUUID().toString()
+    val profile=editing ?: saved.get<String>("draftProfile") ?: UUID.randomUUID().toString().also { saved["draftProfile"]=it }
+    var importTarget: String?
+        get()=saved["importTarget"]
+        set(value) { saved["importTarget"]=value }
+    private val importPreferences=Mutex()
+    private val selections=mutableMapOf<String,List<String>>()
     var name=app.getString(R.string.default_name)
     init { viewModelScope.launch {
         try {
@@ -31,12 +38,15 @@ class LocalSettingsViewModel(app: Application, saved: SavedStateHandle) : Androi
                 try { editing?.let(store::overview) }
                 catch(error: one.njk.sao.source.ExtensionFailure) { if(error.code=="PROFILE_MISSING") null else throw error }
             }
+            val method=withContext(Dispatchers.IO) {
+                runCatching { ImportMethod.valueOf(app.getSharedPreferences("imports",0).getString("method",ImportMethod.FOLDER.name)!!) }.getOrDefault(ImportMethod.FOLDER)
+            }
             val library=overview?.library
             val selected=ClipCatalog.get(library?.contextModel ?: ClipModels.MODEL); selectedModel.value=selected
             val ready=withContext(Dispatchers.IO) { ClipModels.ready(app,selected) }
             if(library!=null) name=library.name
             mutable.value=State(loaded=true,folders=library?.folders.orEmpty(),library=library,
-                index=overview?.total,folderIndexes=overview?.folders.orEmpty(),model=ClipModels.Status(ready=ready),useContext=library?.contextSearch ?: ready,selectedModel=selected)
+                index=overview?.total,folderIndexes=overview?.folders.orEmpty(),model=ClipModels.Status(ready=ready),useContext=library?.contextSearch ?: ready,selectedModel=selected,importMethod=method)
             mutable.subscriptionCount.map { it>0 }.distinctUntilChanged()
                 .flatMapLatest { if(it) combine(store.changes,FolderIndexer.observe(app,profile),selectedModel.flatMapLatest { selected -> ClipModels.observe(app,selected).map { selected to it } }) { _,work,model -> work to model } else emptyFlow() }.collectLatest { (work,pair) ->
                 val (selected,model)=pair
@@ -59,8 +69,38 @@ class LocalSettingsViewModel(app: Application, saved: SavedStateHandle) : Androi
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { mutable.update { it.copy(error=R.string.folder_error) } }
     } }
+    fun importMethod(index: Int) {
+        val method=ImportMethod.entries[index]
+        mutable.update { it.copy(importMethod=method) }
+        viewModelScope.launch(Dispatchers.IO) { importPreferences.withLock {
+            getApplication<Application>().getSharedPreferences("imports",0).edit().putString("method",state.value.importMethod.name).apply()
+        } }
+    }
+    fun media(uris: List<Uri>) {
+        val target=importTarget; importTarget=null
+        if(uris.isEmpty()) return
+        viewModelScope.launch {
+            mutable.update { it.copy(working=true,error=null) }
+            try {
+                val accepted=withContext(Dispatchers.IO) {
+                    uris.distinct().filter { uri ->
+                        require(uri.scheme=="content")
+                        try { MediaImport.details(getApplication(),LocalStore.SelectedMedia(uri.toString(),System.currentTimeMillis()),android.os.CancellationSignal()); true }
+                        catch(_: UnsupportedOperationException) { false }
+                    }.map(Uri::toString)
+                }
+                require(accepted.isNotEmpty())
+                val root=target ?: "selection:${UUID.randomUUID()}"
+                selections[root]=(selections[root].orEmpty()+accepted).distinct()
+                mutable.update { before -> before.copy(folders=if(before.folders.any { it.uri==root }) before.folders else before.folders+Folder(root,getApplication<Application>().getString(R.string.selected_media),kind=CollectionKind.SELECTION)) }
+            } catch(cancelled: CancellationException) { throw cancelled }
+            catch(_: Exception) { mutable.update { it.copy(error=R.string.media_import_error) } }
+            finally { mutable.update { it.copy(working=false) } }
+        }
+    }
+    fun pickerUnavailable() { mutable.update { it.copy(error=R.string.picker_unavailable) } }
     fun rename(folder: Folder, name: String) { if(name.isNotBlank()) mutable.update { before -> before.copy(folders=before.folders.map { if(it.uri==folder.uri) it.copy(name=name.trim()) else it }) } }
-    fun remove(folder: Folder) { mutable.update { before -> before.copy(folders=before.folders.filterNot { it.uri==folder.uri }) } }
+    fun remove(folder: Folder) { selections.remove(folder.uri); mutable.update { before -> before.copy(folders=before.folders.filterNot { it.uri==folder.uri }) } }
     fun useContext(enabled: Boolean) { mutable.update { it.copy(useContext=enabled && it.model.ready) } }
     fun selectModel(index: Int) {
         if(state.value.working) return
@@ -87,20 +127,22 @@ class LocalSettingsViewModel(app: Application, saved: SavedStateHandle) : Androi
     }
     fun save() {
         if(name.isBlank() || state.value.folders.isEmpty()) { mutable.update { it.copy(error=R.string.configuration_error) }; return }
+        val additions=selections.mapValues { it.value.toList() }
         val folders=state.value.folders.toList(); val title=name; val useContext=state.value.useContext; val selected=state.value.selectedModel
         action {
             val app=getApplication<Application>(); val resolver=app.contentResolver
             try {
-                folders.forEach { resolver.takePersistableUriPermission(Uri.parse(it.uri),Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                folders.filter { it.kind==CollectionKind.TREE }.forEach { resolver.takePersistableUriPermission(Uri.parse(it.uri),Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                additions.values.flatten().distinct().forEach { resolver.takePersistableUriPermission(Uri.parse(it),Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 val prior=state.value.library
-                val library=store.save(profile,title,folders,contextSearch=useContext && ClipModels.ready(app,selected),contextModel=selected.id)
+                val library=store.save(profile,title,folders,contextSearch=useContext && ClipModels.ready(app,selected),contextModel=selected.id,selections=additions)
                 if(prior!=null && prior.revision!=library.revision) {
                     app.revokeUriPermission(mediaScope(app,prior),Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     app.revokeUriPermission(store.changesUri(prior),Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 releaseUnusedGrants(app,store)
                 val foldersChanged=prior?.folders?.associate { it.uri to it.name }!=library.folders.associate { it.uri to it.name }
-                FolderIndexer.schedule(app,library,force=foldersChanged || prior?.contextSearch!=library.contextSearch || prior?.contextModel!=library.contextModel,
+                FolderIndexer.schedule(app,library,force=foldersChanged || prior?.revision!=library.revision,
                     reset=prior?.folders?.map { it.uri }!=library.folders.map { it.uri })
                 mutable.update { it.copy(library=library,finished=true) }
             } catch (error: Exception) { releaseUnusedGrants(app,store); throw error }

@@ -43,17 +43,11 @@ Settings use a filled secondary container for enabled switches, selected values,
 
 ## Collection and search
 
-`MediaSource` is the source boundary. `LocalMediaSource` returns the bundled
-`assets/floating/catalog.json` collection: six original static reactions and one
-animated GIF. Search combines whitespace-separated terms across titles, tags,
-and emoji. NFC normalization and variation-selector handling allow both `❤`
-and `❤️`, while retaining meaningful skin tones and emoji joiners. Chips narrow
-the current search; selecting a chip again clears its filter.
+`MediaSource` is the source boundary. SAO ships without a built-in sample library. Only configured profiles from installed providers appear in the source switcher. With no source, the picker explains how to install an extension and offers **Add source**. The first configured profile is selected automatically; removing the active profile selects another remaining profile.
 
-The header's named source control opens an inline list of Samples and saved
-connections. Select a row to use it, edit an existing profile, or choose **Add
-source** to create another through an installed extension. Choosing Samples retains every connection. Immich results load in pages and accept emoji
-input as well as text. The source contract exposes pages, previews, decoder-ready
+**Emoji shortcuts** is an optional SAO setting, off by default. **Choose emoji** accepts up to 32 distinct emoji in display order, preserving flags, skin tones and joined sequences. When enabled, the row uses this saved list instead of a provider-generated list; tapping one searches it as text, including in Context mode. Turning it off reclaims the row’s space. Typing `:wink` suggestions remains separate.
+
+The named source control opens installed profiles. Select a row, edit a profile, or choose **Add source** to configure another through an installed extension. Immich results load in pages and accept emoji input as well as text. The source contract exposes pages, previews, decoder-ready
 still images and original streams. See [Immich API research](immich-api.md) for
 supported server versions, endpoints, permissions and validation. Immich is now a separately installed APK: [setup and extension contract](source-extensions.md).
 
@@ -109,14 +103,13 @@ to the selected source identity and never carry to another connection. The
 generic media choice can carry across Immich connections. Filter choice lists
 load on demand, cancel when the source changes, and surface failures inline.
 Reopening a failed section does not send another request; **Retry** is explicit.
-Samples retain their existing simple text/emoji search. See
+Available controls follow each extension’s capabilities. See
 [search-controls evidence](../diagnostics/immich-search-controls/README.md).
 
 Expanded search also exposes **Lucky**, labelled **I’m feeling lucky** in the
 options panel. It clears search text and requests a random batch from the current
 source, retaining emoji, People/Places/Media and configured album constraints.
-Immich selects up to 100 items server-side across the eligible library; Samples
-shuffle their matching bundled items. This is not a shuffle of already-loaded
+Immich selects up to 100 items server-side across the eligible library; other providers implement their own random page. This is not a shuffle of already-loaded
 Context results. **Shuffle** / **Shuffle again** requests another batch. The
 batch has no automatic pagination, so scrolling cannot create an endless series
 of random requests. Different batches can overlap.
@@ -142,7 +135,7 @@ to commit. Ordinary taps retain the complete inline selector.
   filters. Media choices apply directly while retaining other constraints.
   People/Places open their existing inline input panels. Reset clears advanced
   constraints and preserves search text, type and the emoji/tag chip.
-- Sources loops through Samples and all named profiles. Choices switch on
+- Sources loops through configured profiles from installed providers. Choices switch on
   release. Add source remains in the full picker opened by a tap. Previewing does not
   create clients, fetch results, or persist a source selection.
 
@@ -192,7 +185,6 @@ The compact **Sticker/Media** chip marks both active modes with a checkmark and 
 affects the next selection, Copy or explicit Paste; it does not re-copy when toggled. Unsupported sticker clipboard
 formats fall back to media with inline status. No selection menu or app-owned
 copy toast appears. Android can still display its system clipboard preview.
-The immutable official WhatsApp sample pack can be installed from settings.
 
 **Telegram apps** in Floating picker settings supports searchable installed apps
 with icons and checkboxes, plus comma/newline-separated manual package names.
@@ -309,10 +301,6 @@ requests, and repeated request IDs fail closed. A successful callback means the
 host accepted insertion; it does not assert that a sticker message reached the
 recipient. No account information or conversation content is logged.
 
-The official sample pack is immutable. WhatsApp caches installed packs, so its
-contents are not republished on every search. See the
-[official sticker provider example](https://github.com/WhatsApp/stickers/tree/main/Android)
-and [modern API documentation](https://libxposed.github.io/api/).
 
 ## Development and verification
 
@@ -470,7 +458,7 @@ A poster remains available if decoding fails. Video playback/export supports fil
 existing 64 MiB original download limit; it does not turn MP4 into animated Telegram/WhatsApp
 stickers. Animated native sticker encoding still needs a separately verified client contract.
 
-The inline source panel is a native Material list containing Samples and every named connection.
+The inline source panel is a native Material list containing named profiles from installed providers.
 Tap a row to select it; its checkmark and the header identify the active profile. The row's edit
 button opens its extension's configuration, and Add source creates a separate named profile.
 The same list is available under Floating settings → Media sources. Credentials are durable settings owned exclusively by the extension; SAO saves public profile references and selection. Query/filter/focus remain in the existing

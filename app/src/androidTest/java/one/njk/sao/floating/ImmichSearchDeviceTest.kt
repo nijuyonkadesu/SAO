@@ -66,7 +66,7 @@ class ImmichSearchDeviceTest {
             flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
         }
         previous = access.sources().current(); access.sources().restore(SourceCatalog()); access.browseSession().reset()
-        val png = app.assets.open("floating/happy.png").use { it.readBytes() }
+        val png = InstrumentationRegistry.getInstrumentation().context.assets.open("floating/happy.png").use { it.readBytes() }
         val video = instrumentation.context.assets.open("preview-video.webm").use { it.readBytes() }
         server = MockWebServer().apply {
             dispatcher = object : Dispatcher() {
@@ -410,7 +410,7 @@ class ImmichSearchDeviceTest {
             await(scenario, "Named sources must load") { !model(it).state.value.loading && ViewModelProvider(it)[SourceProfilesViewModel::class.java].state.value.catalog.profiles.size == 2 }
             val before = requests.size; val copied = clip()
             val drag = hold(scenario, R.id.source_toggle)
-            drag.send(MotionEvent.ACTION_MOVE, atY = drag.y - drag.row * 4)
+            drag.send(MotionEvent.ACTION_MOVE, atY = drag.y - drag.row * 3)
             scenario.onActivity {
                 assertEquals("Second library", it.findViewById<View>(R.id.hold_choice_card).contentDescription.toString())
                 assertEquals(profile.id, ViewModelProvider(it)[SourceProfilesViewModel::class.java].state.value.catalog.selectedId)
@@ -418,13 +418,13 @@ class ImmichSearchDeviceTest {
             }
             SystemClock.sleep(250); assertEquals(before, requests.size)
             screenshot("sources-hold-preview.png")
-            drag.send(MotionEvent.ACTION_UP, atY = drag.y - drag.row * 4)
+            drag.send(MotionEvent.ACTION_UP, atY = drag.y - drag.row * 3)
             await(scenario, "Release must activate the selected source") { !model(it).state.value.loading && model(it).state.value.sourceId == second.identity && ViewModelProvider(it)[SourceProfilesViewModel::class.java].state.value.catalog.selectedId == second.id }
             assertEquals(before + 1, requests.size); assertEquals(copied, clip())
-            val local = hold(scenario, R.id.source_toggle)
-            local.send(MotionEvent.ACTION_UP, atY = local.y + local.row * 2)
-            await(scenario, "Samples must remain in the loop") { !model(it).state.value.loading && model(it).state.value.sourceId == "local" && model(it).state.value.items.size == 7 }
-            assertEquals(before + 1, requests.size)
+            val first = hold(scenario, R.id.source_toggle)
+            first.send(MotionEvent.ACTION_UP, atY = first.y + first.row)
+            await(scenario, "Named profiles loop without a built-in source") { !model(it).state.value.loading && model(it).state.value.sourceId == profile.identity }
+            assertEquals(before + 2, requests.size)
             scenario.onActivity { assertEquals(2, ViewModelProvider(it)[SourceProfilesViewModel::class.java].state.value.catalog.profiles.size) }
         }
     }
@@ -435,7 +435,7 @@ class ImmichSearchDeviceTest {
             val before = requests.size
             val cancelled = hold(scenario, R.id.source_toggle)
             cancelled.send(MotionEvent.ACTION_MOVE, atY = cancelled.y - cancelled.row)
-            scenario.onActivity { assertEquals(it.getString(R.string.picker_source_samples), it.findViewById<View>(R.id.hold_choice_card).contentDescription.toString()) }
+            scenario.onActivity { assertEquals(profile.name, it.findViewById<View>(R.id.hold_choice_card).contentDescription.toString()) }
             cancelled.send(MotionEvent.ACTION_CANCEL)
             val rename = hold(scenario, R.id.source_toggle)
             rename.send(MotionEvent.ACTION_MOVE, atY = rename.y + rename.row)
@@ -679,7 +679,7 @@ class ImmichSearchDeviceTest {
         }
     }
 
-    @Test fun luckyAuthenticationFailureStopsUntilExplicitRetryAndSamplesShuffleLocally() {
+    @Test fun luckyAuthenticationFailureStopsUntilExplicitRetry() {
         rejectRandom.set(true)
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
             await(scenario, "Source must load") { !model(it).state.value.loading }
@@ -689,16 +689,6 @@ class ImmichSearchDeviceTest {
             rejectRandom.set(false)
             scenario.onActivity { it.findViewById<View>(R.id.message).performClick() }
             await(scenario, "Explicit retry must recover") { !model(it).state.value.loading && !model(it).state.value.error && model(it).state.value.items.size == 100 }
-            assertEquals(2, randomCalls.get())
-        }
-        runBlocking { access.sources().select(null); access.browseSession().reset() }
-        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
-            await(scenario, "Samples must load") { !model(it).state.value.loading && model(it).state.value.items.size == 7 }
-            scenario.onActivity { it.findViewById<View>(R.id.search_toggle).performClick() }
-            await(scenario, "Samples must expose Lucky without Immich filters") { it.findViewById<View>(R.id.search_lucky).isVisible && !it.findViewById<View>(R.id.query_mode).isVisible && !it.findViewById<View>(R.id.search_filters).isVisible }
-            scenario.onActivity { it.findViewById<View>(R.id.search_lucky).performClick() }
-            await(scenario, "Local shuffled batch must load") { !model(it).state.value.loading && model(it).query.value.randomRequest != null && model(it).state.value.items.size == 7 }
-            scenario.onActivity { assertEquals(7, model(it).state.value.items.map { item -> item.id }.distinct().size) }
             assertEquals(2, randomCalls.get())
         }
     }

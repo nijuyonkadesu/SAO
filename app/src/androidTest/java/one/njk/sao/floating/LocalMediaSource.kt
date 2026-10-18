@@ -11,13 +11,13 @@ import java.io.InputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
-@Singleton
-class LocalMediaSource @Inject constructor(@ApplicationContext private val context: Context,
+/** Synthetic fixtures live only in the instrumentation APK. */
+class LocalMediaSource(private val context: Context,
     private val dispatchers: FloatingDispatchers = FloatingDispatchers()) : MediaSource {
     override val capabilities = flowOf(SourceCapabilities(random = true))
     override val randomBrowse = flowOf(true)
     private val catalog by lazy {
-        val json = context.assets.open("floating/catalog.json").bufferedReader().use { JSONArray(it.readText()) }
+        val json = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context.assets.open("floating/catalog.json").bufferedReader().use { JSONArray(it.readText()) }
         List(json.length()) { index ->
             val item = json.getJSONObject(index)
             fun strings(key: String): List<String> = item.getJSONArray(key).let { values ->
@@ -41,8 +41,13 @@ class LocalMediaSource @Inject constructor(@ApplicationContext private val conte
     }
     suspend fun all(): List<MediaItem> = withContext(dispatchers.io) { catalog }
     override suspend fun filters() = all().flatMap { it.emojis.take(1) }.distinct()
-    override suspend fun preview(item: MediaItem): Any = item.preview
+    override suspend fun preview(item: MediaItem): Any = withContext(dispatchers.io) {
+        java.io.File(context.cacheDir,"test-media/${item.asset}").apply {
+            parentFile?.mkdirs()
+            if(!exists()) openOriginal(item).use { input -> outputStream().use(input::copyTo) }
+        }
+    }
     override suspend fun original(item: MediaItem): InputStream = withContext(dispatchers.io) { openOriginal(item) }
     override suspend fun raster(item: MediaItem): InputStream = original(item)
-    fun openOriginal(item: MediaItem): InputStream = context.assets.open(item.asset)
+    fun openOriginal(item: MediaItem): InputStream = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context.assets.open(item.asset)
 }

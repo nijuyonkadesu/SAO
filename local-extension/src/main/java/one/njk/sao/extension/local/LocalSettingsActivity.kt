@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.LinearLayout
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -25,6 +26,19 @@ class LocalSettingsActivity : AppCompatActivity() {
     private val model by lazy { ViewModelProvider(this)[LocalSettingsViewModel::class.java] }
     private val modelPicker=registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if(uri!=null) model.modelFolder(uri) }
     private val picker=registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if(uri!=null) model.folder(uri) }
+    private val photos=registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { model.media(it) }
+    private val files=registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { model.media(it) }
+    private fun launchImport(target: String?=null) {
+        model.importTarget=target
+        val method=model.state.value.importMethod.let { if(target!=null && it==ImportMethod.FOLDER) ImportMethod.PHOTOS else it }
+        try {
+            when(method) {
+                ImportMethod.FOLDER -> picker.launch(null)
+                ImportMethod.PHOTOS -> photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                ImportMethod.FILES -> files.launch(arrayOf("image/*","video/*"))
+            }
+        } catch(_: android.content.ActivityNotFoundException) { model.importTarget=null; model.pickerUnavailable() }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         val caller=callingPackage
         if(caller !in setOf("one.njk.sao","one.njk.sao.testing") || packageManager.checkSignatures(packageName,requireNotNull(caller))!=PackageManager.SIGNATURE_MATCH) {
@@ -36,7 +50,9 @@ class LocalSettingsActivity : AppCompatActivity() {
         var rows=emptyList<Pair<Folder,ItemFolderBinding>>()
         binding.back.setOnClickListener { finish() }
         binding.sourceName.doAfterTextChanged { if(populated) model.name=it?.toString().orEmpty() }
-        binding.addFolder.setOnClickListener { picker.launch(null) }
+        binding.addFolder.setOnClickListener { launchImport() }
+        binding.importMethod.setSimpleItems(ImportMethod.entries.map { getString(it.label) }.toTypedArray())
+        binding.importMethod.setOnItemClickListener { _,_,position,_ -> model.importMethod(position) }
         binding.saveLibrary.setOnClickListener { model.save() }
         binding.rescan.setOnClickListener { model.rescan() }
         binding.pauseIndexing.setOnClickListener { model.pause() }
@@ -57,6 +73,11 @@ class LocalSettingsActivity : AppCompatActivity() {
                 shown=state.folders; binding.folderList.removeAllViews()
                 rows=state.folders.map { folder -> folder to folderRow(folder,binding.folderList).also { binding.folderList.addView(it.root) } }
             }
+            val methodLabel=getString(state.importMethod.label)
+            if(binding.importMethod.text.toString()!=methodLabel) binding.importMethod.setText(methodLabel,false)
+            binding.importMethod.isEnabled=state.loaded && !state.working
+            binding.importHelp.setText(state.importMethod.help)
+            binding.addFolder.setText(state.importMethod.action)
             binding.indexStatus.bind(state.index,state.library?.paused==true,state.indexWork)
             val modelStatus=state.model
             val label=getString(state.selectedModel.label)
@@ -90,7 +111,7 @@ class LocalSettingsActivity : AppCompatActivity() {
                 row.indexStatus.bind(status,state.library?.paused==true,state.indexWork)
                 row.processingActions.isVisible=status!=null
                 row.pauseFolder.setText(if(status?.paused==true) R.string.resume_album else R.string.pause_album)
-                listOf(row.pauseFolder,row.restartFolder,row.rename,row.remove).forEach { it.isEnabled=!state.working }
+                listOf(row.pauseFolder,row.restartFolder,row.rename,row.remove,row.addMedia).forEach { it.isEnabled=!state.working }
             }
             binding.error.isVisible=state.error!=null; state.error?.let(binding.error::setText)
             listOf(binding.addFolder,binding.sourceName,binding.saveLibrary,binding.deleteLibrary).forEach { it.isEnabled=state.loaded && !state.working }
@@ -102,6 +123,9 @@ class LocalSettingsActivity : AppCompatActivity() {
     }
     private fun folderRow(folder: Folder,parent: LinearLayout) = ItemFolderBinding.inflate(layoutInflater,parent,false).apply {
         name.text=folder.name
+        kind.setText(if(folder.kind==CollectionKind.TREE) R.string.picker_folder else R.string.selected_media_help)
+        addMedia.isVisible=folder.kind==CollectionKind.SELECTION
+        addMedia.setOnClickListener { launchImport(folder.uri) }
         rename.setOnClickListener { rename(folder) }
         remove.setOnClickListener { model.remove(folder) }
         pauseFolder.setOnClickListener { model.pauseFolder(folder) }

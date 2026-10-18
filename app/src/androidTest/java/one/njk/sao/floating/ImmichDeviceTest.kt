@@ -176,7 +176,7 @@ class ImmichDeviceTest {
         } catch(error: ExtensionFailure) { assertEquals("PROFILE_CHANGED",error.code) }
     }
     @Test fun profileNamesRemainInOriginalPickerAndSettingsStayInExtension() = runBlocking {
-        kind="image/png"; mediaBytes=app.assets.open("floating/happy.png").use { it.readBytes() }
+        kind="image/png"; mediaBytes=InstrumentationRegistry.getInstrumentation().context.assets.open("floating/happy.png").use { it.readBytes() }
         val work=immichProfile("Work library",profile.testConnection().copy(apiKey="work-profile")); profiles.upsert(work)
         androidx.test.core.app.ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,null,null)).use { scenario ->
             var ready=false

@@ -94,6 +94,7 @@ class PickerActivity : AppCompatActivity() {
         binding.sourceToggle.setOnClickListener { collapseSearch(); showSource(!binding.sourcePanel.isVisible) }
         binding.sourceBack.setOnClickListener { showSource(false) }
         binding.sourceConfigure.setOnClickListener { addMediaSource() }
+        binding.addFirstSource.setOnClickListener { addMediaSource() }
         val sourceAdapter = SourceListAdapter({ id -> sourcesModel.select(id) }) { id ->
             editMediaSource(catalog.profiles.firstOrNull { it.id == id })
         }
@@ -140,7 +141,7 @@ class PickerActivity : AppCompatActivity() {
             beforeGesture = { binding.search.dismissSuggestions(); if (::sourceGesture.isInitialized) sourceGesture.cancel() })
         sourceGesture = HoldDragSelector(binding.sourceToggle, binding.root as FrameLayout,
             choices = ::sourceGestureChoices,
-            selected = { SourceGestureChoice(catalog.selectedId, catalog.selected?.name ?: getString(R.string.picker_source_samples)) },
+            selected = { SourceGestureChoice(catalog.selectedId, catalog.selected?.name ?: getString(R.string.picker_source_none)) },
             label = { it.name }, identity = { catalog.identity },
             apply = { choice ->
                 showSource(false)
@@ -206,27 +207,9 @@ class PickerActivity : AppCompatActivity() {
         binding.filters.setOnCheckedStateChangeListener { group, ids ->
             if (!syncingQuery) {
                 collapseSearch(); showSource(false)
-                model.filter(ids.firstOrNull()?.let { group.findViewById<Chip>(it).text.toString() })
+                model.emojiShortcut(ids.firstOrNull()?.let { group.findViewById<Chip>(it).text.toString() }.orEmpty())
             }
         }
-        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) {
-            source.identity.collectLatest { try {
-                val filters = source.filters()
-                syncingQuery = true; binding.filters.removeAllViews()
-                (filters + listOfNotNull(model.query.value.filter)).distinct().forEach { filter -> binding.filters.addView(Chip(this@PickerActivity).apply {
-                    id = View.generateViewId(); text = filter; isCheckable = true
-                    checkedIcon = androidx.appcompat.content.res.AppCompatResources.getDrawable(context, R.drawable.ic_picker_check)
-                    checkedIconTint = textColors
-                    isChecked = model.query.value.filter == filter
-                    chipStrokeColor = android.content.res.ColorStateList.valueOf(com.google.android.material.color.MaterialColors
-                        .getColor(binding.root, com.google.android.material.R.attr.colorOutlineVariant))
-                }) }
-                syncingQuery = false
-                syncQueryViews(model.query.value)
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { syncingQuery = false }
-            }
-        } }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { model.query.collect { syncQueryViews(it); renderHeader(); renderDock() } }
@@ -237,7 +220,7 @@ class PickerActivity : AppCompatActivity() {
                     binding.sourceSummary.isVisible = state.error
                     binding.sourceConfigure.isEnabled = state.loaded && !state.saving
                     binding.sourceToggle.isEnabled = state.loaded && !state.saving
-                    renderHeader()
+                    renderHeader(); renderEmojiShortcuts(); renderEmptySource()
                 } }
                 launch { model.state.collect { state ->
                     searchController.renderLoading(state)
@@ -264,7 +247,7 @@ class PickerActivity : AppCompatActivity() {
                     binding.message.minimumHeight = (48 * resources.displayMetrics.density).toInt()
                     binding.message.isFocusable = state.error
                     binding.message.isVisible = binding.message.isVisible && !binding.sourcePanel.isVisible && !binding.targetList.isVisible && !searchController.visible
-                    renderDock()
+                    renderDock(); renderEmptySource()
                 } }
                 launch { model.canBrowseSequence.collect { /* Keep source capability live only while the picker is visible. */ } }
                 launch { NativeBridgeRegistry.sessions.collect { renderDock() } }
@@ -278,6 +261,7 @@ class PickerActivity : AppCompatActivity() {
                 launch { model.options.collect { value ->
                     val mappingChanged = options.telegramPackages != value.telegramPackages
                     options = value
+                    renderEmojiShortcuts()
                     binding.preferStickers.isChecked = true
                     binding.preferStickers.setText(if (value.preferStickers) R.string.picker_sticker else R.string.picker_media)
                     reserveModeWidth()
@@ -358,6 +342,7 @@ class PickerActivity : AppCompatActivity() {
         sequenceCarousel.adapter.playing = playing && renderedSequence != null
     }
     private fun showCarousels() {
+        renderEmptySource()
         val visible = !searchController.visible && !binding.sourcePanel.isVisible && !binding.targetList.isVisible
         binding.mediaGrid.isVisible = visible && renderedSequence == null
         binding.sequenceGrid.isVisible = visible && renderedSequence != null
@@ -367,7 +352,7 @@ class PickerActivity : AppCompatActivity() {
         if (binding.search.text?.toString() != query.text) binding.search.setText(query.text)
         for (i in 0 until binding.filters.childCount) {
             val chip = binding.filters.getChildAt(i) as Chip
-            chip.isChecked = chip.text.toString() == query.filter
+            chip.isChecked = chip.text.toString() == query.text
         }
         syncingQuery = false
         searchController.renderQuery()
@@ -410,7 +395,7 @@ class PickerActivity : AppCompatActivity() {
             if (compactSearch) R.drawable.ic_picker_filter else R.drawable.ic_picker_search)
         binding.searchToggle.contentDescription = getString(if (compactSearch) R.string.search_options else R.string.floating_search_hint) + if (query.isNotEmpty()) ": $query" else ""
         binding.sourceToggle.isVisible = !editing
-        val label = catalog.selected?.name ?: getString(R.string.picker_source_samples)
+        val label = catalog.selected?.name ?: getString(R.string.picker_source_none)
         val density = resources.displayMetrics.density
         val headerWidth = binding.pickerHeader.width.takeIf { it > 0 } ?: ((metrics.bounds.width() / density - 48) * density).toInt()
         val desired = binding.sourceToggle.paint.measureText("$label ▾") + 48 * density
@@ -562,14 +547,34 @@ class PickerActivity : AppCompatActivity() {
         if (show) { sourceGesture.cancel(); searchController.close(); binding.targetList.isVisible = false }
         binding.sourcePanel.isVisible = show; showCarousels()
         updatePlayback()
-        binding.message.isVisible = !show && !binding.targetList.isVisible && !searchController.visible &&
+        binding.message.isVisible = catalog.selected!=null && !show && !binding.targetList.isVisible && !searchController.visible &&
             (model.state.value.error || (!model.state.value.loading && model.state.value.items.isEmpty()))
+    }
+    private fun renderEmojiShortcuts() {
+        val values=if(options.showEmojiShortcuts) EmojiShortcuts.parse(options.emojiShortcuts) else emptyList()
+        val current=(0 until binding.filters.childCount).map { (binding.filters.getChildAt(it) as Chip).text.toString() }
+        syncingQuery=true
+        if(current!=values) {
+            binding.filters.removeAllViews()
+            values.forEach { value -> binding.filters.addView(Chip(this).apply {
+                id=View.generateViewId(); text=value; isCheckable=true
+                checkedIcon=androidx.appcompat.content.res.AppCompatResources.getDrawable(context,R.drawable.ic_picker_check)
+                checkedIconTint=textColors
+            }) }
+        }
+        for(index in 0 until binding.filters.childCount) (binding.filters.getChildAt(index) as Chip).isChecked=model.query.value.text==values[index]
+        binding.filterRow.isVisible=values.isNotEmpty() && catalog.selected!=null && !searchController.visible && !binding.sourcePanel.isVisible && !binding.targetList.isVisible && model.currentSequenceId==null
+        syncingQuery=false
+    }
+    private fun renderEmptySource() {
+        val empty = sourcesModel.state.value.loaded && catalog.selected == null
+        binding.noSource.isVisible = empty && !binding.sourcePanel.isVisible && !binding.targetList.isVisible && !searchController.visible
+        if(empty) { binding.message.isVisible=false; binding.progress.isVisible=false }
     }
     private fun sourceGestureChoices(): List<SourceGestureChoice> {
         val state = sourcesModel.state.value
         if (!state.loaded || state.saving) return emptyList()
-        return listOf(SourceGestureChoice(null, getString(R.string.picker_source_samples))) +
-            catalog.profiles.map { SourceGestureChoice(it.id, it.name) }
+        return catalog.profiles.map { SourceGestureChoice(it.id, it.name) }
     }
     private fun cancelPickerGesture(): Boolean {
         val search = searchController.cancelGesture()
@@ -627,7 +632,7 @@ class PickerActivity : AppCompatActivity() {
         binding.searchControls.isVisible = editing && searchController.controlsAvailable && !searchPanel && !tight
         binding.dockSurface.isVisible = !searchPanel
         searchController.adapt(imeHeight, available / density)
-        binding.filterRow.isVisible = model.state.value.sequenceId == null && !searchPanel && !compactEditing && height >= 320 * density && !(largeText && (shortViewport || imeHeight > 0))
+        binding.filterRow.isVisible = options.showEmojiShortcuts && binding.filters.childCount>0 && catalog.selected!=null && model.state.value.sequenceId == null && !searchPanel && !compactEditing && height >= 320 * density && !(largeText && (shortViewport || imeHeight > 0))
         binding.sequenceBack.isVisible = model.state.value.sequenceId != null && !searchPanel && !binding.sourcePanel.isVisible && !binding.targetList.isVisible
         binding.selectionRow.isVisible = !searchPanel && !compactEditing && !compactSequence
         binding.carouselArea.isVisible = searchPanel || !compactEditing

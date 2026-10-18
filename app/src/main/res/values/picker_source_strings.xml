@@ -1,5 +1,5 @@
 <resources>
-  <string name="picker_source_samples">Samples</string>
+  <string name="picker_source_none">Add source</string>
   <string name="picker_source_title">Photo source</string>
   <string name="picker_source_description">Choose where the picker finds photos.</string>
   <string name="picker_retry">Could not load photos. Tap to retry.</string>

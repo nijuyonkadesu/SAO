@@ -165,7 +165,7 @@ class InstagramDeviceTest {
         }
         scenario.onActivity {
             val uri = it.getSystemService(ClipboardManager::class.java).primaryClip!!.getItemAt(0).uri
-            assertArrayEquals(app.assets.open(gif.asset).use { s -> s.readBytes() }, it.contentResolver.openInputStream(uri)!!.use { s -> s.readBytes() })
+            assertArrayEquals(InstrumentationRegistry.getInstrumentation().context.assets.open(gif.asset).use { s -> s.readBytes() }, it.contentResolver.openInputStream(uri)!!.use { s -> s.readBytes() })
         }
     }
     private fun await(scenario: ActivityScenario<PickerActivity>, condition: (PickerActivity) -> Boolean) {

@@ -45,11 +45,12 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
         val profiles = catalog.profiles.toMutableList().apply {
             if (existing < 0) add(profile) else set(existing, profile)
         }
-        SourceCatalog(profiles, if (select) profile.id else catalog.selectedId)
+        SourceCatalog(profiles, if (select) profile.id else catalog.selectedId ?: profile.id)
     }
     suspend fun select(id: String?) = update { it.copy(selectedId = id) }
     suspend fun remove(id: String) = update {
-        SourceCatalog(it.profiles.filterNot { profile -> profile.id == id }, it.selectedId?.takeUnless { selected -> selected == id })
+        val remaining = it.profiles.filterNot { profile -> profile.id == id }
+        SourceCatalog(remaining, it.selectedId?.takeUnless { selected -> selected == id } ?: remaining.firstOrNull()?.id)
     }
     private suspend fun update(transform: (SourceCatalog) -> SourceCatalog) = withContext(dispatchers.io) { mutex.withLock {
         val old = load(); val next = transform(old)

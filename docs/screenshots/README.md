@@ -1,6 +1,6 @@
 # Floating picker previews
 
-Captured on the Android 15 emulator using bundled samples and a localhost Immich fixture. The emulator has no native hook framework; native delivery was checked separately with recording APK probes and on the user's phone.
+Captured on the Android 15 emulator using synthetic media and a localhost Immich fixture. Earlier sample media now lives only in the instrumentation APK; SAO ships without it. The emulator has no native hook framework; native delivery was checked separately with recording APK probes and on the user's phone.
 
 | Carousel in light mode | Carousel in dark mode | Context search selector |
 | --- | --- | --- |
@@ -65,3 +65,11 @@ The separate [Local Sticker extension](../local-sticker-source.md) shows per-alb
 | <img src="local-source-settings.png" width="260" alt="Per-album image/animation/video counts, labels/OCR and Context progress, and Pause/Restart controls" /> | <img src="local-source-context.png" width="260" alt="Immich-default CLIP Context enabled in the separate extension's Material dark settings" /> | <img src="local-source-editor.png" width="260" alt="Editable title, description, tags and detected text for a synthetic WebM frame" /> |
 
 [Automatically generated metadata browser](local-source-metadata.png).
+
+## Source setup and emoji shortcuts
+
+The optional emoji row is configured in SAO and searches emoji as text. The empty picker directs users to install/configure a source. Local Sticker offers folder, photo and file pickers; selected-media collections keep the existing indexing, progress and correction controls. These captures use synthetic fixtures and the optimized extension APK.
+
+<img src="floating-no-sources.png" width="220" alt="Empty floating picker with Add source guidance" /> <img src="floating-custom-emoji.png" width="220" alt="Custom emoji shortcuts above the existing media carousel" /> <img src="floating-emoji-shortcuts-settings.png" width="220" alt="Emoji shortcut toggle and editable list in SAO settings" />
+
+<img src="local-source-import-methods.png" width="260" alt="Folder, Photo and Files picker options in Local Sticker" /> <img src="local-source-selected-collection.png" width="260" alt="Named selected-media collection with format counts and processing controls" />

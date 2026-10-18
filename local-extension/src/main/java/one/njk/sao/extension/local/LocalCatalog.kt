@@ -130,7 +130,7 @@ class LocalExtensionService : ExtensionService() {
 }
 internal fun mediaScope(context: Context, library: Library): Uri = Uri.Builder().scheme("content").authority("${context.packageName}.media").appendPath(library.id).appendPath(library.revision).build()
 internal fun releaseUnusedGrants(context: Context, store: LocalStore) {
-    val used=store.libraries().flatMap { it.folders }.map { it.uri }.toSet()+ModelStorage.usedTrees(context)
+    val used=store.libraries().flatMap { it.folders }.filter { it.kind==CollectionKind.TREE }.map { it.uri }.toSet()+store.selectedUris()+ModelStorage.usedTrees(context)
     context.contentResolver.persistedUriPermissions.filter { it.uri.toString() !in used }.forEach {
         try { context.contentResolver.releasePersistableUriPermission(it.uri,(if(it.isReadPermission) Intent.FLAG_GRANT_READ_URI_PERMISSION else 0) or (if(it.isWritePermission) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)) } catch (_: SecurityException) { }
     }

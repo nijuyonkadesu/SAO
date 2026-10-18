@@ -114,7 +114,7 @@ class ImmichPaginationDeviceTest {
     @Test fun carouselBindingPrefetchesRetriesSamePageAndKeepsLoadedResultsAcrossReopening(): Unit = runBlocking {
         val attempts = AtomicInteger()
         val sample = LocalMediaSource(app).all().first { !it.animated }
-        val image = app.assets.open(sample.asset).use { it.readBytes() }
+        val image = InstrumentationRegistry.getInstrumentation().context.assets.open(sample.asset).use { it.readBytes() }
         server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
             override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
                 if (request.path == "/api/server/features") return MockResponse().setBody("""{"smartSearch":true,"ocr":true}""")

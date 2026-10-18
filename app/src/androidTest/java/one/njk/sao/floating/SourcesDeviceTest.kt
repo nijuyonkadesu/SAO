@@ -36,9 +36,9 @@ class SourcesDeviceTest {
     private fun profile(name: String, url: String = "http://example.test", key: String = "test-profile-key") =
         SourceProfile(UUID.randomUUID().toString(), name, ExtensionConfig("fixture.source","fixture.source.Service",UUID.randomUUID().toString(),digest("$url|$key"),"Fixture"))
     private fun router(factory: MediaSourceFactory = ExtensionSourceFactory(app,testExtensions(app),SourceMediaCache(app))) =
-        SwitchingMediaSource(LocalMediaSource(app), profiles, mapOf("extension" to Provider { factory }), dispatchers).also { routers += it }
+        SwitchingMediaSource(profiles, mapOf("extension" to Provider { factory }), dispatchers).also { routers += it }
 
-    @Test fun manyNamedConnectionsPersistEncryptedAndDeletingSelectedFallsBackToSamples(): Unit = runBlocking {
+    @Test fun manyNamedConnectionsPersistEncryptedAndDeletingSelectedChoosesRemainingSource(): Unit = runBlocking {
         val rows = (1..40).map { profile("Library $it", key = "opaque-profile-$it") }
         rows.forEach { profiles.upsert(it) }; profiles.select(rows.last().id)
         val fresh = SourceProfiles(app, dispatchers, mapOf("extension" to ExtensionConfigurationCodec()))
@@ -47,11 +47,12 @@ class SourcesDeviceTest {
         val ciphertext = File(app.noBackupFilesDir, "source-profiles-v1").readBytes().toString(Charsets.UTF_8)
         assertFalse(ciphertext.contains("opaque-profile-")); assertFalse(ciphertext.contains("example.test"))
         profiles.remove(rows.last().id)
-        assertNull(profiles.current().selected); assertEquals(39, profiles.current().profiles.size)
-        assertEquals(7, router().page(MediaQuery()).items.size)
+        assertEquals(rows.first().id,profiles.current().selectedId); assertEquals(39, profiles.current().profiles.size)
+        rows.dropLast(1).forEach { profiles.remove(it.id) }
+        assertNull(profiles.current().selected); assertTrue(router().page(MediaQuery()).items.isEmpty())
     }
 
-    @Test fun legacyConnectionMigratesOnceWithMetadataOptOutAndDisabledSelection(): Unit = runBlocking {
+    @Test fun legacyConnectionMigratesOnceWithMetadataOptOutAndSelectsItsReplacement(): Unit = runBlocking {
         val directory = File(app.cacheDir, "source-migration-${UUID.randomUUID()}").apply { mkdirs() }
         val context = object : ContextWrapper(app) { override fun getNoBackupFilesDir() = directory }
         try {
@@ -71,7 +72,7 @@ class SourcesDeviceTest {
             extensions.migrate(extension)
             val replacement=repository.current().profiles.single()
             assertTrue(replacement.configuration is ExtensionConfig)
-            assertNull(repository.current().selectedId)
+            assertEquals(replacement.id,repository.current().selectedId)
             assertFalse(ExtensionConfigurationCodec().encode(replacement.configuration).toString().contains("migration-secret"))
             val ref=replacement.configuration as ExtensionConfig
             ExtensionClient(app,ref.component).request(ref.profile,ExtensionProtocol.DELETE_PROFILE,JSONObject().put("revision",ref.revision))

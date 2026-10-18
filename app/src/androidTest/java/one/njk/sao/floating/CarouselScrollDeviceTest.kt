@@ -40,8 +40,8 @@ class CarouselScrollDeviceTest {
 
     @Before fun setup() = runBlocking {
         previous = access.sources().current(); access.sources().restore(SourceCatalog()); access.browseSession().reset()
-        val poster = app.assets.open("floating/happy.png").use { it.readBytes() }
-        val gif = app.assets.open("floating/hello.gif").use { it.readBytes() }
+        val poster = InstrumentationRegistry.getInstrumentation().context.assets.open("floating/happy.png").use { it.readBytes() }
+        val gif = InstrumentationRegistry.getInstrumentation().context.assets.open("floating/hello.gif").use { it.readBytes() }
         val video = instrumentation.context.assets.open("preview-video.webm").use { it.readBytes() }
         server = MockWebServer().apply {
             dispatcher = object : Dispatcher() {

@@ -217,8 +217,8 @@ class PasteAssistDeviceTest {
     @Test fun contextAmazingKeepsDockGeometryAndScrollsLongText() = runBlocking {
         val access = EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java)
         val oldSource = access.sources().current()
-        val png = app.assets.open("floating/happy.png").use { it.readBytes() }
-        val gif = app.assets.open("floating/hello.gif").use { it.readBytes() }
+        val png = InstrumentationRegistry.getInstrumentation().context.assets.open("floating/happy.png").use { it.readBytes() }
+        val gif = InstrumentationRegistry.getInstrumentation().context.assets.open("floating/hello.gif").use { it.readBytes() }
         val longName = "Amazing reaction with a wonderfully expressive face and a very long descriptive filename "
         val items = org.json.JSONArray().apply { repeat(4) { index -> put(org.json.JSONObject()
             .put("id", java.util.UUID(7, index.toLong()).toString()).put("type", "IMAGE")

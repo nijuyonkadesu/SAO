@@ -1,8 +1,18 @@
 # Local Sticker extension
 
-Install SAO and the matching `local-sticker.apk`, then choose **Settings → Media sources → Add source → Local Sticker**. Give the profile a name, choose one or more folders with the Android folder picker, optionally rename each collection, and save. Repeat to create independent profiles. Their names appear in SAO's existing source switcher.
+Install SAO and the matching `local-sticker.apk`, then choose **Settings → Media sources → Add source → Local Sticker**. Give the profile a name, choose an **Import using** method, add and name your collections, then save. **Folder picker** remains the default; **Photo picker** and **Files picker** select individual images and videos. Repeat to create independent profiles. Their names appear in SAO's existing source switcher.
 
-The extension recursively indexes supported JPEG/PNG/WebP/GIF/HEIF/AVIF images and MP4/WebM/MKV videos. Originals remain in the chosen folders. Folder grants, indexed metadata, corrections and models belong exclusively to the extension; SAO receives public profile references, pages and read-only media streams. There is no all-files permission. Internet access is used for the explicit Context-model download, never to upload images or search text; ML Kit's CCT telemetry backend and upload components are removed from the manifest.
+The extension recursively indexes supported JPEG/PNG/WebP/GIF/HEIF/AVIF images and MP4/WebM/MKV videos. Originals remain with their chosen storage provider. Folder grants, indexed metadata, corrections and models belong exclusively to the extension; SAO receives public profile references, pages and read-only media streams. There is no all-files permission. Internet access is used for the explicit Context-model download, never to upload images or search text; ML Kit's CCT telemetry backend and upload components are removed from the manifest.
+
+## Import methods
+
+- **Folder picker:** recursively discovers supported media in the granted folder. New files are picked up during the normal throttled scan.
+- **Photo picker:** Android’s multi-select image/video picker, including Google Photos when it is configured as an eligible cloud media provider. Android supplies selected-item access, not a live grant to a whole Google Photos album. Select the items you want; use **Add photos and videos** on that collection to append more later.
+- **Files picker:** selects multiple supported media files from a document provider using `ACTION_OPEN_DOCUMENT`.
+
+The last chosen import method is an explicit extension setting. Selected items retain read grants and are indexed in bounded batches without copying originals into the extension. Cloud availability and downloads are controlled by the provider. Photo-picker providers may expose numeric filenames rather than the original filename. Original bytes are streamed through the existing host-owned media cache. Duplicate selections are ignored; appending media preserves corrections and invalidates stale browsing cursors. Collection removal releases grants only when no other library or model folder needs them.
+
+Android limits retained photo-picker access to 5,000 media grants; choose folder access for a large on-device library. Missing access or unavailable providers appear in collection progress and can be retried with a rescan. [Android photo-picker contract](https://developer.android.com/training/data-storage/shared/photo-picker).
 
 ## Automatic indexing and corrections
 
@@ -10,7 +20,7 @@ Bundled ML Kit models generate general image labels and Latin-script OCR without
 
 Files are available by name as soon as discovered; generated metadata becomes searchable as processing progresses. SAO observes index notifications only while the floating picker is visible. Matching updates merge into the existing result list while preserving the focal item. A new search uses the current full index and normal sort order. Closing the picker unregisters its observer; no result polling or idle source binding is used.
 
-Each folder card shows its phase, images (including the detected animation count), videos, and separate processed/remaining/failed counters for labels/OCR and Context. Discovery shows a growing count and indeterminate progress; analysis shows determinate progress across both enabled stages. **Pause/Resume** preserves that album's checkpoints while other albums continue. **Restart** confirms a fresh scan and reanalysis of only that album, preserving corrections and originals. Library-wide pause/resume and rescan remain available below the cards. Folder-access failures and failed media are reported separately.
+Each collection card shows its phase, images (including the detected animation count), videos, and separate processed/remaining/failed counters for labels/OCR and Context. Discovery shows a growing count and indeterminate progress; analysis shows determinate progress across both enabled stages. **Pause/Resume** preserves that album's checkpoints while other albums continue. **Restart** confirms a fresh scan and reanalysis of only that album, preserving corrections and originals. Library-wide pause/resume and rescan remain available below the cards. Folder-access failures and failed media are reported separately.
 
 Choose **Browse and correct metadata** to edit a file's title, description, tags/emoji and OCR. Editing tags replaces its automatic tag set; editing OCR replaces recognized text for search. Unedited fields continue to use automatic results. **Reset to automatic metadata** removes those overrides. Rescans and changed-file analysis preserve corrections and never write into original files. Context uses image content, so editing tags does not rewrite its embedding.
 
@@ -73,6 +83,8 @@ The optimized ARM64 APK is about 28 MiB, with compressed native libraries; insta
 Local tests cover indexing, per-album progress and controls, migration, corrections, model downloads/recovery, official tokenizer and encoder reference outputs, native numerical accuracy, 120,000-vector ranking and cancellation. Cross-app tests cover the unchanged host API and real settings controls. Tests use synthetic/private fixtures and public model files, never personal Immich media. Settings are visually checked in light/dark themes.
 
 The current local run passes 32 instrumentation cases (30 functional checks and two opt-in fixture helpers skipped). Two host model-folder/profile-recovery checks passed after actually uninstalling and reinstalling the signed optimized extension; the model files survived and were reselected without downloading again. These numeric checks do not establish retrieval recall equivalence between 8-bit and FP32 models.
+
+The picker update adds three selected-media instrumentation checks: all supported media formats, append/deduplication with preserved corrections, and bounded discovery checkpoints. The complete local indexing subset passes 15 functional checks (plus two skipped fixture helpers). Host checks cover the real system photo/folder pickers, persistent grants, named-collection reopening, byte-exact exports, Files picker launch/cancel, optional/custom emoji UI and the no-source screen. The signed optimized extension is used for the real picker journeys.
 
 The local instrumentation suite uses synthetic, private documents and bundled test media. Cross-app tests can prepare a synthetic local profile explicitly:
 

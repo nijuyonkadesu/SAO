@@ -41,7 +41,7 @@ class VideoDeviceTest {
         previous = access.sources().current(); access.browseSession().reset()
         bytes = instrumentation.context.assets.open("preview-video.mp4").use { it.readBytes() }
         val source = LocalMediaSource(app); val sample = source.all().first { !it.animated }
-        val preview = app.assets.open(sample.asset).use { it.readBytes() }
+        val preview = InstrumentationRegistry.getInstrumentation().context.assets.open(sample.asset).use { it.readBytes() }
         server = MockWebServer()
         server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
             override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) = when {

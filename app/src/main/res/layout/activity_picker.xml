@@ -19,7 +19,7 @@
                 </com.google.android.material.textfield.TextInputLayout>
                 <com.google.android.material.button.MaterialButton android:id="@+id/source_toggle"
                     style="@style/Widget.Material3.Button.TonalButton" android:layout_width="wrap_content" android:layout_height="48dp"
-                    android:minWidth="48dp" android:paddingHorizontal="8dp" android:singleLine="true" android:text="@string/picker_source_samples"
+                    android:minWidth="48dp" android:paddingHorizontal="8dp" android:singleLine="true" android:text="@string/picker_source_none"
                     app:icon="@drawable/ic_picker_source" app:iconSize="20dp" app:iconPadding="4dp" />
                 <com.google.android.material.button.MaterialButton android:id="@+id/search_toggle"
                     style="@style/Widget.Material3.Button.TextButton" android:layout_width="48dp" android:layout_height="48dp"
@@ -43,7 +43,7 @@
                 <com.google.android.material.button.MaterialButton android:id="@+id/clear_search_filters" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="48dp" android:minWidth="0dp" android:text="@string/search_reset" android:visibility="gone" />
             </LinearLayout>
             </HorizontalScrollView>
-            <HorizontalScrollView android:id="@+id/filter_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none">
+            <HorizontalScrollView android:id="@+id/filter_row" android:visibility="gone" android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none">
                 <com.google.android.material.chip.ChipGroup android:id="@+id/filters" android:layout_width="wrap_content" android:layout_height="wrap_content" app:singleLine="true" app:singleSelection="true" />
             </HorizontalScrollView>
             <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/progress"
@@ -62,6 +62,11 @@
                     <com.google.android.material.button.MaterialButton android:id="@+id/source_configure" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="48dp" android:text="@string/source_add" />
                 </LinearLayout>
                 <include android:id="@+id/search_options_panel" layout="@layout/view_picker_search_options" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone" />
+                <LinearLayout android:id="@+id/no_source" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center" android:padding="20dp" android:visibility="gone">
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="@string/source_empty_title" android:textAppearance="?attr/textAppearanceTitleLarge" />
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center" android:text="@string/source_empty_message" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/add_first_source" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/source_add" />
+                </LinearLayout>
                 <TextView android:id="@+id/message" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:padding="16dp" android:visibility="gone" android:accessibilityLiveRegion="polite" />
             </FrameLayout>
             <com.google.android.material.divider.MaterialDivider android:id="@+id/dock_divider" android:layout_width="match_parent" android:layout_height="wrap_content" />

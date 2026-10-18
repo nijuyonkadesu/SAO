@@ -61,7 +61,7 @@ class SequenceBrowseDeviceTest {
     @Before fun setup() = runBlocking {
         previous = access.sources().current(); access.sources().restore(SourceCatalog()); oldOptions = preferences.current()
         access.browseSession().reset(); preferences.browseSequence(true); preferences.longPressMs(160)
-        val png = app.assets.open("floating/happy.png").use { it.readBytes() }
+        val png = InstrumentationRegistry.getInstrumentation().context.assets.open("floating/happy.png").use { it.readBytes() }
         val numbered = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
         server = MockWebServer().apply {
             dispatcher = object : Dispatcher() {

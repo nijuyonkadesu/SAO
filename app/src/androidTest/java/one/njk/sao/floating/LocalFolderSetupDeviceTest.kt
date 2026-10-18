@@ -28,7 +28,8 @@ class LocalFolderSetupDeviceTest {
             repeat(root.childCount) { find(root.getChild(it))?.let { result -> return result } }
             return null
         }
-        return find(automation.rootInActiveWindow)
+        automation.serviceInfo=automation.serviceInfo.apply { flags=flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
+        return find(automation.rootInActiveWindow) ?: automation.windows.firstNotNullOfOrNull { find(it.root) }
     }
     private fun waitFor(predicate: ()->Boolean) {
         val deadline=SystemClock.elapsedRealtime()+12_000
@@ -58,8 +59,8 @@ class LocalFolderSetupDeviceTest {
         val folder="SAO-local-test-${UUID.randomUUID().toString().take(8)}"
         val name="Local album ${UUID.randomUUID().toString().take(8)}"
         val contents=linkedMapOf(
-            "happy.png" to ("image/png" to app.assets.open("floating/happy.png").use { it.readBytes() }),
-            "hello.gif" to ("image/gif" to app.assets.open("floating/hello.gif").use { it.readBytes() }),
+            "happy.png" to ("image/png" to InstrumentationRegistry.getInstrumentation().context.assets.open("floating/happy.png").use { it.readBytes() }),
+            "hello.gif" to ("image/gif" to InstrumentationRegistry.getInstrumentation().context.assets.open("floating/hello.gif").use { it.readBytes() }),
             "preview-video.mp4" to ("video/mp4" to instrumentation.context.assets.open("preview-video.mp4").use { it.readBytes() }),
             "preview-video.webm" to ("video/webm" to instrumentation.context.assets.open("preview-video.webm").use { it.readBytes() }))
         val files=mutableListOf<Uri>()
@@ -74,7 +75,8 @@ class LocalFolderSetupDeviceTest {
                 files+=uri; app.contentResolver.openOutputStream(uri)!!.use { it.write(data.second) }
             }
             ExtensionForm(installed=extension).use { form ->
-                form.set("source_name",name); form.click("add_folder")
+                form.set("source_name",name)
+                form.click("import_method"); click("Folder picker"); form.click("add_folder")
                 waitFor { node { it.packageName?.toString()?.contains("documentsui")==true }!=null }
                 click("Show roots")
                 click(android.os.Build.MODEL)

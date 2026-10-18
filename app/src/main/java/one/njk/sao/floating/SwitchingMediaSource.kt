@@ -29,8 +29,7 @@ import javax.inject.Singleton
 /** One active provider session. Factory lookup is lazy and configurations remain plain values. */
 @Singleton
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-class SwitchingMediaSource @Inject constructor(private val local: LocalMediaSource,
-    private val profiles: SourceProfiles,
+class SwitchingMediaSource @Inject constructor(private val profiles: SourceProfiles,
     private val factories: Map<String, @JvmSuppressWildcards Provider<MediaSourceFactory>>,
     private val dispatchers: FloatingDispatchers) : MediaSource {
     private class Session(val identity: String, val source: MediaSource) {
@@ -75,7 +74,7 @@ class SwitchingMediaSource @Inject constructor(private val local: LocalMediaSour
         active?.takeIf { it.identity == catalog.identity } ?: run {
             active?.close(); active = null
             val profile = catalog.selected
-            val source = if (profile == null) local else checkNotNull(factories[profile.configuration.kind]) {
+            val source = if (profile == null) NoSource else checkNotNull(factories[profile.configuration.kind]) {
                 "Source provider is unavailable"
             }.get().create(profile)
             Session(catalog.identity, source).also { active = it }

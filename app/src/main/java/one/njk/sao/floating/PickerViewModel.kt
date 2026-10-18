@@ -238,6 +238,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         // EditText's saved-view restoration can emit the same empty text as a random batch.
         if (text != query.value.text) searchQuery(query.value.copy(text = text, randomRequest = null))
     }
+    fun emojiShortcut(text: String) { searchQuery(query.value.copy(text=text,filter=null,randomRequest=null)) }
     fun filter(value: String?) { searchQuery(query.value.copy(filter = value)) }
     fun searchMode(value: SearchMode) { searchQuery(query.value.copy(mode = value, randomRequest = null)) }
     fun searchConstraints(value: SearchConstraints) { searchQuery(query.value.copy(constraints = value)) }

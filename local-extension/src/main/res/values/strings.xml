@@ -1,11 +1,11 @@
 <resources>
     <string name="title">Local Sticker library</string>
-    <string name="setup">Choose named folders of images, GIFs and videos. Files are indexed automatically and stay in their original folders.</string>
+    <string name="setup">Choose folders or selected photos, GIFs and videos. Media is indexed automatically and stays with its original storage provider.</string>
     <string name="back">Back</string>
     <string name="profile_name">Source name</string>
     <string name="default_name">Local stickers</string>
-    <string name="folders">Folders</string>
-    <string name="folders_hint">Include subfolders. Add more folders to this profile, or create another profile in SAO.</string>
+    <string name="folders">Collections</string>
+    <string name="folders_hint">Add named folders or selected-media collections to this profile, or create another profile in SAO.</string>
     <string name="add_folder">Choose a folder</string>
     <string name="rename">Rename</string>
     <string name="remove">Remove</string>
@@ -40,9 +40,9 @@
     <string name="album_empty">No supported media found</string>
     <string name="album_errors">Finished with errors</string>
     <string name="album_paused">Paused — progress saved</string>
-    <string name="album_permission">Folder access required</string>
-    <string name="album_unavailable">Folder unavailable</string>
-    <string name="folder_problem">%1$d folders unavailable. Restore folder access or rescan to retry.</string>
+    <string name="album_permission">Media access required</string>
+    <string name="album_unavailable">Collection unavailable</string>
+    <string name="folder_problem">%1$d collections unavailable. Restore access or rescan to retry.</string>
     <string name="processing_problem">Rescan folders to retry failed files.</string>
     <string name="pause_album">Pause</string>
     <string name="resume_album">Resume</string>
@@ -60,8 +60,8 @@
     <string name="indexed">%1$d files indexed.</string>
     <string name="index_errors">%1$s %2$d files could not be analyzed; %3$d folders unavailable. Rescan to retry; choose a folder again to restore access.</string>
     <string name="constraints">Checks for new files when you use this source, up to every five minutes. Rescan checks now. Indexing waits when battery or storage is low.</string>
-    <string name="profile_summary">%1$d folders · %2$d indexed</string>
-    <string name="configuration_error">Enter a name and choose at least one readable folder.</string>
+    <string name="profile_summary">%1$d collections · %2$d indexed</string>
+    <string name="configuration_error">Enter a name and add at least one readable collection.</string>
     <string name="folder_error">Could not read that folder. Choose it again using the system picker.</string>
     <string name="storage_error">Could not read or save this library. Your original files were not changed.</string>
     <string name="metadata_title">Library metadata</string>
@@ -89,4 +89,16 @@
     <string name="choose_model_folder">Choose model folder</string>
     <string name="model_location">Model folder: %1$s</string>
     <string name="model_legacy">Using an earlier internal download. Choose a folder to move it outside the app without downloading again.</string>
+    <string name="import_method">Import using</string>
+    <string name="picker_folder">Folder picker</string>
+    <string name="picker_photos">Photo picker</string>
+    <string name="picker_files">Files picker</string>
+    <string name="picker_folder_help">Grant access to a folder and its subfolders. New supported files are discovered when this source is used.</string>
+    <string name="picker_photos_help">Choose photos and videos, including Google Photos when available through Android’s cloud media provider. Selected items form a collection; new album items must be selected again.</string>
+    <string name="picker_files_help">Choose individual images and videos from a document provider. Access is retained for background indexing.</string>
+    <string name="selected_media">Selected media</string>
+    <string name="selected_media_help">Selected items · add more media to expand this collection</string>
+    <string name="add_media">Add photos and videos</string>
+    <string name="media_import_error">Could not keep access to the selected media. Choose readable images or videos with Photo picker or Files. For large libraries, use Folder picker.</string>
+    <string name="picker_unavailable">That picker is unavailable. Choose another import method.</string>
 </resources>

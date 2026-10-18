@@ -81,26 +81,6 @@ class FloatingDeviceTest {
         catch (_: IllegalArgumentException) { }
     }
 
-    @Test fun providerExposesOnlyTheRegisteredStaticPack() {
-        val base = "content://${app.packageName}.stickers"
-        app.contentResolver.query(Uri.parse("$base/metadata"), null, null, null, null)!!.use { cursor ->
-            assertEquals(1, cursor.count); assertTrue(cursor.moveToFirst())
-            assertEquals(SampleStickerProvider.PACK, cursor.getString(cursor.getColumnIndexOrThrow("sticker_pack_identifier")))
-        }
-        app.contentResolver.query(Uri.parse("$base/stickers/${SampleStickerProvider.PACK}"), null, null, null, null)!!.use { cursor ->
-            assertEquals(6, cursor.count)
-            while (cursor.moveToNext()) {
-                val filename = cursor.getString(cursor.getColumnIndexOrThrow("sticker_file_name"))
-                val uri = Uri.parse("$base/stickers_asset/${SampleStickerProvider.PACK}/$filename")
-                app.contentResolver.openAssetFileDescriptor(uri, "r")!!.use { asset -> assertTrue(asset.length <= 100 * 1024) }
-            }
-        }
-        try {
-            app.contentResolver.openAssetFileDescriptor(Uri.parse("$base/stickers_asset/${SampleStickerProvider.PACK}/not-registered.webp"), "r")
-            fail("Provider must reject arbitrary assets")
-        } catch (_: IllegalArgumentException) { }
-    }
-
     @Test fun launcherAndPickerRecreationPreserveTheirOwnState() {
         assertEquals(MainActivity::class.java.name, app.packageManager.getLaunchIntentForPackage(app.packageName)!!.component!!.className)
         assertFalse(FloatingSession.active.value)

@@ -101,6 +101,11 @@ class FolderIndexer(context: Context, parameters: WorkerParameters) : CoroutineW
     } } }
     private fun current(store: LocalStore, library: Library) = store.active(library.id,library.revision)
     private suspend fun discover(store: LocalStore, library: Library, directory: LocalStore.Directory, generation: String, deadline: Long) = coroutineScope {
+        val folder=library.folders.single { it.uri==directory.root }
+        if(folder.kind==CollectionKind.SELECTION) {
+            discoverSelection(store,library,folder,directory,generation,deadline)
+            return@coroutineScope
+        }
         val uri=DocumentsContract.buildChildDocumentsUriUsingTree(Uri.parse(directory.root),directory.document)
         val columns=arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             DocumentsContract.Document.COLUMN_MIME_TYPE,DocumentsContract.Document.COLUMN_LAST_MODIFIED,DocumentsContract.Document.COLUMN_SIZE)
@@ -125,6 +130,29 @@ class FolderIndexer(context: Context, parameters: WorkerParameters) : CoroutineW
             } } finally { store.checkpoint(library.id,directory,position) }
             }
         } finally { closer.cancel() }
+    }
+    private suspend fun discoverSelection(store: LocalStore,library: Library,folder: Folder,directory: LocalStore.Directory,generation: String,deadline: Long)=coroutineScope {
+        val signal=CancellationSignal()
+        val closer=launch(Dispatchers.Default,start=CoroutineStart.UNDISPATCHED) { try { awaitCancellation() } finally { signal.cancel() } }
+        var position=directory.position
+        try {
+            while(true) {
+                val members=store.selectedMedia(library.id,folder.uri,position)
+                if(members.isEmpty()) break
+                for(member in members) {
+                    ensureActive(); if(SystemClock.elapsedRealtime()>=deadline) throw SliceFinished()
+                    try {
+                        val media=MediaImport.details(applicationContext,member,signal)
+                        store.discovered(library.id,generation,folder.uri,member.uri,media.name,"${folder.name}/${media.name}",media.mime,media.modified,media.size,library.revision)
+                    } catch(cancelled: CancellationException) { throw cancelled }
+                    catch(_: SecurityException) { store.folderError(library.id,folder.uri,"PERMISSION_REQUIRED") }
+                    catch(_: UnsupportedOperationException) { /* Unsupported files are excluded from discovery. */ }
+                    catch(_: Exception) { store.folderError(library.id,folder.uri,"FOLDER_UNAVAILABLE") }
+                    position++
+                    if(position%100==0) store.checkpoint(library.id,directory,position)
+                }
+            }
+        } finally { store.checkpoint(library.id,directory,position); closer.cancel() }
     }
     private fun continueLater(library: Library, analysisOnly: Boolean) {
         WorkManager.getInstance(applicationContext).enqueueUniqueWork(name(library.id),ExistingWorkPolicy.APPEND_OR_REPLACE,request(library,analysisOnly))

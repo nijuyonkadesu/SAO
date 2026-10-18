@@ -66,6 +66,23 @@ class FloatingSettingsFragment : Fragment() {
             stopFloating.setOnClickListener { runtime.stop() }
             telegramApps.setOnClickListener { startActivity(Intent(requireContext(), TelegramAppsActivity::class.java)) }
             immichSettings.setOnClickListener { startActivity(Intent(requireContext(), SourceSettingsActivity::class.java)) }
+            emojiShortcuts.setOnCheckedChangeListener { _,checked -> if(!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.showEmojiShortcuts(checked) } }
+            editEmojiShortcuts.setOnClickListener {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val input=com.google.android.material.textfield.TextInputEditText(requireContext()).apply {
+                        setText(preferences.current().emojiShortcuts); setSingleLine(false); maxLines=3; selectAll()
+                    }
+                    val box=com.google.android.material.textfield.TextInputLayout(requireContext()).apply {
+                        hint=getString(R.string.emoji_shortcuts_input)
+                        val padding=(24*resources.displayMetrics.density).toInt(); setPadding(padding,padding/2,padding,0); addView(input)
+                        helperText=getString(R.string.emoji_shortcuts_edit_help)
+                    }
+                    com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.emoji_shortcuts_edit)
+                        .setView(box).setNegativeButton(android.R.string.cancel,null).setPositiveButton(android.R.string.ok) { _,_ ->
+                            viewLifecycleOwner.lifecycleScope.launch { preferences.emojiShortcuts(input.text.toString()) }
+                        }.show()
+                }
+            }
             autoHide.setOnCheckedChangeListener { _, checked -> if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.autoHide(checked) } }
             showOnLaunch.setOnCheckedChangeListener { _, checked -> if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.showOnLaunch(checked) } }
             browseSequence.setOnCheckedChangeListener { _, checked -> if (!updating) viewLifecycleOwner.lifecycleScope.launch { preferences.browseSequence(checked) } }
@@ -84,23 +101,6 @@ class FloatingSettingsFragment : Fragment() {
             hideDelay.setOnCheckedStateChangeListener { _, ids -> if (!updating) viewLifecycleOwner.lifecycleScope.launch {
                 preferences.idleSeconds(when (ids.firstOrNull()) { R.id.delay_five -> 5; R.id.delay_ten -> 10; else -> 3 })
             } }
-            addSamplePack.setOnClickListener {
-                viewLifecycleOwner.lifecycleScope.launch {
-                    val context = requireContext()
-                    val pkg = withContext(dispatchers.io) {
-                        listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull {
-                            try { context.packageManager.getPackageInfo(it, 0); true } catch (_: PackageManager.NameNotFoundException) { false }
-                        }
-                    }
-                    try {
-                        if (pkg == null) throw android.content.ActivityNotFoundException()
-                        startActivity(Intent("com.whatsapp.intent.action.ENABLE_STICKER_PACK").setPackage(pkg)
-                            .putExtra("sticker_pack_id", SampleStickerProvider.PACK)
-                            .putExtra("sticker_pack_authority", "${context.packageName}.stickers")
-                            .putExtra("sticker_pack_name", getString(R.string.floating_pack_title)))
-                    } catch (_: android.content.ActivityNotFoundException) { Toast.makeText(context, R.string.floating_app_unavailable, Toast.LENGTH_SHORT).show() }
-                }
-            }
             preview.setOnClickListener { startActivity(PickerActivity.intent(requireContext(), null, null)) }
             overlayPermission.setOnClickListener { openSettings(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, true) }
             usagePermission.setOnClickListener { openSettings(Settings.ACTION_USAGE_ACCESS_SETTINGS) }
@@ -123,6 +123,9 @@ class FloatingSettingsFragment : Fragment() {
                     renderToggle(binding.autoHide, options.autoHide, R.string.floating_auto_hide)
                     renderToggle(binding.showOnLaunch, options.showOnLaunch, R.string.floating_show_on_launch)
                     renderToggle(binding.browseSequence, options.browseSequence, R.string.sequence_setting)
+                    renderToggle(binding.emojiShortcuts, options.showEmojiShortcuts, R.string.emoji_shortcuts_title)
+                    binding.editEmojiShortcuts.isEnabled = options.showEmojiShortcuts
+                    binding.emojiShortcutsPreview.text = options.emojiShortcuts
                     binding.telegramApps.isActivated = options.telegramPackages.isNotEmpty()
                     if (!draggingHoldDelay) binding.longPressValue.text = getString(R.string.sequence_hold_value, options.longPressMs)
                     if (!draggingHoldDelay) binding.longPressDelay.value = options.longPressMs.toFloat()

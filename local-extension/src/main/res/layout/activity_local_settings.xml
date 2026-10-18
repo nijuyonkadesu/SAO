@@ -1,4 +1,4 @@
-<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+<androidx.core.widget.NestedScrollView xmlns:app="http://schemas.android.com/apk/res-auto" xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="24dp">
         <com.google.android.material.button.MaterialButton android:id="@+id/back" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/back" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/title" android:textAppearance="?attr/textAppearanceHeadlineMedium" />
@@ -8,6 +8,10 @@
         </com.google.android.material.textfield.TextInputLayout>
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="@string/folders" android:textAppearance="?attr/textAppearanceTitleLarge" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/folders_hint" android:textAppearance="?attr/textAppearanceBodyMedium" />
+        <com.google.android.material.textfield.TextInputLayout style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:hint="@string/import_method">
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/import_method" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="none" />
+        </com.google.android.material.textfield.TextInputLayout>
+        <TextView android:id="@+id/import_help" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
         <LinearLayout android:id="@+id/folder_list" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
         <com.google.android.material.button.MaterialButton android:id="@+id/add_folder" style="?attr/materialButtonOutlinedStyle" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="@string/add_folder" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="@string/indexing" android:textAppearance="?attr/textAppearanceTitleLarge" />

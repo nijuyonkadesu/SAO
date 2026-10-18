@@ -43,7 +43,7 @@ internal class ImmichTestSettings(val profiles: SourceProfiles) {
 }
 internal fun FloatingTestAccess.immichSettings() = ImmichTestSettings(sources())
 internal fun SwitchingMediaSource(context: Context, local: LocalMediaSource, settings: ImmichTestSettings,
-    dispatchers: FloatingDispatchers) = SwitchingMediaSource(local,settings.profiles,
+    dispatchers: FloatingDispatchers) = SwitchingMediaSource(settings.profiles,
     mapOf("extension" to Provider<MediaSourceFactory> { ExtensionSourceFactory(context,testExtensions(context),SourceMediaCache(context)) }),dispatchers)
 internal suspend fun SourceProfiles.restore(catalog: SourceCatalog) {
     val app = InstrumentationRegistry.getInstrumentation().targetContext

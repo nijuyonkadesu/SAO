@@ -3,7 +3,11 @@ package one.njk.sao.extension.local
 import one.njk.sao.source.MediaSearch
 import java.util.Locale
 
-data class Folder(val uri: String, val name: String, val paused: Boolean=false, val lastScan: Long=0)
+enum class CollectionKind { TREE, SELECTION }
+data class Folder(val uri: String, val name: String, val paused: Boolean=false, val lastScan: Long=0,
+    val kind: CollectionKind=CollectionKind.TREE) {
+    val documentId get() = if(kind==CollectionKind.TREE) android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(uri)) else "selected"
+}
 data class Library(val id: String, val name: String, val revision: String, val folders: List<Folder>,
     val paused: Boolean = false, val lastScan: Long = 0, val contextSearch: Boolean=false, val contextModel: String=ClipModels.MODEL)
 data class LocalAsset(val id: Long, val profile: String, val root: String, val uri: String,

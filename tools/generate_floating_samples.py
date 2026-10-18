@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from PIL import Image, ImageDraw
 
-DEST = Path(__file__).resolve().parents[1] / "app/src/main/assets/floating"
+DEST = Path(__file__).resolve().parents[1] / "app/src/androidTest/assets/floating"
 DEST.mkdir(parents=True, exist_ok=True)
 SAMPLES = [
     ("happy", "Happy", "#F9CD63", ["happy", "joy", "laugh", "funny"], ["😂", "😄"]),

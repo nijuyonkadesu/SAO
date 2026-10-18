@@ -15,13 +15,13 @@ import one.njk.sao.source.digest
 import java.util.UUID
 
 /** Extension-private durable metadata. Callers perform all database work on IO. Originals stay in SAF. */
-class LocalStore private constructor(private val context: android.app.Application) : SQLiteOpenHelper(context, "local-library.db", null, 6) {
+class LocalStore private constructor(private val context: android.app.Application) : SQLiteOpenHelper(context, "local-library.db", null, 7) {
     val changes = MutableStateFlow(0L)
     init { setWriteAheadLoggingEnabled(true) }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE profiles(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision TEXT NOT NULL, paused INTEGER NOT NULL DEFAULT 0, last_scan INTEGER NOT NULL DEFAULT 0, context_search INTEGER NOT NULL DEFAULT 0, reset_request TEXT NOT NULL DEFAULT '', context_model TEXT NOT NULL DEFAULT '${ClipModels.MODEL}')")
-        db.execSQL("CREATE TABLE folders(profile TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, uri TEXT NOT NULL, name TEXT NOT NULL, error TEXT, paused INTEGER NOT NULL DEFAULT 0, last_scan INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(profile,uri))")
+        db.execSQL("CREATE TABLE folders(profile TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, uri TEXT NOT NULL, name TEXT NOT NULL, error TEXT, paused INTEGER NOT NULL DEFAULT 0, last_scan INTEGER NOT NULL DEFAULT 0, kind TEXT NOT NULL DEFAULT 'TREE', PRIMARY KEY(profile,uri))")
         db.execSQL("CREATE TABLE assets(id INTEGER PRIMARY KEY AUTOINCREMENT, profile TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, root TEXT NOT NULL, uri TEXT NOT NULL, filename TEXT NOT NULL, filename_search TEXT NOT NULL, path TEXT NOT NULL, path_search TEXT NOT NULL, mime TEXT NOT NULL, modified INTEGER NOT NULL, size INTEGER NOT NULL, signature TEXT NOT NULL, animated INTEGER NOT NULL DEFAULT 0, labels TEXT NOT NULL DEFAULT '', ocr TEXT NOT NULL DEFAULT '', ocr_override TEXT, ocr_search TEXT NOT NULL DEFAULT '', title TEXT, description TEXT, tags TEXT, searchable TEXT NOT NULL DEFAULT '', pending INTEGER NOT NULL DEFAULT 1, failure TEXT, seen TEXT NOT NULL, UNIQUE(profile,uri))")
         db.execSQL("CREATE INDEX asset_order ON assets(profile,modified DESC,id DESC)")
         db.execSQL("CREATE INDEX asset_pending ON assets(profile,pending,id)")
@@ -31,7 +31,19 @@ class LocalStore private constructor(private val context: android.app.Applicatio
         db.execSQL("CREATE TABLE scans(profile TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE, revision TEXT NOT NULL, generation TEXT NOT NULL)")
         db.execSQL("CREATE TABLE directories(profile TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, root TEXT NOT NULL, document TEXT NOT NULL, path TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(profile,root,document))")
         createEmbeddings(db)
+        createSelections(db)
     }
+    private fun createSelections(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE selected_media(profile TEXT NOT NULL, root TEXT NOT NULL, uri TEXT NOT NULL, added INTEGER NOT NULL, PRIMARY KEY(profile,root,uri), FOREIGN KEY(profile,root) REFERENCES folders(profile,uri) ON DELETE CASCADE)")
+    }
+    data class SelectedMedia(val uri: String,val added: Long)
+    fun selectedMedia(profile: String,root: String,offset: Int=0,limit: Int=100): List<SelectedMedia> =
+        rows("SELECT uri,added FROM selected_media WHERE profile=? AND root=? ORDER BY rowid LIMIT ? OFFSET ?",listOf(profile,root,limit.toString(),offset.toString())).use { c -> buildList {
+            while(c.moveToNext()) add(SelectedMedia(c.getString(0),c.getLong(1)))
+        } }
+    fun selectedUris(profile: String?=null): Set<String> = rows("SELECT DISTINCT uri FROM selected_media"+(if(profile!=null) " WHERE profile=?" else ""),listOfNotNull(profile)).use { c -> buildSet {
+        while(c.moveToNext()) add(c.getString(0))
+    } }
     private fun createEmbeddings(db: SQLiteDatabase) { db.execSQL("CREATE TABLE embeddings(asset INTEGER PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE, model TEXT NOT NULL, signature TEXT NOT NULL, vector BLOB, error TEXT)") }
     override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) {
         if(old<2) {
@@ -42,6 +54,10 @@ class LocalStore private constructor(private val context: android.app.Applicatio
         if(old<3) { db.execSQL("ALTER TABLE profiles ADD COLUMN context_search INTEGER NOT NULL DEFAULT 0"); createEmbeddings(db) }
         if(old<4) db.execSQL("CREATE INDEX asset_profile_id ON assets(profile,id)")
         if(old<5) db.execSQL("ALTER TABLE profiles ADD COLUMN reset_request TEXT NOT NULL DEFAULT ''")
+        if(old<7) {
+            db.execSQL("ALTER TABLE folders ADD COLUMN kind TEXT NOT NULL DEFAULT 'TREE'")
+            createSelections(db)
+        }
         if(old<6) db.execSQL("ALTER TABLE profiles ADD COLUMN context_model TEXT NOT NULL DEFAULT '${ClipModels.MODEL}'")
     }
     private var lastSignal = 0L
@@ -65,8 +81,8 @@ class LocalStore private constructor(private val context: android.app.Applicatio
     } }
     private fun library(c: Cursor): Library {
         val id=c.text("id")
-        val folders=rows("SELECT uri,name,paused,last_scan FROM folders WHERE profile=? ORDER BY rowid",listOf(id)).use { f -> buildList {
-            while(f.moveToNext()) add(Folder(f.text("uri"),f.text("name"),f.number("paused")!=0L,f.number("last_scan")))
+        val folders=rows("SELECT uri,name,paused,last_scan,kind FROM folders WHERE profile=? ORDER BY rowid",listOf(id)).use { f -> buildList {
+            while(f.moveToNext()) add(Folder(f.text("uri"),f.text("name"),f.number("paused")!=0L,f.number("last_scan"),CollectionKind.valueOf(f.text("kind"))))
         } }
         return Library(id,c.text("name"),c.text("revision"),folders,c.number("paused")!=0L,c.number("last_scan"),c.number("context_search")!=0L,c.text("context_model"))
     }
@@ -76,12 +92,20 @@ class LocalStore private constructor(private val context: android.app.Applicatio
     fun active(id: String, revision: String) = rows("SELECT paused,revision FROM profiles WHERE id=?",listOf(id)).use {
         it.moveToFirst() && it.getInt(0)==0 && it.getString(1)==revision
     }
-    fun save(id: String, name: String, folders: List<Folder>, contextSearch: Boolean?=null, contextModel: String?=null): Library {
+    fun save(id: String, name: String, folders: List<Folder>, contextSearch: Boolean?=null, contextModel: String?=null, selections: Map<String,List<String>> = emptyMap()): Library {
         UUID.fromString(id); require(name.isNotBlank() && folders.isNotEmpty())
         require(folders.distinctBy { it.uri }.size==folders.size)
         transaction { db ->
             val prior=libraries().firstOrNull { it.id==id }
-            val same=prior?.folders?.map { it.uri }?.toSet()==folders.map { it.uri }.toSet()
+            selections.forEach { (root,uris) ->
+                require(folders.any { it.uri==root && it.kind==CollectionKind.SELECTION })
+                require(uris.isNotEmpty() && uris.all { android.net.Uri.parse(it).scheme=="content" })
+            }
+            val membershipChanged=selections.any { (root,uris) ->
+                val existing=rows("SELECT uri FROM selected_media WHERE profile=? AND root=?",listOf(id,root)).use { c -> buildSet { while(c.moveToNext()) add(c.getString(0)) } }
+                uris.any { it !in existing }
+            }
+            val same=prior?.folders?.map { it.uri to it.kind }?.toSet()==folders.map { it.uri to it.kind }.toSet() && !membershipChanged
             val enabled=contextSearch ?: prior?.contextSearch ?: false
             val model=contextModel ?: prior?.contextModel ?: ClipModels.MODEL; ClipCatalog.get(model)
             val revision=prior?.revision?.takeIf { same && enabled==prior.contextSearch && model==prior.contextModel } ?: UUID.randomUUID().toString()
@@ -90,8 +114,14 @@ class LocalStore private constructor(private val context: android.app.Applicatio
             val removed=prior?.folders.orEmpty().filter { old -> folders.none { it.uri==old.uri } }
             removed.forEach { db.delete("assets","profile=? AND root=?",arrayOf(id,it.uri)); db.delete("folders","profile=? AND uri=?",arrayOf(id,it.uri)) }
             folders.forEach { f ->
-                db.insertWithOnConflict("folders",null,ContentValues().apply { put("profile",id); put("uri",f.uri); put("name",f.name) },SQLiteDatabase.CONFLICT_IGNORE)
+                db.insertWithOnConflict("folders",null,ContentValues().apply { put("profile",id); put("uri",f.uri); put("name",f.name); put("kind",f.kind.name) },SQLiteDatabase.CONFLICT_IGNORE)
                 db.update("folders",ContentValues().apply { put("name",f.name) },"profile=? AND uri=?",arrayOf(id,f.uri))
+            }
+            selections.forEach { (root,uris) ->
+                val now=System.currentTimeMillis()
+                uris.distinct().forEach { uri -> db.insertWithOnConflict("selected_media",null,ContentValues().apply {
+                    put("profile",id); put("root",root); put("uri",uri); put("added",now)
+                },SQLiteDatabase.CONFLICT_IGNORE) }
             }
             if(!same) { db.delete("scans","profile=?",arrayOf(id)); db.delete("directories","profile=?",arrayOf(id)); db.update("profiles",ContentValues().apply { put("last_scan",0) },"id=?",arrayOf(id)) }
             else db.update("scans",ContentValues().apply { put("revision",revision) },"profile=?",arrayOf(id))
@@ -194,7 +224,7 @@ class LocalStore private constructor(private val context: android.app.Applicatio
                 db.delete("directories","profile=?",arrayOf(profile.id)); db.delete("scans","profile=?",arrayOf(profile.id))
                 db.insertOrThrow("scans",null,ContentValues().apply { put("profile",profile.id); put("revision",profile.revision); put("generation",generation) })
                 db.update("folders",ContentValues().apply { putNull("error") },"profile=?",arrayOf(profile.id))
-                profile.folders.filterNot { it.paused }.forEach { folder -> enqueue(profile.id,Directory(folder.uri,android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(folder.uri)),folder.name)) }
+                profile.folders.filterNot { it.paused }.forEach { folder -> enqueue(profile.id,Directory(folder.uri,folder.documentId,folder.name)) }
             }
         }; changed(profile.id); return generation
     }
@@ -248,7 +278,7 @@ class LocalStore private constructor(private val context: android.app.Applicatio
             if(!paused && rows("SELECT 1 FROM scans WHERE profile=?",listOf(profile)).use { it.moveToFirst() } &&
                 !rows("SELECT 1 FROM directories WHERE profile=? AND root=?",listOf(profile,root)).use { it.moveToFirst() }) {
                 val folder=library(profile).folders.single { it.uri==root }
-                enqueue(profile,Directory(root,android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(root)),folder.name))
+                enqueue(profile,Directory(root,folder.documentId,folder.name))
             }
         }; changed(profile)
     }
@@ -261,7 +291,7 @@ class LocalStore private constructor(private val context: android.app.Applicatio
             db.delete("embeddings","asset IN (SELECT id FROM assets WHERE profile=? AND root=?)",arrayOf(profile,root))
             db.insertWithOnConflict("scans",null,ContentValues().apply { put("profile",profile); put("revision",library.revision); put("generation",UUID.randomUUID().toString()) },SQLiteDatabase.CONFLICT_IGNORE)
             db.delete("directories","profile=? AND root=?",arrayOf(profile,root))
-            enqueue(profile,Directory(root,android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(root)),folder.name))
+            enqueue(profile,Directory(root,folder.documentId,folder.name))
         }; changed(profile)
     }
     fun retryFailures(profile: String) {

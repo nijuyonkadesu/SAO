@@ -50,6 +50,9 @@ class SourceExtensions @Inject constructor(@ApplicationContext private val conte
                 data.getString(ExtensionProtocol.LEGACY_KINDS).orEmpty().split(',').filter(String::isNotBlank).toSet())
         }
     }
+    suspend fun installedRays(): Set<String> = withContext(Dispatchers.IO) {
+        one.njk.sao.rays.RaysClient.packages.filter { one.njk.sao.rays.RaysClient.installed(context,it) }.toSet()
+    }
     suspend fun requireInstalled(config: ExtensionConfig): InstalledSourceExtension = withContext(Dispatchers.IO) {
         val manager = context.packageManager
         val service = try { manager.getServiceInfo(config.component,PackageManager.GET_META_DATA) }
