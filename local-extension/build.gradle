@@ -2,12 +2,15 @@ plugins { alias libs.plugins.android.application }
 android {
     namespace 'one.njk.sao.extension.local'
     compileSdk 37
+    ndkVersion '28.2.13676358'
+    externalNativeBuild { cmake { path file('src/main/cpp/CMakeLists.txt'); version '3.22.1' } }
+    packaging { jniLibs { useLegacyPackaging true } }
     defaultConfig {
         applicationId 'one.njk.sao.extension.local'
         minSdk 30
         targetSdk 36
-        versionCode 1
-        versionName '1.0.0'
+        versionCode 3
+        versionName '1.1.0'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     buildTypes {
@@ -38,6 +41,8 @@ dependencies {
     implementation libs.work.runtime
     implementation libs.mlkit.labeling
     implementation libs.mlkit.ocr
+    implementation libs.onnxruntime
+    implementation libs.okhttp
     testImplementation libs.junit
     androidTestImplementation libs.bundles.testing
 }

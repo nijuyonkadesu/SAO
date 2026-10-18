@@ -10,7 +10,7 @@ import android.net.Uri
 
 object MediaBitmaps {
     /** Bounded software bitmap, including a representative video/GIF frame. Run on IO. */
-    fun read(context: Context, uri: Uri, mime: String, edge: Int): Bitmap {
+    fun read(context: Context, uri: Uri, mime: String, edge: Int, background: Int=Color.WHITE): Bitmap {
         val source = if(mime.startsWith("video/")) MediaMetadataRetriever().use { retriever ->
             retriever.setDataSource(context,uri)
             retriever.getScaledFrameAtTime(0,MediaMetadataRetriever.OPTION_CLOSEST_SYNC,edge,edge)
@@ -23,7 +23,7 @@ object MediaBitmaps {
         // Composite transparent sticker backgrounds before OCR/labeling/JPEG thumbnails.
         if(!source.hasAlpha()) return source
         return Bitmap.createBitmap(source.width,source.height,Bitmap.Config.ARGB_8888).also { result ->
-            Canvas(result).apply { drawColor(Color.WHITE); drawBitmap(source,0f,0f,null) }; source.recycle()
+            Canvas(result).apply { drawColor(background); drawBitmap(source,0f,0f,null) }; source.recycle()
         }
     }
     fun animated(context: Context, asset: LocalAsset): Boolean {

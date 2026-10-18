@@ -1,5 +1,9 @@
 # Third-party assets
 
+## Local Context search
+
+The Local Sticker extension uses the default [Immich ONNX export](https://huggingface.co/immich-app/ViT-B-32__openai/tree/a857c8de2c07bbcfa6646adfcf31b798845afa1e) of OpenAI CLIP ViT-B/32, downloaded separately. CLIP is copyright OpenAI, 2021, [MIT](local-extension/src/main/assets/licenses/clip.txt). `ClipTokenizer` implements its byte-level BPE using the matching Hugging Face tokenizer vocabulary and merges. Inference uses Microsoft's [ONNX Runtime](https://github.com/microsoft/onnxruntime), [MIT](local-extension/src/main/assets/licenses/onnxruntime.txt). These license texts are bundled in the extension APK.
+
 ## Material Symbols
 
 The `ic_picker_*.xml`, `ic_floating_picker.xml` and the Immich/Local Sticker extensions’ `ic_extension.xml` vectors are Google Material Symbols Rounded, using optical size 24, weight 400, grade 0 and fill 0. Source: [google/material-design-icons, commit 49d4db3](https://github.com/google/material-design-icons/tree/49d4db35df873165d6bd6ba09b063c7dafbac2f4/symbols/android).

@@ -3,9 +3,9 @@ package one.njk.sao.extension.local
 import one.njk.sao.source.MediaSearch
 import java.util.Locale
 
-data class Folder(val uri: String, val name: String)
+data class Folder(val uri: String, val name: String, val paused: Boolean=false, val lastScan: Long=0)
 data class Library(val id: String, val name: String, val revision: String, val folders: List<Folder>,
-    val paused: Boolean = false, val lastScan: Long = 0)
+    val paused: Boolean = false, val lastScan: Long = 0, val contextSearch: Boolean=false)
 data class LocalAsset(val id: Long, val profile: String, val root: String, val uri: String,
     val filename: String, val path: String, val mime: String, val modified: Long, val size: Long,
     val signature: String, val animated: Boolean = false, val labels: String = "", val ocr: String = "",
@@ -15,7 +15,16 @@ data class LocalAsset(val id: Long, val profile: String, val root: String, val u
     val effectiveTags get() = (tags ?: labels).split('\n').filter(String::isNotBlank).distinct()
     val effectiveOcr get() = ocrOverride ?: ocr
 }
-data class IndexStatus(val total: Int, val pending: Int, val failed: Int, val scanning: Boolean, val folderErrors: Int)
+data class IndexStatus(val total: Int, val pending: Int, val failed: Int, val scanning: Boolean, val folderErrors: Int,
+    val images: Int=0, val animated: Int=0, val videos: Int=0, val scanned: Boolean=false,
+    val permissionRequired: Boolean=false, val paused: Boolean=false, val contextSearch: Boolean=false,
+    val contextProcessed: Int=0, val contextFailed: Int=0) {
+    /** Successfully analyzed files; failures and remaining files are separate counts. */
+    val processed get() = (total-pending-failed).coerceAtLeast(0)
+    val contextPending get() = (total-contextProcessed-contextFailed).coerceAtLeast(0)
+}
+data class IndexOverview(val library: Library, val total: IndexStatus, val folders: Map<String,IndexStatus>)
+enum class IndexWork { IDLE, WAITING, RUNNING }
 data class Analysis(val labels: List<String>, val text: String)
 
 object LocalFormats {

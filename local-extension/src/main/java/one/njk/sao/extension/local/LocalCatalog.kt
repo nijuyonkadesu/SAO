@@ -57,6 +57,9 @@ class LocalCatalog(private val store: LocalStore, private val library: Library, 
 
 class LocalExtensionService : ExtensionService() {
     private val store by lazy { LocalStore.get(this) }
+    private val textSession by lazy { ClipTextSession(applicationContext) }
+    private val contextSearch by lazy { LocalContextSearch(store,textSession) }
+    override fun onDestroy() { super.onDestroy(); textSession.close() }
     override fun acceptsCaller(uid: Int) = super.acceptsCaller(uid)?.takeIf { it in setOf("one.njk.sao","one.njk.sao.testing",packageName) }
     override fun descriptor()=JSONObject().put("name","Local Sticker")
     override suspend fun execute(profile: String, operation: String, payload: JSONObject, caller: String): JSONObject {
@@ -88,10 +91,19 @@ class LocalExtensionService : ExtensionService() {
                 FolderIndexer.schedule(this,library)
                 val updates=store.changesUri(library)
                 grantUriPermission(caller,updates,Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                SourceWire.capabilities(SourceCapabilities(setOf(SearchMode.FILENAME,SearchMode.DESCRIPTION,SearchMode.PATH,SearchMode.OCR),
-                    setOf(SearchFacet.MEDIA,SearchFacet.EMOJI_TAGS),random=true,sequence=true,defaultMode=SearchMode.DESCRIPTION,changesUri=updates.toString()))
+                val context=library.contextSearch && ClipModels.ready(this)
+                val modes=setOf(SearchMode.FILENAME,SearchMode.DESCRIPTION,SearchMode.PATH,SearchMode.OCR)+(if(context) setOf(SearchMode.CONTEXT) else emptySet())
+                SourceWire.capabilities(SourceCapabilities(modes,setOf(SearchFacet.MEDIA,SearchFacet.EMOJI_TAGS),random=true,sequence=true,
+                    defaultMode=if(context) SearchMode.CONTEXT else SearchMode.DESCRIPTION,changesUri=updates.toString()))
             }
-            ExtensionProtocol.SEARCH -> { FolderIndexer.schedule(this,library); SourceWire.page(catalog.page(SourceWire.query(payload.getJSONObject("query")),SourceWire.nullable(payload,"cursor"))) }
+            ExtensionProtocol.SEARCH -> {
+                FolderIndexer.schedule(this,library)
+                val query=SourceWire.query(payload.getJSONObject("query")); val cursor=SourceWire.nullable(payload,"cursor")
+                if(query.mode==SearchMode.CONTEXT && query.text.isNotBlank() && query.randomRequest==null) {
+                    if(!library.contextSearch || !ClipModels.ready(this)) throw ExtensionFailure("UNSUPPORTED")
+                    SourceWire.page(contextSearch.page(library,source,query,cursor))
+                } else SourceWire.page(catalog.page(query,cursor))
+            }
             ExtensionProtocol.FILTERS -> JSONObject().put("values",SourceWire.strings(store.emojiFilters(profile)))
             ExtensionProtocol.SEQUENCE_OPEN -> catalog.open(SourceWire.item(payload.getJSONObject("item")))
             ExtensionProtocol.SEQUENCE_PAGE -> SourceWire.sequence(catalog.sequence(payload.getJSONObject("token"),SequenceDirection.valueOf(payload.getString("direction")),payload.getString("cursor")))

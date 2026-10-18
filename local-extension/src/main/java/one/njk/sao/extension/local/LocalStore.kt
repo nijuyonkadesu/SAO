@@ -15,22 +15,34 @@ import one.njk.sao.source.digest
 import java.util.UUID
 
 /** Extension-private durable metadata. Callers perform all database work on IO. Originals stay in SAF. */
-class LocalStore private constructor(private val context: android.app.Application) : SQLiteOpenHelper(context, "local-library.db", null, 1) {
+class LocalStore private constructor(private val context: android.app.Application) : SQLiteOpenHelper(context, "local-library.db", null, 5) {
     val changes = MutableStateFlow(0L)
     init { setWriteAheadLoggingEnabled(true) }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE profiles(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision TEXT NOT NULL, paused INTEGER NOT NULL DEFAULT 0, last_scan INTEGER NOT NULL DEFAULT 0)")
-        db.execSQL("CREATE TABLE folders(profile TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, uri TEXT NOT NULL, name TEXT NOT NULL, error TEXT, PRIMARY KEY(profile,uri))")
+        db.execSQL("CREATE TABLE profiles(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision TEXT NOT NULL, paused INTEGER NOT NULL DEFAULT 0, last_scan INTEGER NOT NULL DEFAULT 0, context_search INTEGER NOT NULL DEFAULT 0, reset_request TEXT NOT NULL DEFAULT '')")
+        db.execSQL("CREATE TABLE folders(profile TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, uri TEXT NOT NULL, name TEXT NOT NULL, error TEXT, paused INTEGER NOT NULL DEFAULT 0, last_scan INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(profile,uri))")
         db.execSQL("CREATE TABLE assets(id INTEGER PRIMARY KEY AUTOINCREMENT, profile TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, root TEXT NOT NULL, uri TEXT NOT NULL, filename TEXT NOT NULL, filename_search TEXT NOT NULL, path TEXT NOT NULL, path_search TEXT NOT NULL, mime TEXT NOT NULL, modified INTEGER NOT NULL, size INTEGER NOT NULL, signature TEXT NOT NULL, animated INTEGER NOT NULL DEFAULT 0, labels TEXT NOT NULL DEFAULT '', ocr TEXT NOT NULL DEFAULT '', ocr_override TEXT, ocr_search TEXT NOT NULL DEFAULT '', title TEXT, description TEXT, tags TEXT, searchable TEXT NOT NULL DEFAULT '', pending INTEGER NOT NULL DEFAULT 1, failure TEXT, seen TEXT NOT NULL, UNIQUE(profile,uri))")
         db.execSQL("CREATE INDEX asset_order ON assets(profile,modified DESC,id DESC)")
         db.execSQL("CREATE INDEX asset_pending ON assets(profile,pending,id)")
+        db.execSQL("CREATE INDEX asset_profile_id ON assets(profile,id)")
         db.execSQL("CREATE VIRTUAL TABLE metadata USING fts4(description,ocr,tokenize=unicode61)")
         db.execSQL("CREATE TRIGGER asset_delete AFTER DELETE ON assets BEGIN DELETE FROM metadata WHERE rowid=old.id; END")
         db.execSQL("CREATE TABLE scans(profile TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE, revision TEXT NOT NULL, generation TEXT NOT NULL)")
         db.execSQL("CREATE TABLE directories(profile TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, root TEXT NOT NULL, document TEXT NOT NULL, path TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(profile,root,document))")
+        createEmbeddings(db)
     }
-    override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) = Unit
+    private fun createEmbeddings(db: SQLiteDatabase) { db.execSQL("CREATE TABLE embeddings(asset INTEGER PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE, model TEXT NOT NULL, signature TEXT NOT NULL, vector BLOB, error TEXT)") }
+    override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) {
+        if(old<2) {
+            db.execSQL("ALTER TABLE folders ADD COLUMN paused INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE folders ADD COLUMN last_scan INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE folders SET last_scan=(SELECT last_scan FROM profiles WHERE id=folders.profile)")
+        }
+        if(old<3) { db.execSQL("ALTER TABLE profiles ADD COLUMN context_search INTEGER NOT NULL DEFAULT 0"); createEmbeddings(db) }
+        if(old<4) db.execSQL("CREATE INDEX asset_profile_id ON assets(profile,id)")
+        if(old<5) db.execSQL("ALTER TABLE profiles ADD COLUMN reset_request TEXT NOT NULL DEFAULT ''")
+    }
     private var lastSignal = 0L
     @Synchronized private fun changed(profile: String?=null, force: Boolean=true) {
         val now=android.os.SystemClock.elapsedRealtime()
@@ -52,10 +64,10 @@ class LocalStore private constructor(private val context: android.app.Applicatio
     } }
     private fun library(c: Cursor): Library {
         val id=c.text("id")
-        val folders=rows("SELECT uri,name FROM folders WHERE profile=? ORDER BY rowid",listOf(id)).use { f -> buildList {
-            while(f.moveToNext()) add(Folder(f.text("uri"),f.text("name")))
+        val folders=rows("SELECT uri,name,paused,last_scan FROM folders WHERE profile=? ORDER BY rowid",listOf(id)).use { f -> buildList {
+            while(f.moveToNext()) add(Folder(f.text("uri"),f.text("name"),f.number("paused")!=0L,f.number("last_scan")))
         } }
-        return Library(id,c.text("name"),c.text("revision"),folders,c.number("paused")!=0L,c.number("last_scan"))
+        return Library(id,c.text("name"),c.text("revision"),folders,c.number("paused")!=0L,c.number("last_scan"),c.number("context_search")!=0L)
     }
     fun library(id: String) = rows("SELECT * FROM profiles WHERE id=?",listOf(id)).use { c ->
         if(!c.moveToFirst()) throw ExtensionFailure("PROFILE_MISSING") else library(c)
@@ -63,15 +75,16 @@ class LocalStore private constructor(private val context: android.app.Applicatio
     fun active(id: String, revision: String) = rows("SELECT paused,revision FROM profiles WHERE id=?",listOf(id)).use {
         it.moveToFirst() && it.getInt(0)==0 && it.getString(1)==revision
     }
-    fun save(id: String, name: String, folders: List<Folder>): Library {
+    fun save(id: String, name: String, folders: List<Folder>, contextSearch: Boolean?=null): Library {
         UUID.fromString(id); require(name.isNotBlank() && folders.isNotEmpty())
         require(folders.distinctBy { it.uri }.size==folders.size)
         transaction { db ->
             val prior=libraries().firstOrNull { it.id==id }
             val same=prior?.folders?.map { it.uri }?.toSet()==folders.map { it.uri }.toSet()
-            val revision=prior?.revision?.takeIf { same } ?: UUID.randomUUID().toString()
-            if(prior==null) db.insertOrThrow("profiles",null,ContentValues().apply { put("id",id); put("name",name.trim()); put("revision",revision) })
-            else db.update("profiles",ContentValues().apply { put("name",name.trim()); put("revision",revision) },"id=?",arrayOf(id))
+            val enabled=contextSearch ?: prior?.contextSearch ?: false
+            val revision=prior?.revision?.takeIf { same && enabled==prior.contextSearch } ?: UUID.randomUUID().toString()
+            if(prior==null) db.insertOrThrow("profiles",null,ContentValues().apply { put("id",id); put("name",name.trim()); put("revision",revision); put("context_search",if(enabled) 1 else 0) })
+            else db.update("profiles",ContentValues().apply { put("name",name.trim()); put("revision",revision); put("context_search",if(enabled) 1 else 0) },"id=?",arrayOf(id))
             val removed=prior?.folders.orEmpty().filter { old -> folders.none { it.uri==old.uri } }
             removed.forEach { db.delete("assets","profile=? AND root=?",arrayOf(id,it.uri)); db.delete("folders","profile=? AND uri=?",arrayOf(id,it.uri)) }
             folders.forEach { f ->
@@ -79,21 +92,58 @@ class LocalStore private constructor(private val context: android.app.Applicatio
                 db.update("folders",ContentValues().apply { put("name",f.name) },"profile=? AND uri=?",arrayOf(id,f.uri))
             }
             if(!same) { db.delete("scans","profile=?",arrayOf(id)); db.delete("directories","profile=?",arrayOf(id)); db.update("profiles",ContentValues().apply { put("last_scan",0) },"id=?",arrayOf(id)) }
+            else db.update("scans",ContentValues().apply { put("revision",revision) },"profile=?",arrayOf(id))
         }
         changed(id); return library(id)
     }
     fun delete(id: String) { writableDatabase.delete("profiles","id=?",arrayOf(id)); changed() }
     fun pause(id: String, paused: Boolean) { writableDatabase.update("profiles",ContentValues().apply { put("paused",if(paused) 1 else 0) },"id=?",arrayOf(id)); changed(id) }
     fun status(id: String): IndexStatus = rows("SELECT count(*),coalesce(sum(pending),0),sum(CASE WHEN failure IS NOT NULL THEN 1 ELSE 0 END) FROM assets WHERE profile=?",listOf(id)).use {
-        it.moveToFirst(); IndexStatus(it.getInt(0),it.getInt(1),it.getInt(2),rows("SELECT 1 FROM scans WHERE profile=?",listOf(id)).use { s -> s.moveToFirst() },
+        it.moveToFirst(); IndexStatus(it.getInt(0),it.getInt(1),it.getInt(2),rows("SELECT 1 FROM scans s JOIN directories d ON d.profile=s.profile JOIN folders f ON f.profile=d.profile AND f.uri=d.root WHERE s.profile=? AND d.done=0 AND f.paused=0 LIMIT 1",listOf(id)).use { s -> s.moveToFirst() },
             rows("SELECT count(*) FROM folders WHERE profile=? AND error IS NOT NULL",listOf(id)).use { e -> e.moveToFirst(); e.getInt(0) })
+    }
+    /** One consistent, grouped snapshot for the visible settings screen, including empty folders. */
+    fun overview(id: String): IndexOverview = transaction {
+        val library=library(id)
+        val scanning=rows("SELECT 1 FROM scans WHERE profile=?",listOf(id)).use { it.moveToFirst() }
+        val counts=rows("""SELECT a.root,count(*),coalesce(sum(a.pending),0),
+            sum(CASE WHEN a.failure IS NOT NULL THEN 1 ELSE 0 END),
+            sum(CASE WHEN a.mime LIKE 'image/%' THEN 1 ELSE 0 END),
+            sum(CASE WHEN a.mime LIKE 'image/%' AND a.animated=1 THEN 1 ELSE 0 END),
+            sum(CASE WHEN a.mime LIKE 'video/%' THEN 1 ELSE 0 END),
+            sum(CASE WHEN e.vector IS NOT NULL AND e.error IS NULL THEN 1 ELSE 0 END),
+            sum(CASE WHEN e.error IS NOT NULL THEN 1 ELSE 0 END)
+            FROM assets a LEFT JOIN embeddings e ON e.asset=a.id AND e.signature=a.signature AND e.model=?
+            WHERE a.profile=? GROUP BY a.root""",listOf(ClipModels.MODEL,id)).use { c -> buildMap {
+            while(c.moveToNext()) put(c.getString(0),IndexStatus(c.getInt(1),c.getInt(2),c.getInt(3),false,0,
+                images=c.getInt(4),animated=c.getInt(5),videos=c.getInt(6),contextProcessed=c.getInt(7),contextFailed=c.getInt(8)))
+        } }
+        val directories=rows("SELECT root,sum(CASE WHEN done=0 THEN 1 ELSE 0 END) FROM directories WHERE profile=? GROUP BY root",listOf(id)).use { c -> buildMap {
+            while(c.moveToNext()) put(c.getString(0),c.getInt(1))
+        } }
+        val folders=rows("SELECT uri,error,paused,last_scan FROM folders WHERE profile=?",listOf(id)).use { c -> buildMap {
+            while(c.moveToNext()) {
+                val root=c.getString(0); val error=c.getString(1)
+                put(root,(counts[root] ?: IndexStatus(0,0,0,false,0)).copy(
+                    scanning=scanning && (directories[root] ?: 0)>0,
+                    scanned=c.getLong(3)>0 || directories[root]==0,
+                    folderErrors=if(error==null) 0 else 1,permissionRequired=error=="PERMISSION_REQUIRED",paused=c.getInt(2)!=0,contextSearch=library.contextSearch))
+            }
+        } }
+        val values=folders.values
+        val outstanding=values.filter { it.scanning || it.pending>0 || it.contextSearch && it.contextPending>0 }
+        IndexOverview(library,IndexStatus(values.sumOf { it.total },values.sumOf { it.pending },values.sumOf { it.failed },
+            values.any { it.scanning && !it.paused },values.sumOf { it.folderErrors },images=values.sumOf { it.images },animated=values.sumOf { it.animated },
+            videos=values.sumOf { it.videos },scanned=library.lastScan>0,permissionRequired=values.any { it.permissionRequired },
+            paused=outstanding.isNotEmpty() && outstanding.all { it.paused },
+            contextSearch=library.contextSearch,contextProcessed=values.sumOf { it.contextProcessed },contextFailed=values.sumOf { it.contextFailed }),folders)
     }
     fun asset(id: Long, profile: String): LocalAsset = rows("SELECT * FROM assets WHERE id=? AND profile=?",listOf(id.toString(),profile)).use {
         if(!it.moveToFirst()) throw ExtensionFailure("HTTP_404") else asset(it)
     }
     private fun asset(c: Cursor) = LocalAsset(c.number("id"),c.text("profile"),c.text("root"),c.text("uri"),c.text("filename"),c.text("path"),c.text("mime"),
         c.number("modified"),c.number("size"),c.text("signature"),c.number("animated")!=0L,c.text("labels"),c.text("ocr"),c.optional("title"),c.optional("description"),c.optional("tags"),c.number("pending")!=0L,c.optional("failure"),c.optional("ocr_override"))
-    fun pending(profile: String): LocalAsset? = rows("SELECT * FROM assets WHERE profile=? AND pending=1 ORDER BY id LIMIT 1",listOf(profile)).use { if(it.moveToFirst()) asset(it) else null }
+    fun pending(profile: String): LocalAsset? = rows("SELECT a.* FROM assets a JOIN folders f ON f.profile=a.profile AND f.uri=a.root WHERE a.profile=? AND a.pending=1 AND f.paused=0 ORDER BY a.id LIMIT 1",listOf(profile)).use { if(it.moveToFirst()) asset(it) else null }
     private fun index(db: SQLiteDatabase, a: LocalAsset) {
         val text=MediaSearch.normalize(listOf(a.filename,a.title.orEmpty(),a.description.orEmpty(),a.effectiveTags.joinToString("\n"),a.effectiveOcr).joinToString("\n"))
         db.update("assets",ContentValues().apply { put("searchable",text); put("ocr_search",MediaSearch.normalize(a.effectiveOcr)) },"id=?",arrayOf(a.id.toString()))
@@ -121,28 +171,39 @@ class LocalStore private constructor(private val context: android.app.Applicatio
         }; changed(a.profile,false)
     }
     data class Directory(val root: String, val document: String, val path: String, val position: Int=0)
-    fun restartScan(profile: String) = transaction { db -> db.delete("scans","profile=?",arrayOf(profile)); db.delete("directories","profile=?",arrayOf(profile)) }
+    /** A WorkManager retry reuses its UUID: reset only on its first execution, not after a constrained stop. */
+    fun beginIndexRequest(profile: Library, request: String) = transaction { db ->
+        val previous=rows("SELECT revision,reset_request FROM profiles WHERE id=?",listOf(profile.id)).use { c ->
+            if(!c.moveToFirst() || c.getString(0)!=profile.revision) throw kotlinx.coroutines.CancellationException("Profile changed")
+            c.getString(1)
+        }
+        if(previous!=request) {
+            db.delete("scans","profile=?",arrayOf(profile.id)); db.delete("directories","profile=?",arrayOf(profile.id))
+            db.update("profiles",ContentValues().apply { put("reset_request",request) },"id=?",arrayOf(profile.id))
+        }
+    }
     fun scan(profile: Library): String {
         var generation=""
         transaction { db ->
+            if(!rows("SELECT revision FROM profiles WHERE id=?",listOf(profile.id)).use { it.moveToFirst() && it.getString(0)==profile.revision }) throw kotlinx.coroutines.CancellationException("Profile changed")
             generation=rows("SELECT generation FROM scans WHERE profile=? AND revision=?",listOf(profile.id,profile.revision)).use { if(it.moveToFirst()) it.getString(0) else "" }
             if(generation.isEmpty()) {
                 generation=UUID.randomUUID().toString()
                 db.delete("directories","profile=?",arrayOf(profile.id)); db.delete("scans","profile=?",arrayOf(profile.id))
                 db.insertOrThrow("scans",null,ContentValues().apply { put("profile",profile.id); put("revision",profile.revision); put("generation",generation) })
                 db.update("folders",ContentValues().apply { putNull("error") },"profile=?",arrayOf(profile.id))
-                profile.folders.forEach { folder -> enqueue(profile.id,Directory(folder.uri,android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(folder.uri)),folder.name)) }
+                profile.folders.filterNot { it.paused }.forEach { folder -> enqueue(profile.id,Directory(folder.uri,android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(folder.uri)),folder.name)) }
             }
         }; changed(profile.id); return generation
     }
     fun enqueue(profile: String, d: Directory) { writableDatabase.insertWithOnConflict("directories",null,ContentValues().apply {
         put("profile",profile); put("root",d.root); put("document",d.document); put("path",d.path)
     },SQLiteDatabase.CONFLICT_IGNORE) }
-    fun directory(profile: String): Directory? = rows("SELECT root,document,path,position FROM directories WHERE profile=? AND done=0 ORDER BY rowid LIMIT 1",listOf(profile)).use {
+    fun directory(profile: String): Directory? = rows("SELECT d.root,d.document,d.path,d.position FROM directories d JOIN folders f ON f.profile=d.profile AND f.uri=d.root WHERE d.profile=? AND d.done=0 AND f.paused=0 ORDER BY d.rowid LIMIT 1",listOf(profile)).use {
         if(it.moveToFirst()) Directory(it.getString(0),it.getString(1),it.getString(2),it.getInt(3)) else null
     }
     fun checkpoint(profile: String, d: Directory, position: Int) { writableDatabase.update("directories",ContentValues().apply { put("position",position) },"profile=? AND root=? AND document=?",arrayOf(profile,d.root,d.document)) }
-    fun directoryDone(profile: String, d: Directory) { writableDatabase.update("directories",ContentValues().apply { put("done",1) },"profile=? AND root=? AND document=?",arrayOf(profile,d.root,d.document)) }
+    fun directoryDone(profile: String, d: Directory) { writableDatabase.update("directories",ContentValues().apply { put("done",1) },"profile=? AND root=? AND document=?",arrayOf(profile,d.root,d.document)); changed(profile,false) }
     fun folderError(profile: String, root: String, error: String) { writableDatabase.update("folders",ContentValues().apply { put("error",error) },"profile=? AND uri=?",arrayOf(profile,root)); changed(profile) }
     fun discovered(profile: String, generation: String, root: String, uri: String, name: String, path: String, mime: String, modified: Long, size: Long, revision: String?=null) {
         val updated=transaction { db ->
@@ -161,6 +222,7 @@ class LocalStore private constructor(private val context: android.app.Applicatio
             else {
                 if(prior.signature!=signature) { values.put("pending",1); values.putNull("failure") }
                 db.update("assets",values,"id=?",arrayOf(prior.id.toString()))
+                if(prior.signature!=signature) db.delete("embeddings","asset=?",arrayOf(prior.id.toString()))
             }
             val current=rows("SELECT * FROM assets WHERE profile=? AND uri=?",listOf(profile,uri)).use { it.moveToFirst(); asset(it) }
             index(db,current)
@@ -171,16 +233,80 @@ class LocalStore private constructor(private val context: android.app.Applicatio
     fun scanFinished(profile: String, generation: String) {
         transaction { db ->
             // Only successful, completely traversed roots can remove absent files.
-            db.delete("assets","profile=? AND seen<>? AND root IN (SELECT uri FROM folders WHERE profile=? AND error IS NULL)",arrayOf(profile,generation,profile))
-            db.delete("scans","profile=?",arrayOf(profile))
+            val complete="SELECT f.uri FROM folders f WHERE f.profile=? AND f.paused=0 AND f.error IS NULL AND EXISTS (SELECT 1 FROM directories d WHERE d.profile=f.profile AND d.root=f.uri) AND NOT EXISTS (SELECT 1 FROM directories d WHERE d.profile=f.profile AND d.root=f.uri AND d.done=0)"
+            db.delete("assets","profile=? AND seen<>? AND root IN ($complete)",arrayOf(profile,generation,profile))
+            db.execSQL("UPDATE folders SET last_scan=? WHERE profile=? AND uri IN ($complete)",arrayOf<Any>(System.currentTimeMillis(),profile,profile))
+            db.delete("scans","profile=? AND NOT EXISTS (SELECT 1 FROM directories WHERE profile=? AND done=0)",arrayOf(profile,profile))
             db.update("profiles",ContentValues().apply { put("last_scan",System.currentTimeMillis()) },"id=?",arrayOf(profile))
         }; changed(profile)
     }
-    fun retryFailures(profile: String) { writableDatabase.update("assets",ContentValues().apply { put("pending",1); putNull("failure") },"profile=? AND failure IS NOT NULL",arrayOf(profile)); changed(profile) }
+    fun pauseFolder(profile: String, root: String, paused: Boolean) {
+        transaction { db ->
+            db.update("folders",ContentValues().apply { put("paused",if(paused) 1 else 0) },"profile=? AND uri=?",arrayOf(profile,root))
+            if(!paused && rows("SELECT 1 FROM scans WHERE profile=?",listOf(profile)).use { it.moveToFirst() } &&
+                !rows("SELECT 1 FROM directories WHERE profile=? AND root=?",listOf(profile,root)).use { it.moveToFirst() }) {
+                val folder=library(profile).folders.single { it.uri==root }
+                enqueue(profile,Directory(root,android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(root)),folder.name))
+            }
+        }; changed(profile)
+    }
+    /** Caller holds the indexer's profile lock: no previous analysis may finish over this restart. */
+    fun restartFolder(profile: String, root: String) {
+        transaction { db ->
+            val library=library(profile); val folder=library.folders.single { it.uri==root }
+            db.update("folders",ContentValues().apply { put("paused",0); put("last_scan",0); putNull("error") },"profile=? AND uri=?",arrayOf(profile,root))
+            db.update("assets",ContentValues().apply { put("pending",1); putNull("failure"); put("seen","") },"profile=? AND root=?",arrayOf(profile,root))
+            db.delete("embeddings","asset IN (SELECT id FROM assets WHERE profile=? AND root=?)",arrayOf(profile,root))
+            db.insertWithOnConflict("scans",null,ContentValues().apply { put("profile",profile); put("revision",library.revision); put("generation",UUID.randomUUID().toString()) },SQLiteDatabase.CONFLICT_IGNORE)
+            db.delete("directories","profile=? AND root=?",arrayOf(profile,root))
+            enqueue(profile,Directory(root,android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(root)),folder.name))
+        }; changed(profile)
+    }
+    fun retryFailures(profile: String) {
+        transaction { db ->
+            db.update("assets",ContentValues().apply { put("pending",1); putNull("failure") },"profile=? AND failure IS NOT NULL",arrayOf(profile))
+            db.delete("embeddings","error IS NOT NULL AND asset IN (SELECT id FROM assets WHERE profile=?)",arrayOf(profile))
+        }; changed(profile)
+    }
     fun analysisUnavailable(library: Library) {
         writableDatabase.update("assets",ContentValues().apply { put("pending",0); put("failure","ANALYSIS_UNAVAILABLE") },
-            "profile=? AND pending=1 AND EXISTS (SELECT 1 FROM profiles WHERE id=? AND revision=? AND paused=0)",arrayOf(library.id,library.id,library.revision))
+            "profile=? AND pending=1 AND root IN (SELECT uri FROM folders WHERE profile=? AND paused=0) AND EXISTS (SELECT 1 FROM profiles WHERE id=? AND revision=? AND paused=0)",arrayOf(library.id,library.id,library.id,library.revision))
         changed(library.id)
+    }
+    fun pendingEmbedding(profile: String, after: Long=0): LocalAsset? = rows("""SELECT a.* FROM assets a
+        JOIN folders f ON f.profile=a.profile AND f.uri=a.root
+        LEFT JOIN embeddings e ON e.asset=a.id AND e.model=? AND e.signature=a.signature
+        WHERE a.profile=? AND a.id>? AND f.paused=0 AND e.asset IS NULL ORDER BY a.id LIMIT 1""",listOf(ClipModels.MODEL,profile,after.toString())).use { if(it.moveToFirst()) asset(it) else null }
+    fun embedded(asset: LocalAsset, vector: FloatArray?, error: String?) {
+        require(vector==null || vector.size==512 && vector.all { it.isFinite() })
+        transaction { db ->
+            if(!rows("SELECT 1 FROM assets WHERE id=? AND signature=?",listOf(asset.id.toString(),asset.signature)).use { it.moveToFirst() }) return@transaction
+            val bytes=vector?.let { values -> java.nio.ByteBuffer.allocate(values.size*4).order(java.nio.ByteOrder.LITTLE_ENDIAN).apply { asFloatBuffer().put(values) }.array() }
+            db.insertWithOnConflict("embeddings",null,ContentValues().apply {
+                put("asset",asset.id); put("model",ClipModels.MODEL); put("signature",asset.signature); put("vector",bytes); put("error",error)
+            },SQLiteDatabase.CONFLICT_REPLACE)
+        }; changed(asset.profile,false)
+    }
+    fun embeddingsUnavailable(library: Library) {
+        writableDatabase.execSQL("""INSERT OR REPLACE INTO embeddings(asset,model,signature,error)
+            SELECT a.id,?,a.signature,'MODEL_UNAVAILABLE' FROM assets a JOIN folders f ON f.profile=a.profile AND f.uri=a.root
+            WHERE a.profile=? AND f.paused=0 AND EXISTS (SELECT 1 FROM profiles WHERE id=? AND revision=? AND paused=0)
+            AND NOT EXISTS (SELECT 1 FROM embeddings e WHERE e.asset=a.id AND e.model=? AND e.signature=a.signature)""",
+            arrayOf(ClipModels.MODEL,library.id,library.id,library.revision,ClipModels.MODEL))
+        changed(library.id)
+    }
+    fun lastAssetId(profile: String)=rows("SELECT coalesce(max(id),0) FROM assets WHERE profile=?",listOf(profile)).use { it.moveToFirst(); it.getLong(0) }
+    /** Bounded keyset reads avoid Android CursorWindow repeatedly walking a large BLOB result set. */
+    fun vectors(profile: String, query: MediaQuery, after: Long, until: Long): Cursor {
+        val args=mutableListOf(ClipModels.MODEL,profile,after.toString(),until.toString())
+        val where=mutableListOf("e.model=?","a.profile=?","a.id>?","a.id<=?","e.signature=a.signature","e.vector IS NOT NULL","e.error IS NULL")
+        when(query.constraints.media) {
+            SearchMedia.IMAGES -> where+="a.mime LIKE 'image/%'"
+            SearchMedia.VIDEOS -> where+="a.mime LIKE 'video/%'"
+            else -> Unit
+        }
+        query.filter?.let { where+="a.searchable LIKE ? ESCAPE '\\'"; args+=LocalFormats.like(it) }
+        return rows("SELECT a.id,a.signature,e.vector FROM assets a JOIN embeddings e ON e.asset=a.id WHERE ${where.joinToString(" AND ")} ORDER BY a.id LIMIT 256",args)
     }
     fun search(profile: String, query: MediaQuery, boundary: Pair<Long,Long>? = null, newer: Boolean=false, limit: Int=61): List<LocalAsset> {
         val args=mutableListOf(profile); val where=mutableListOf("a.profile=?")

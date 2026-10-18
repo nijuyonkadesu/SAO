@@ -1,8 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
     <queries><package android:name="one.njk.sao" /><package android:name="one.njk.sao.testing" /></queries>
     <application android:label="SAO · Local Sticker" android:theme="@style/Theme.LocalExtension" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@drawable/ic_extension">
+        <!-- Internet is for the explicit CLIP download. Do not register ML Kit's telemetry backend or upload jobs. -->
+        <service android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery">
+            <meta-data android:name="backend:com.google.android.datatransport.cct.CctBackendFactory" tools:node="remove" />
+        </service>
+        <service android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService" tools:node="remove" />
+        <receiver android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver" tools:node="remove" />
         <service android:name="androidx.work.impl.foreground.SystemForegroundService" tools:node="remove" />
         <service android:name=".LocalExtensionService" android:label="Local Sticker" android:exported="true" android:permission="one.njk.sao.permission.SOURCE_EXTENSION">
             <intent-filter><action android:name="one.njk.sao.source.EXTENSION" /></intent-filter>

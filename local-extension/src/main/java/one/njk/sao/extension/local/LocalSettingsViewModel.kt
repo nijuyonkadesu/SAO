@@ -15,7 +15,9 @@ import java.util.UUID
 @OptIn(ExperimentalCoroutinesApi::class)
 class LocalSettingsViewModel(app: Application, saved: SavedStateHandle) : AndroidViewModel(app) {
     data class State(val loaded: Boolean=false,val working: Boolean=false,val folders: List<Folder> = emptyList(),
-        val library: Library?=null,val index: IndexStatus?=null,val error: Int?=null,val finished: Boolean=false)
+        val library: Library?=null,val index: IndexStatus?=null,val folderIndexes: Map<String,IndexStatus> = emptyMap(),
+        val indexWork: IndexWork=IndexWork.IDLE,val model: ClipModels.Status=ClipModels.Status(),val useContext: Boolean=false,
+        val error: Int?=null,val finished: Boolean=false)
     private val store=LocalStore.get(app)
     private val mutable=MutableStateFlow(State())
     val state=mutable.asStateFlow()
@@ -24,19 +26,20 @@ class LocalSettingsViewModel(app: Application, saved: SavedStateHandle) : Androi
     var name=app.getString(R.string.default_name)
     init { viewModelScope.launch {
         try {
-            val library=withContext(Dispatchers.IO) { editing?.let(store::library) }
+            val overview=withContext(Dispatchers.IO) { editing?.let(store::overview) }
+            val library=overview?.library
+            val ready=withContext(Dispatchers.IO) { ClipModels.ready(app) }
             if(library!=null) name=library.name
             mutable.value=State(loaded=true,folders=library?.folders.orEmpty(),library=library,
-                index=withContext(Dispatchers.IO) { library?.let { store.status(it.id) } })
+                index=overview?.total,folderIndexes=overview?.folders.orEmpty(),model=ClipModels.Status(ready=ready),useContext=library?.contextSearch ?: ready)
             mutable.subscriptionCount.map { it>0 }.distinctUntilChanged()
-                .flatMapLatest { if(it) store.changes else emptyFlow() }.collectLatest {
-                if(mutable.value.library!=null) {
-                    val updated=withContext(Dispatchers.IO) { store.library(profile) to store.status(profile) }
-                    mutable.value=mutable.value.copy(library=updated.first,index=updated.second)
-                }
+                .flatMapLatest { if(it) combine(store.changes,FolderIndexer.observe(app,profile),ClipModels.observe(app)) { _,work,model -> work to model } else emptyFlow() }.collectLatest { (work,model) ->
+                val updated=if(mutable.value.library!=null) withContext(Dispatchers.IO) { store.overview(profile) } else null
+                mutable.update { before -> before.copy(library=updated?.library,index=updated?.total,folderIndexes=updated?.folders.orEmpty(),indexWork=work,
+                    model=model,useContext=before.useContext || !before.model.ready && model.ready) }
             }
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { mutable.value=mutable.value.copy(loaded=true,error=R.string.storage_error) }
+        catch (_: Exception) { mutable.update { it.copy(loaded=true,error=R.string.storage_error) } }
     } }
     fun folder(uri: Uri) { viewModelScope.launch {
         try {
@@ -46,39 +49,43 @@ class LocalSettingsViewModel(app: Application, saved: SavedStateHandle) : Androi
                     arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),null,null,null)?.use { if(it.moveToFirst()) it.getString(0) else null }
                     ?: throw java.io.IOException("Folder unavailable")
             }
-            val folders=state.value.folders
-            mutable.value=state.value.copy(folders=if(folders.any { it.uri==uri.toString() }) folders else folders+Folder(uri.toString(),title),error=null)
+            mutable.update { before -> before.copy(folders=if(before.folders.any { it.uri==uri.toString() }) before.folders else before.folders+Folder(uri.toString(),title),error=null) }
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { mutable.value=state.value.copy(error=R.string.folder_error) }
+        catch (_: Exception) { mutable.update { it.copy(error=R.string.folder_error) } }
     } }
-    fun rename(folder: Folder, name: String) { if(name.isNotBlank()) mutable.value=state.value.copy(folders=state.value.folders.map { if(it.uri==folder.uri) it.copy(name=name.trim()) else it }) }
-    fun remove(folder: Folder) { mutable.value=state.value.copy(folders=state.value.folders.filterNot { it.uri==folder.uri }) }
+    fun rename(folder: Folder, name: String) { if(name.isNotBlank()) mutable.update { before -> before.copy(folders=before.folders.map { if(it.uri==folder.uri) it.copy(name=name.trim()) else it }) } }
+    fun remove(folder: Folder) { mutable.update { before -> before.copy(folders=before.folders.filterNot { it.uri==folder.uri }) } }
+    fun useContext(enabled: Boolean) { mutable.update { it.copy(useContext=enabled && it.model.ready) } }
+    fun downloadModel()=action { ClipModels.download(getApplication()) }
+    fun pauseDownload()=action { ClipModels.cancel(getApplication()) }
     private fun action(block: suspend () -> Unit) {
         if(!state.value.loaded || state.value.working) return
-        mutable.value=state.value.copy(working=true,error=null)
+        mutable.update { it.copy(working=true,error=null) }
         viewModelScope.launch {
             try { withContext(Dispatchers.IO) { block() } }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { mutable.value=state.value.copy(error=R.string.storage_error) }
-            finally { mutable.value=state.value.copy(working=false) }
+            catch (_: Exception) { mutable.update { it.copy(error=R.string.storage_error) } }
+            finally { mutable.update { it.copy(working=false) } }
         }
     }
     fun save() {
-        if(name.isBlank() || state.value.folders.isEmpty()) { mutable.value=state.value.copy(error=R.string.configuration_error); return }
-        val folders=state.value.folders.toList(); val title=name
+        if(name.isBlank() || state.value.folders.isEmpty()) { mutable.update { it.copy(error=R.string.configuration_error) }; return }
+        val folders=state.value.folders.toList(); val title=name; val useContext=state.value.useContext
         action {
             val app=getApplication<Application>(); val resolver=app.contentResolver
             try {
                 folders.forEach { resolver.takePersistableUriPermission(Uri.parse(it.uri),Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 val prior=state.value.library
-                val library=store.save(profile,title,folders)
+                val library=store.save(profile,title,folders,contextSearch=useContext && ClipModels.ready(app))
                 if(prior!=null && prior.revision!=library.revision) {
                     app.revokeUriPermission(mediaScope(app,prior),Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     app.revokeUriPermission(store.changesUri(prior),Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 releaseUnusedGrants(app,store)
-                FolderIndexer.schedule(app,library,force=prior?.folders!=library.folders)
-                mutable.value=state.value.copy(library=library,finished=true)
+                val foldersChanged=prior?.folders?.associate { it.uri to it.name }!=library.folders.associate { it.uri to it.name }
+                FolderIndexer.schedule(app,library,force=foldersChanged || prior?.contextSearch!=library.contextSearch,
+                    reset=prior?.folders?.map { it.uri }!=library.folders.map { it.uri })
+                mutable.update { it.copy(library=library,finished=true) }
             } catch (error: Exception) { releaseUnusedGrants(app,store); throw error }
         }
     }
@@ -90,13 +97,26 @@ class LocalSettingsViewModel(app: Application, saved: SavedStateHandle) : Androi
     fun pause()=action {
         val app=getApplication<Application>(); val library=store.library(profile)
         store.pause(profile,!library.paused)
-        if(library.paused) FolderIndexer.schedule(app,library.copy(paused=false),force=true) else FolderIndexer.cancel(app,profile)
+        if(library.paused) FolderIndexer.schedule(app,library.copy(paused=false),force=true,reset=false) else FolderIndexer.cancel(app,profile)
+    }
+    fun pauseFolder(folder: Folder)=action {
+        val app=getApplication<Application>()
+        FolderIndexer.change(app,profile) {
+            val paused=store.library(profile).folders.single { it.uri==folder.uri }.paused
+            store.pauseFolder(profile,folder.uri,!paused)
+        }
+        FolderIndexer.schedule(app,store.library(profile),force=true,reset=false)
+    }
+    fun restartFolder(folder: Folder)=action {
+        val app=getApplication<Application>()
+        FolderIndexer.change(app,profile) { store.restartFolder(profile,folder.uri) }
+        FolderIndexer.schedule(app,store.library(profile),force=true,reset=false)
     }
     fun delete()=action {
         val app=getApplication<Application>(); val library=store.library(profile)
         FolderIndexer.cancel(app,profile); store.delete(profile); releaseUnusedGrants(app,store)
         app.revokeUriPermission(mediaScope(app,library),Intent.FLAG_GRANT_READ_URI_PERMISSION)
         app.revokeUriPermission(store.changesUri(library),Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        mutable.value=state.value.copy(finished=true)
+        mutable.update { it.copy(finished=true) }
     }
 }
