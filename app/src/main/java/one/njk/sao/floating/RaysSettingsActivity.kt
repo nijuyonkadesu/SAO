@@ -55,8 +55,8 @@ class RaysSettingsActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_PROFILE = "source_profile_id"
         const val EXTRA_PACKAGE = "rays_package"
-        fun intent(context: Context, profileId: String? = null, packageName: String = RaysClient.PACKAGE) =
+        fun intent(context: Context, profileId: String? = null, packageName: String = RaysClient.PACKAGE, floating: Boolean = false) =
             Intent(context, RaysSettingsActivity::class.java).putExtra(EXTRA_PROFILE, profileId)
-                .putExtra(EXTRA_PACKAGE, packageName)
+                .putExtra(EXTRA_PACKAGE, packageName).putExtra(SourceSetupActivity.EXTRA_FLOATING, floating)
     }
 }

@@ -64,8 +64,8 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
         binding.queryMode.setOnClickListener { open(R.id.section_type) }
         binding.searchFilters.setOnClickListener { open(firstFilterSection()) }
         binding.clearSearchFilters.setOnClickListener { picker.clearSearchConstraints() }
-        binding.searchLucky.setOnClickListener { randomRequested() }
-        panel.optionsLucky.setOnClickListener { randomRequested() }
+        binding.searchLucky.setOnClickListener { if (options.state.value.randomSupported) randomRequested() }
+        panel.optionsLucky.setOnClickListener { if (options.state.value.randomSupported) randomRequested() }
         androidx.appcompat.widget.TooltipCompat.setTooltipText(binding.searchLucky, activity.getString(R.string.search_lucky))
         panel.optionsBack.setOnClickListener { close() }
         panel.optionsReset.setOnClickListener { picker.clearSearchConstraints() }

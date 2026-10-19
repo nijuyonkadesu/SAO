@@ -16,12 +16,12 @@ Profiles default to **Safe only**. Non-safe only and All ratings are explicit pr
 | --- | --- | --- |
 | Yande.re | Direct | Unavailable |
 | Konachan | Moeview proxy for Safe only; direct for other ratings | Unavailable |
-| Gelbooru | Moeview proxy | Supported |
-| Danbooru | Direct | Supported |
+| Gelbooru | Moeview proxy | Unavailable |
+| Danbooru | Direct | Unavailable |
 
 A proxy switch selects the direct API instead when needed. Account credentials or saved browser verification always use the direct API. Failed requests do not silently change routes. The public Moeview edges are not an official, versioned upstream API and can change. The reference's safe-only Konachan routing is retained.
 
-SAO requests successive pages; the provider translates one page at a time with an opaque continuation bound to the profile revision and query. A short nonempty page retains continuation until the API returns an empty page, so hidden/unavailable files do not prematurely end browsing. Unsupported files, including ZIP/ugoira, are omitted. Lucky fetches one fresh random batch with no continuation; a new press performs a new request.
+SAO requests successive pages; the provider translates one page at a time with an opaque continuation bound to the profile revision and query. A short nonempty page retains continuation until the API returns an empty page, so hidden/unavailable files do not prematurely end browsing. Unsupported files, including ZIP/ugoira, are omitted. Lucky/Shuffle is not advertised by this extension, so SAO hides that action for every board. Board random metatags do not establish a reliable provider-wide capability.
 
 ## Media, lifecycle and failures
 

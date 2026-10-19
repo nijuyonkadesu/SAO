@@ -16,7 +16,8 @@ import javax.inject.Inject
 
 data class SourcesState(val catalog: SourceCatalog = SourceCatalog(), val loaded: Boolean = false,
     val saving: Boolean = false, val error: Boolean = false, val allEnabled: Boolean = false,
-    val floatingCatalog: SourceCatalog = SourceCatalog(), val floatingDisabled: Set<String> = emptySet())
+    val floatingCatalog: SourceCatalog = SourceCatalog(), val floatingDisabled: Set<String> = emptySet(),
+    val installedExtensions: List<InstalledExtensionApp> = emptyList())
 
 @HiltViewModel
 class SourceProfilesViewModel @Inject constructor(private val profiles: SourceProfiles, private val extensions: SourceExtensions) : ViewModel() {
@@ -35,8 +36,8 @@ class SourceProfilesViewModel @Inject constructor(private val profiles: SourcePr
             val visible=if(keys==null) emptyList() else catalog.profiles.filter { installed(it,keys) }
             val shown = SourceCatalog(visible,catalog.selectedId?.takeIf { id -> visible.any { it.id==id } })
             SourcesState(catalog=shown,loaded=keys!=null,allEnabled=catalog.profiles.any { it.id==ALL_SOURCE_ID },
-                floatingCatalog=shown.forFloating(snapshot.floatingDisabled),floatingDisabled=snapshot.floatingDisabled)
-        }.collect { state -> mutable.value = state.copy(saving=mutable.value.saving) } }
+                floatingCatalog=shown.forFloating(snapshot.floatingDisabled, preferredId=snapshot.floatingSelectedId),floatingDisabled=snapshot.floatingDisabled)
+        }.collect { state -> mutable.value = state.copy(saving=mutable.value.saving, error=mutable.value.error, installedExtensions=mutable.value.installedExtensions) } }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { mutable.value = mutable.value.copy(loaded = true, error = true) }
     } }
@@ -45,6 +46,7 @@ class SourceProfilesViewModel @Inject constructor(private val profiles: SourcePr
         if(refreshJob?.isActive == true) return
         refreshJob = viewModelScope.launch {
             try {
+                mutable.value=mutable.value.copy(installedExtensions=extensions.installedApps())
                 val providers=extensions.installed()
                 val keys=providers.map { it.component.flattenToString() }.toSet()+extensions.installedRays()
                 available.value=keys
@@ -72,11 +74,14 @@ class SourceProfilesViewModel @Inject constructor(private val profiles: SourcePr
             catch (_: Exception) { mutable.value = mutable.value.copy(saving = false, error = true) }
         }
     }
-    fun select(id: String?) {
-        if (!state.value.loaded || state.value.saving || state.value.catalog.selectedId == id) return
+    fun select(id: String?) = select(id, floating = false)
+    fun selectFloating(id: String?) = select(id, floating = true)
+    private fun select(id: String?, floating: Boolean) {
+        val catalog = if (floating) state.value.floatingCatalog else state.value.catalog
+        if (!state.value.loaded || state.value.saving || catalog.selectedId == id) return
         mutable.value = mutable.value.copy(saving = true)
         viewModelScope.launch {
-            try { profiles.select(id); mutable.value = mutable.value.copy(saving = false, error = false) }
+            try { if (floating) profiles.selectFloating(id) else profiles.select(id); mutable.value = mutable.value.copy(saving = false, error = false) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { mutable.value = mutable.value.copy(saving = false, error = true) }
         }

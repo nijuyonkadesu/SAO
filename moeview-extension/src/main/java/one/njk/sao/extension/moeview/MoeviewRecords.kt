@@ -8,7 +8,7 @@ import org.json.JSONObject
 
 /** Domain translation only: one requested page, and an opaque query/profile-bound continuation. */
 class MoeviewRecords(private val store: MoeviewProfiles) {
-    fun capabilities(config: MoeviewConfig)=SourceCapabilities(setOf(SearchMode.DESCRIPTION),random=config.board in setOf(Board.GELBOORU,Board.DANBOORU),
+    fun capabilities(config: MoeviewConfig)=SourceCapabilities(setOf(SearchMode.DESCRIPTION),random=false,
         defaultMode=SearchMode.DESCRIPTION,suggestionModes=setOf(SearchMode.DESCRIPTION),categories=MoeviewCategories.forBoard(config.board))
     suspend fun page(profile: MoeviewProfile,source: String,query: MediaQuery,cursor: String?,api: BooruApi): MediaPage {
         val config=profile.config
@@ -22,16 +22,14 @@ class MoeviewRecords(private val store: MoeviewProfiles) {
         if(terms.length>2048) throw ExtensionFailure("LIMIT_EXCEEDED")
         // Rating overrides belong to an explicit All-ratings profile, rather than silently escaping its scope.
         if(config.rating!=SfwMode.ALL && Regex("(?:^|\\s)-?rating:",RegexOption.IGNORE_CASE).containsMatchIn(terms)) throw ExtensionFailure("UNSUPPORTED")
-        val random=normalized.randomRequest!=null
-        val tags=if(random) "$terms ${if(config.board==Board.GELBOORU) "sort:random" else "order:random"}".trim() else terms
-        val posts=api.search(config.board,tags,index,PAGE_SIZE,config.rating)
+        val posts=api.search(config.board,terms,index,PAGE_SIZE,config.rating)
         if(posts.size>PAGE_SIZE) throw ExtensionFailure("INVALID_RESPONSE")
         val items=posts.mapNotNull { post ->
             val matches=when(config.rating) { SfwMode.SFW -> post.rating.isSfw; SfwMode.NSFW -> !post.rating.isSfw; SfwMode.ALL -> true }
             if(!matches) throw ExtensionFailure("INVALID_RESPONSE")
             record(profile,source,post)
         }
-        val next=if(!random && posts.isNotEmpty()) store.seal(scope(profile).put("query",fingerprint).put("page",index+1)) else null
+        val next=if(posts.isNotEmpty()) store.seal(scope(profile).put("query",fingerprint).put("page",index+1)) else null
         return MediaPage(items,next)
     }
     private fun record(profile: MoeviewProfile,source: String,post: Post): MediaItem? {

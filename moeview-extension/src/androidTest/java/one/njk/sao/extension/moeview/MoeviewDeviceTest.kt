@@ -140,8 +140,10 @@ class MoeviewDeviceTest {
         assertEquals(setOf(SearchMode.DESCRIPTION),caps.suggestionModes)
         assertTrue(caps.facets.isEmpty()); assertFalse(caps.sequence); assertFalse(caps.random)
         assertEquals(MoeviewCategories.forBoard(row.config.board),caps.categories)
-        val dan=profile(MoeviewConfig(board=Board.DANBOORU))
-        assertTrue(SourceWire.capabilities(client.request(dan.id,ExtensionProtocol.CAPABILITIES,payload(dan))).random)
+        for (board in Board.entries) {
+            val scoped=profile(MoeviewConfig(board=board))
+            assertFalse(board.label,SourceWire.capabilities(client.request(scoped.id,ExtensionProtocol.CAPABILITIES,payload(scoped))).random)
+        }
         assertEquals(0,server.requestCount)
     }
     @Test fun boardDefaultsUseReviewedNonemptyGeneralAndCharacterTagsWithoutFetchingDuringDiscovery(): Unit=runBlocking {
@@ -236,13 +238,14 @@ class MoeviewDeviceTest {
         try { read(resource); fail("Expected stale stream") } catch(error: java.io.IOException) { assertTrue(error.message.orEmpty().contains("PROFILE_CHANGED")) }
         assertNotEquals(row.revision,changed.revision); assertEquals(calls,server.requestCount)
     }
-    @Test fun gelbooruUsesZeroBasedPagingTextDatesAndRandomIsOneFreshBatch(): Unit=runBlocking {
+    @Test fun gelbooruUsesZeroBasedPagingAndNormalizesUnsupportedRandomWithoutBreakingContinuation(): Unit=runBlocking {
         val row=profile(MoeviewConfig(board=Board.GELBOORU))
         val first=page(row); assertEquals("2026-10-18T09:00:35Z",first.items.first().remote!!.uploadedAt)
         assertEquals("0",server.takeRequest().requestUrl!!.queryParameter("pid"))
-        val random=page(row,MediaQuery(randomRequest="one")); assertNull(random.nextCursor)
-        assertTrue(server.takeRequest().requestUrl!!.queryParameter("tags")!!.contains("sort:random"))
-        page(row,MediaQuery(randomRequest="two")); assertEquals(3,server.requestCount)
+        val normalized=page(row,MediaQuery(randomRequest="obsolete-random")); assertNotNull(normalized.nextCursor)
+        assertFalse(server.takeRequest().requestUrl!!.queryParameter("tags")!!.contains("random"))
+        page(row,cursor=normalized.nextCursor); assertEquals("1",server.takeRequest().requestUrl!!.queryParameter("pid"))
+        assertEquals(3,server.requestCount)
     }
     @Test fun credentialsAndClearanceNeverGoToProxyMediaOrAnotherBoard() {
         val config=MoeviewConfig(board=Board.DANBOORU,login="user",apiKey="secret",clearance="cf_clearance=verified",browserAgent="Browser fixture")
@@ -403,7 +406,20 @@ class MoeviewDeviceTest {
         clickScrolled("back")
         clickScrolled("preview")
         waitFor("Floating picker") { nodes().any { it.viewIdResourceName=="one.njk.sao:id/search_toggle" } }
+        // Floating selection is deliberately independent of the home source chosen above.
+        click { it.viewIdResourceName=="one.njk.sao:id/source_toggle" }
+        waitFor("Floating source choice") {
+            val all=nodes()
+            if (all.any { it.text?.toString()==name }) true else {
+                all.firstOrNull { it.viewIdResourceName=="one.njk.sao:id/source_list" && it.isScrollable }
+                    ?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                false
+            }
+        }
+        clickText(name)
+        waitFor("Floating source selected") { nodes().any { it.viewIdResourceName=="one.njk.sao:id/source_toggle" && it.text?.toString()?.startsWith(name)==true } }
         click { it.viewIdResourceName=="one.njk.sao:id/search_toggle" }
+        assertTrue("Unsupported Lucky action stays hidden",nodes().none { it.viewIdResourceName=="one.njk.sao:id/search_lucky" && it.isVisibleToUser })
         input("search","smile blu")
         waitFor("Board tag suggestions in floating picker") { nodes().any { it.text?.toString()=="blue_hair" } }
         visual("floating-tag-suggestions")

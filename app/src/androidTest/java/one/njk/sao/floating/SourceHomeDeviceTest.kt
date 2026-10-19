@@ -446,7 +446,7 @@ class SourceHomeDeviceTest {
             profiles.restore(SourceCatalog())
             profiles.upsert(immichProfile("All settings fixture",ImmichConfig("http://127.0.0.1:9","offline-fixture-key")),true)
             ActivityScenario.launch<SourceSettingsActivity>(android.content.Intent(app,SourceSettingsActivity::class.java)).use { scenario ->
-                await(scenario,"Sources loaded") { it.findViewById<View>(R.id.all_sources).isEnabled }
+                await(scenario,"Sources loaded") { it.findViewById<View>(R.id.all_sources)?.isEnabled==true }
                 scenario.onActivity { it.findViewById<View>(R.id.all_sources).performClick() }
                 await(scenario,"All source appears") { activity ->
                     val state=ViewModelProvider(activity)[SourceProfilesViewModel::class.java].state.value
@@ -454,16 +454,18 @@ class SourceHomeDeviceTest {
                 }
                 scenario.onActivity { activity ->
                     val list=activity.findViewById<RecyclerView>(R.id.source_list)
-                    val adapter=list.adapter as SourceListAdapter
+                    val adapter=(list.adapter as androidx.recyclerview.widget.ConcatAdapter).adapters.filterIsInstance<SourceListAdapter>().single()
                     val position=adapter.currentList.indexOfFirst { it.id==ALL_SOURCE_ID }
-                    list.scrollToPosition(position)
+                    list.scrollToPosition(position+1)
                 }
                 await(scenario,"All has no provider settings button") { activity ->
                     val list=activity.findViewById<RecyclerView>(R.id.source_list)
-                    val adapter=list.adapter as SourceListAdapter
-                    val holder=list.findViewHolderForAdapterPosition(adapter.currentList.indexOfFirst { it.id==ALL_SOURCE_ID }) as? SourceListAdapter.Holder
+                    val adapter=(list.adapter as androidx.recyclerview.widget.ConcatAdapter).adapters.filterIsInstance<SourceListAdapter>().single()
+                    val holder=list.findViewHolderForAdapterPosition(adapter.currentList.indexOfFirst { it.id==ALL_SOURCE_ID }+1) as? SourceListAdapter.Holder
                     holder!=null && holder.binding.edit.visibility==View.GONE
                 }
+                scenario.onActivity { it.findViewById<RecyclerView>(R.id.source_list).scrollToPosition(0) }
+                await(scenario,"General controls visible again") { it.findViewById<View>(R.id.all_sources)?.isShown==true }
                 scenario.onActivity { it.findViewById<View>(R.id.all_sources).performClick() }
                 await(scenario,"All removed") { activity -> !ViewModelProvider(activity)[SourceProfilesViewModel::class.java].state.value.allEnabled }
             }

@@ -35,9 +35,23 @@ data class InstalledSourceExtension(val component: ComponentName, val name: Stri
     }
 }
 
+/** Package inventory is separate from providers that pass the binding trust/protocol checks. */
+data class InstalledExtensionApp(val packageName: String, val name: String, val version: String)
+
 @Singleton
 class SourceExtensions @Inject constructor(@ApplicationContext private val context: Context,
     private val profiles: SourceProfiles) {
+    suspend fun installedApps(): List<InstalledExtensionApp> = withContext(Dispatchers.IO) {
+        val manager = context.packageManager
+        manager.queryIntentServices(android.content.Intent(ExtensionProtocol.ACTION),
+            PackageManager.GET_META_DATA or PackageManager.MATCH_DISABLED_COMPONENTS)
+            .mapNotNull { it.serviceInfo?.applicationInfo }.distinctBy { it.packageName }.mapNotNull { app ->
+                try {
+                    val info = manager.getPackageInfo(app.packageName, 0)
+                    InstalledExtensionApp(app.packageName, manager.getApplicationLabel(app).toString(), info.versionName.orEmpty())
+                } catch (_: PackageManager.NameNotFoundException) { null }
+            }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+    }
     suspend fun installed(): List<InstalledSourceExtension> = withContext(Dispatchers.IO) {
         val manager = context.packageManager
         manager.queryIntentServices(android.content.Intent(ExtensionProtocol.ACTION),PackageManager.GET_META_DATA).mapNotNull { result ->
@@ -61,13 +75,13 @@ class SourceExtensions @Inject constructor(@ApplicationContext private val conte
         if(service.metaData?.getInt(ExtensionProtocol.API_VERSION) != ExtensionProtocol.VERSION) throw ExtensionFailure("INCOMPATIBLE")
         installed().firstOrNull { it.component == config.component } ?: throw ExtensionFailure("UNAVAILABLE")
     }
-    suspend fun refresh(extension: InstalledSourceExtension, selectedProfile: String? = null) {
+    suspend fun refresh(extension: InstalledSourceExtension, selectedProfile: String? = null, floating: Boolean = false) {
         val rows = ReadRetry.run { ExtensionClient(context,extension.component).profiles() }.map(extension::profile)
         val old = profiles.current()
         val linked = old.profiles.filter { (it.configuration as? ExtensionConfig)?.component == extension.component }
         linked.filter { existing -> rows.none { it.id == existing.id } }.forEach { profiles.remove(it.id) }
         rows.forEach { profiles.upsert(it) }
-        selectedProfile?.let { id -> rows.firstOrNull { (it.configuration as ExtensionConfig).profile == id }?.let { profiles.select(it.id) } }
+        selectedProfile?.let { id -> rows.firstOrNull { (it.configuration as ExtensionConfig).profile == id }?.let { if (floating) profiles.selectFloating(it.id) else profiles.select(it.id) } }
     }
     /** One-time opaque legacy handoff, only to an installed extension signed by this publisher. */
     suspend fun migrate(extension: InstalledSourceExtension) {
@@ -78,7 +92,9 @@ class SourceExtensions @Inject constructor(@ApplicationContext private val conte
             val reply = ExtensionClient(context,extension.component).request(profile.id,ExtensionProtocol.IMPORT,
                 JSONObject().put("name",profile.name).put("configuration",JSONObject(config.json)))
             val replacement = extension.profile(SourceWire.profile(reply))
+            val floatingSelected = profiles.currentFloating().selectedId == profile.id
             profiles.upsert(replacement,select = old.selectedId == profile.id)
+            if (floatingSelected) profiles.selectFloating(replacement.id)
             profiles.remove(profile.id)
         }
     }

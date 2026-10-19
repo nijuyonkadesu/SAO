@@ -27,6 +27,7 @@ class RaysSettingsViewModel @Inject constructor(@ApplicationContext private val 
     private val mutable = MutableStateFlow(RaysSettingsState())
     val state = mutable.asStateFlow()
     val editingId: String? = savedState[RaysSettingsActivity.EXTRA_PROFILE]
+    private val floating: Boolean = savedState[SourceSetupActivity.EXTRA_FLOATING] ?: false
     private val profileId = editingId ?: UUID.randomUUID().toString()
     var name = "Rays"
     var packageName: String = savedState[RaysSettingsActivity.EXTRA_PACKAGE] ?: RaysClient.PACKAGE
@@ -43,7 +44,10 @@ class RaysSettingsViewModel @Inject constructor(@ApplicationContext private val 
     fun check(save: Boolean) = work {
         require(name.isNotBlank())
         RaysClient(context, packageName, dispatchers.io).search("", size = 1)
-        if (save) profiles.upsert(SourceProfile(profileId, name.trim(), RaysConfig(packageName)), select = true)
+        if (save) {
+            profiles.upsert(SourceProfile(profileId, name.trim(), RaysConfig(packageName)), select = !floating)
+            if (floating) profiles.selectFloating(profileId)
+        }
         mutable.value = mutable.value.copy(status = if (save) R.string.rays_saved else R.string.rays_connected)
     }
     fun delete() { editingId?.let { id -> work {

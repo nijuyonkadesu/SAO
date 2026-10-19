@@ -12,6 +12,10 @@ In **Settings → Media sources → Show in floating picker**, each profile has 
 
 [Light/dark visibility controls and empty-picker guidance](screenshots/README.md#floating-source-visibility). Validation passed four targeted preference/routing/UI checks, 13 existing source/home checks, 31 host JVM checks and host lint with zero errors. The controls were visually checked on Android 15. Home now keeps its loading sticker inside each card and warms a small preview window; [current loading behavior](home-source-browser.md).
 
+The main screen and floating picker use separate selection keys in the same host preference store. Changing one leaves the other screen's query, carousel and in-flight work intact. Existing installations seed both choices from the former shared selection once. Floating visibility switches still affect only the picker.
+
+**Settings → Media sources → Installed extensions** lists installed source APKs, even before they have profiles or while disabled. App info opens Android's package settings; Uninstall opens Android's confirmation. Returning refreshes discovery. Listing an APK never bypasses the signature/protocol checks used to bind a source.
+
 ## Ownership
 
 | SAO | Extension APK |

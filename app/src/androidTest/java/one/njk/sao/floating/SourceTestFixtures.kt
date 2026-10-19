@@ -38,6 +38,7 @@ internal class ImmichTestSettings(val profiles: SourceProfiles) {
         val previous = profiles.current().profiles.firstOrNull { connections.containsKey((it.configuration as? ExtensionConfig)?.profile ?: "") }
         val profile = immichProfile(previous?.name ?: "Immich",config,(previous?.configuration as? ExtensionConfig)?.profile ?: UUID.randomUUID().toString())
         profiles.upsert(profile,enabled)
+        profiles.selectFloating(profile.id.takeIf { enabled })
         if (!enabled) profiles.select(null)
     }
 }
@@ -63,8 +64,9 @@ internal suspend fun SourceProfiles.restore(catalog: SourceCatalog) {
 }
 internal suspend fun SourceProfiles.restore(snapshot: SourceProfilesSnapshot) {
     restore(snapshot.catalog)
-    snapshot.floatingDisabled.forEach { enableInFloating(it,false) }
     snapshot.homeCategories.forEach { (id,rows) -> homeCategories(id,rows) }
+    selectFloating(snapshot.floatingSelectedId)
+    snapshot.floatingDisabled.forEach { enableInFloating(it,false) }
 }
 
 /** Cross-process controls: the real extension Activity is launched for result by SAO's proxy. */

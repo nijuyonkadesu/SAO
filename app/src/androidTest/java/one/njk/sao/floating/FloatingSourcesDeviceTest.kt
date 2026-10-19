@@ -96,7 +96,7 @@ class FloatingSourcesDeviceTest {
     @Test fun allExcludesDisabledSourcesOnlyInFloatingAndReenablingRestoresThem(): Unit=runBlocking {
         isolated { profiles,_ ->
             val a=profile("First"); val b=profile("Second")
-            profiles.upsert(a); profiles.upsert(b); profiles.available(setOf(a.id,b.id)); profiles.enableAll(true); profiles.select(ALL_SOURCE_ID)
+            profiles.upsert(a); profiles.upsert(b); profiles.available(setOf(a.id,b.id)); profiles.enableAll(true); profiles.select(ALL_SOURCE_ID); profiles.selectFloating(ALL_SOURCE_ID)
             val factories=mapOf("extension" to Provider { factory() })
             val main=SwitchingMediaSource(profiles,factories,FloatingDispatchers())
             val floating=SwitchingMediaSource(profiles,factories,FloatingDispatchers(),floatingOnly=true)
@@ -177,18 +177,17 @@ class FloatingSourcesDeviceTest {
             }
         } finally {
             loadingGate.countDown()
-            profiles.restore(previous.catalog)
-            previous.floatingDisabled.forEach { profiles.enableInFloating(it,false) }
+            profiles.restore(previous)
             access.browseSession().reset(); server.shutdown()
         }
     }
     private fun holder(activity: SourceSettingsActivity,id: String): SourceListAdapter.Holder? {
         val list=activity.findViewById<RecyclerView>(R.id.source_list)
-        val adapter=list.adapter as SourceListAdapter
+        val adapter=(list.adapter as androidx.recyclerview.widget.ConcatAdapter).adapters.filterIsInstance<SourceListAdapter>().single()
         val position=adapter.currentList.indexOfFirst { it.id==id }
         if(position<0) return null
-        val holder=list.findViewHolderForAdapterPosition(position) as? SourceListAdapter.Holder
-        if(holder==null) list.scrollToPosition(position)
+        val holder=list.findViewHolderForAdapterPosition(position+1) as? SourceListAdapter.Holder
+        if(holder==null) list.scrollToPosition(position+1)
         return holder
     }
     private fun <A: android.app.Activity> await(scenario: ActivityScenario<A>,label: String,condition: (A)->Boolean) {

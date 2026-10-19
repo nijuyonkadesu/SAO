@@ -30,11 +30,13 @@ import javax.inject.Singleton
 /** Host preferences are independent of extension-owned profiles and the main screen's selection. */
 internal data class SourceProfilesSnapshot(val catalog: SourceCatalog = SourceCatalog(),
     val floatingDisabled: Set<String> = emptySet(), val available: Set<String>? = null,
-    val homeCategories: Map<String,List<SourceCategory>> = emptyMap()) {
-    val floatingCatalog get() = catalog.forFloating(floatingDisabled, available)
+    val homeCategories: Map<String,List<SourceCategory>> = emptyMap(),
+    val floatingSelectedId: String? = catalog.selectedId) {
+    val floatingCatalog get() = catalog.forFloating(floatingDisabled, available, floatingSelectedId)
 }
 
-internal fun SourceCatalog.forFloating(disabled: Set<String>, available: Set<String>? = null): SourceCatalog {
+internal fun SourceCatalog.forFloating(disabled: Set<String>, available: Set<String>? = null,
+    preferredId: String? = selectedId): SourceCatalog {
     val rows = profiles.mapNotNull { profile ->
         if (profile.id in disabled) null else when (val config = profile.configuration) {
             is AllSourceConfiguration -> config.members.filter { it.id !in disabled && (available == null || it.id in available) }
@@ -42,7 +44,7 @@ internal fun SourceCatalog.forFloating(disabled: Set<String>, available: Set<Str
             else -> profile.takeIf { available == null || it.id in available }
         }
     }
-    return SourceCatalog(rows, selectedId?.let { selected -> rows.firstOrNull { it.id == selected }?.id ?: rows.firstOrNull()?.id })
+    return SourceCatalog(rows, preferredId?.let { selected -> rows.firstOrNull { it.id == selected }?.id ?: rows.firstOrNull()?.id })
 }
 
 /** Encrypted profile repository. Only actual configuration changes write to storage. */
@@ -63,14 +65,20 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
     suspend fun current(): SourceCatalog = withContext(dispatchers.io) { mutex.withLock { load().catalog } }
     suspend fun currentFloating(): SourceCatalog = withContext(dispatchers.io) { mutex.withLock { load().floatingCatalog } }
 
-    suspend fun upsert(profile: SourceProfile, select: Boolean = false) = update { catalog ->
+    suspend fun upsert(profile: SourceProfile, select: Boolean = false) = updateSnapshot { snapshot ->
+        val catalog = snapshot.catalog
         val existing = catalog.profiles.indexOfFirst { it.id == profile.id }
         val profiles = catalog.profiles.toMutableList().apply {
             if (existing < 0) add(profile) else set(existing, profile)
         }
-        SourceCatalog(profiles, if (select) profile.id else catalog.selectedId ?: profile.id)
+        snapshot.copy(catalog = SourceCatalog(profiles, if (select) profile.id else catalog.selectedId ?: profile.id),
+            floatingSelectedId = snapshot.floatingSelectedId ?: profile.id)
     }
     suspend fun select(id: String?) = update { it.copy(selectedId = id) }
+    suspend fun selectFloating(id: String?) = updateSnapshot {
+        require(id == null || it.catalog.profiles.any { profile -> profile.id == id })
+        it.copy(floatingSelectedId = id)
+    }
     suspend fun remove(id: String) = update {
         val remaining = it.profiles.filterNot { profile -> profile.id == id }
         SourceCatalog(remaining, it.selectedId?.takeUnless { selected -> selected == id } ?: remaining.firstOrNull()?.id)
@@ -78,7 +86,8 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
     suspend fun enableAll(enabled: Boolean) = update { it.withAllSource(enabled, value.value.available) }
     suspend fun enableInFloating(id: String, enabled: Boolean) = updateSnapshot {
         require(id != ALL_SOURCE_ID && it.catalog.profiles.any { profile -> profile.id == id })
-        it.copy(floatingDisabled = if (enabled) it.floatingDisabled - id else it.floatingDisabled + id)
+        it.copy(floatingDisabled = if (enabled) it.floatingDisabled - id else it.floatingDisabled + id,
+            floatingSelectedId = it.floatingSelectedId ?: id.takeIf { enabled })
     }
     suspend fun homeCategories(id: String, categories: List<SourceCategory>?) = updateSnapshot {
         require(id==ALL_SOURCE_ID || it.catalog.profiles.any { profile -> profile.id==id })
@@ -98,6 +107,10 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
         val old = load(); val proposed = transform(old)
         val next = proposed.copy(catalog = proposed.catalog.withAllSource(available = proposed.available),
             floatingDisabled = proposed.floatingDisabled.intersect(proposed.catalog.profiles.map { it.id }.toSet()),
+            floatingSelectedId = proposed.floatingSelectedId?.let { id ->
+                id.takeIf { selected -> proposed.catalog.profiles.any { it.id == selected } }
+                    ?: proposed.catalog.forFloating(proposed.floatingDisabled, proposed.available, id).selectedId
+            },
             homeCategories=proposed.homeCategories.filterKeys { id -> id==ALL_SOURCE_ID || proposed.catalog.profiles.any { it.id==id } })
         if (old != next) {
             write(next); value.value = next
@@ -140,7 +153,10 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
         val categories=savedCategories?.keys()?.asSequence()?.filter { id -> id==ALL_SOURCE_ID || profiles.any { it.id==id } }?.associateWith { id ->
             SourceWire.capabilities(JSONObject().put("categories",savedCategories.getJSONArray(id))).categories
         }.orEmpty()
-        return SourceProfilesSnapshot(resolved,disabled,homeCategories=categories)
+        // Existing installs keep their current choice once; subsequent changes are independent.
+        val floatingSelected = if (json.has("floatingSelected")) json.optString("floatingSelected").takeIf { id -> resolved.profiles.any { it.id == id } }
+            else resolved.selectedId
+        return SourceProfilesSnapshot(resolved,disabled,homeCategories=categories,floatingSelectedId=floatingSelected)
     }
     private fun write(snapshot: SourceProfilesSnapshot) {
         val catalog = snapshot.catalog
@@ -153,6 +169,7 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
                 .put("kind", config.kind).put("configuration", json))
         }
         file.write(JSONObject().put("version", 1).put("profiles", rows).put("selected", catalog.selectedId.orEmpty())
+            .put("floatingSelected",snapshot.floatingSelectedId.orEmpty())
             .put("allEnabled",catalog.profiles.any { it.id == ALL_SOURCE_ID }).put("floatingDisabled",JSONArray(snapshot.floatingDisabled.sorted()))
             .put("homeCategories",JSONObject().apply { snapshot.homeCategories.forEach { (id,categories) ->
                 put(id,SourceWire.capabilities(SourceCapabilities(categories=categories)).getJSONArray("categories"))

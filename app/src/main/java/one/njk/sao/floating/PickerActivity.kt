@@ -97,13 +97,13 @@ class PickerActivity : AppCompatActivity() {
         binding.close.setOnClickListener { finish() }
         binding.sourceToggle.setOnClickListener { collapseSearch(); showSource(!binding.sourcePanel.isVisible) }
         binding.sourceBack.setOnClickListener { showSource(false) }
-        binding.sourceConfigure.setOnClickListener { addMediaSource() }
+        binding.sourceConfigure.setOnClickListener { addMediaSource(floating = true) }
         binding.addFirstSource.setOnClickListener {
             if (sourcesModel.state.value.catalog.profiles.isNotEmpty()) startActivity(Intent(this, SourceSettingsActivity::class.java))
-            else addMediaSource()
+            else addMediaSource(floating = true)
         }
-        val sourceAdapter = SourceListAdapter({ id -> sourcesModel.select(id) }) { id ->
-            editMediaSource(catalog.profiles.firstOrNull { it.id == id })
+        val sourceAdapter = SourceListAdapter({ id -> sourcesModel.selectFloating(id) }) { id ->
+            editMediaSource(catalog.profiles.firstOrNull { it.id == id }, floating = true)
         }
         binding.sourceList.layoutManager = LinearLayoutManager(this); binding.sourceList.adapter = sourceAdapter
         binding.message.setOnClickListener { model.retry() }
@@ -152,7 +152,7 @@ class PickerActivity : AppCompatActivity() {
             label = { it.name }, identity = { catalog.identity },
             apply = { choice ->
                 showSource(false)
-                sourcesModel.select(choice.id)
+                sourcesModel.selectFloating(choice.id)
             }, title = R.string.sources_title, chooseAction = R.string.source_hold_choose,
             nextAction = R.string.source_hold_next, previousAction = R.string.source_hold_previous,
             opening = { binding.search.dismissSuggestions(); searchController.cancelGesture() },

@@ -17,7 +17,7 @@ import one.njk.sao.rays.RaysClient
 interface SourceExtensionAccess { fun extensions(): SourceExtensions; fun sources(): SourceProfiles }
 private fun Context.extensions() = EntryPointAccessors.fromApplication(applicationContext,SourceExtensionAccess::class.java).extensions()
 
-internal fun Context.addMediaSource() {
+internal fun Context.addMediaSource(floating: Boolean = false) {
     val activity = this as? AppCompatActivity ?: return
     activity.lifecycleScope.launch {
         val installed = extensions().installed()
@@ -27,22 +27,22 @@ internal fun Context.addMediaSource() {
             MaterialAlertDialogBuilder(activity).setTitle(R.string.source_add).setMessage(R.string.source_extension_install).setPositiveButton(android.R.string.ok,null).show(); return@launch
         }
         fun open(index: Int) {
-            startActivity(if (index < installed.size) SourceSetupActivity.intent(activity,installed[index])
-                else RaysSettingsActivity.intent(activity,packageName = rays[index-installed.size]))
+            startActivity(if (index < installed.size) SourceSetupActivity.intent(activity,installed[index],floating = floating)
+                else RaysSettingsActivity.intent(activity,packageName = rays[index-installed.size],floating = floating))
         }
         if (labels.size == 1) open(0) else MaterialAlertDialogBuilder(activity).setTitle(R.string.source_add)
             .setItems(labels.toTypedArray()) { _, index -> open(index) }.show()
     }
 }
-internal fun Context.editMediaSource(profile: one.njk.sao.source.SourceProfile?) {
+internal fun Context.editMediaSource(profile: one.njk.sao.source.SourceProfile?, floating: Boolean = false) {
     val activity = this as? AppCompatActivity ?: return
     when (val config = profile?.configuration) {
         is ExtensionConfig -> activity.lifecycleScope.launch {
-            try { startActivity(SourceSetupActivity.intent(activity,extensions().requireInstalled(config),config.profile)) }
+            try { startActivity(SourceSetupActivity.intent(activity,extensions().requireInstalled(config),config.profile,floating)) }
             catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (_: Exception) { unavailableSource(profile) }
         }
-        is RaysConfig -> startActivity(RaysSettingsActivity.intent(this,profile.id))
+        is RaysConfig -> startActivity(RaysSettingsActivity.intent(this,profile.id,floating = floating))
         else -> if (profile != null) activity.unavailableSource(profile)
     }
 }

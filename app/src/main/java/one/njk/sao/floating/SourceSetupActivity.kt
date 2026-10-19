@@ -21,7 +21,7 @@ class SourceSetupActivity : AppCompatActivity() {
             try {
                 val component = ComponentName.unflattenFromString(intent.getStringExtra("component").orEmpty())
                 val found = extensions.installed().firstOrNull { it.component == component } ?: error("Extension unavailable")
-                extensions.refresh(found,if (result.resultCode == RESULT_OK) result.data?.getStringExtra(ExtensionProtocol.PROFILE) else null)
+                extensions.refresh(found,if (result.resultCode == RESULT_OK) result.data?.getStringExtra(ExtensionProtocol.PROFILE) else null, intent.getBooleanExtra(EXTRA_FLOATING, false))
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { android.widget.Toast.makeText(this@SourceSetupActivity,one.njk.sao.R.string.source_extension_failed,android.widget.Toast.LENGTH_LONG).show() }
             finish()
@@ -43,7 +43,8 @@ class SourceSetupActivity : AppCompatActivity() {
         }
     }
     companion object {
-        fun intent(context: Context, extension: InstalledSourceExtension, profile: String? = null) = Intent(context,SourceSetupActivity::class.java)
-            .putExtra("component",extension.component.flattenToString()).putExtra(ExtensionProtocol.PROFILE,profile)
+        const val EXTRA_FLOATING = "floating_selection"
+        fun intent(context: Context, extension: InstalledSourceExtension, profile: String? = null, floating: Boolean = false) = Intent(context,SourceSetupActivity::class.java)
+            .putExtra(EXTRA_FLOATING,floating).putExtra("component",extension.component.flattenToString()).putExtra(ExtensionProtocol.PROFILE,profile)
     }
 }
