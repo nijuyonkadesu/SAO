@@ -4,6 +4,8 @@ Tap the **Collection** heading to select an installed source profile, or hold an
 
 The 450 dp carousel, Material chips and bottom bookmark/download/share actions remain. A centered Material Hero strategy reserves two narrow 32 dp previews around the prominent card; at the start/end Material shifts the previews to the available side. Home reuses the floating picker's media adapter and focal-keyline controller: focused GIFs animate, one muted Media3 player previews the focused video, and actions use the actual focal card. Playback stops when hidden. The current result set, category and focus live in the ViewModel/SavedStateHandle, with no scroll/query preference writes. New indexing notifications refresh visible browsing without resetting focus or retrying a failed read.
 
+The original `eager.webp` sticker appears while the main screen fetches results and while individual home images load. The source switches under **Show in floating picker** do not restrict the main screen. Main and floating sessions have separate routing/cancellation, with the same shared media cache and export-file lock.
+
 [Light/dark home previews](screenshots/README.md#home-source-collections). The original README images remain the layout reference.
 
 ## Experimental All source

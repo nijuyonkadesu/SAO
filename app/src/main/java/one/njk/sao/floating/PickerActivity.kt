@@ -96,7 +96,10 @@ class PickerActivity : AppCompatActivity() {
         binding.sourceToggle.setOnClickListener { collapseSearch(); showSource(!binding.sourcePanel.isVisible) }
         binding.sourceBack.setOnClickListener { showSource(false) }
         binding.sourceConfigure.setOnClickListener { addMediaSource() }
-        binding.addFirstSource.setOnClickListener { addMediaSource() }
+        binding.addFirstSource.setOnClickListener {
+            if (sourcesModel.state.value.catalog.profiles.isNotEmpty()) startActivity(Intent(this, SourceSettingsActivity::class.java))
+            else addMediaSource()
+        }
         val sourceAdapter = SourceListAdapter({ id -> sourcesModel.select(id) }) { id ->
             editMediaSource(catalog.profiles.firstOrNull { it.id == id })
         }
@@ -216,7 +219,7 @@ class PickerActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { model.query.collect { syncQueryViews(it); renderHeader(); renderDock() } }
                 launch { sourcesModel.state.collect { state ->
-                    catalog = state.catalog
+                    catalog = state.floatingCatalog
                     sourceGesture.update()
                     sourceAdapter.submitList(sourceRows(catalog))
                     binding.sourceSummary.isVisible = state.error
@@ -570,6 +573,10 @@ class PickerActivity : AppCompatActivity() {
     }
     private fun renderEmptySource() {
         val empty = sourcesModel.state.value.loaded && catalog.selected == null
+        val configured = sourcesModel.state.value.catalog.profiles.isNotEmpty()
+        binding.noSourceTitle.setText(if (configured) R.string.source_floating_empty_title else R.string.source_empty_title)
+        binding.noSourceMessage.setText(if (configured) R.string.source_floating_empty_message else R.string.source_empty_message)
+        binding.addFirstSource.setText(if (configured) R.string.source_manage else R.string.source_add)
         binding.noSource.isVisible = empty && !binding.sourcePanel.isVisible && !binding.targetList.isVisible && !searchController.visible
         if(empty) { binding.message.isVisible=false; binding.progress.isVisible=false }
     }

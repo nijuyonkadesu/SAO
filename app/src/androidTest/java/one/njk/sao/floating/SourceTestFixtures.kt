@@ -95,6 +95,8 @@ internal class ExtensionForm(profile: SourceProfile? = null, installed: Installe
 
 internal fun pauseSourceVisual(stage: String, details: String = "") {
     if(InstrumentationRegistry.getArguments().getString("visualPause")!="true") return
+    val stages=InstrumentationRegistry.getArguments().getString("visualStages")?.split(',')
+    if(stages!=null && stage !in stages) return
     val app=InstrumentationRegistry.getInstrumentation().targetContext
     val resume=java.io.File(app.cacheDir,"source-visual-continue").apply { delete() }
     val ready=java.io.File(app.cacheDir,"source-visual-$stage").apply { writeText(details) }

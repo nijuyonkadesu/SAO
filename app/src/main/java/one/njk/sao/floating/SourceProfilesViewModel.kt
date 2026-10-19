@@ -15,7 +15,8 @@ import one.njk.sao.R
 import javax.inject.Inject
 
 data class SourcesState(val catalog: SourceCatalog = SourceCatalog(), val loaded: Boolean = false,
-    val saving: Boolean = false, val error: Boolean = false, val allEnabled: Boolean = false)
+    val saving: Boolean = false, val error: Boolean = false, val allEnabled: Boolean = false,
+    val floatingCatalog: SourceCatalog = SourceCatalog(), val floatingDisabled: Set<String> = emptySet())
 
 @HiltViewModel
 class SourceProfilesViewModel @Inject constructor(private val profiles: SourceProfiles, private val extensions: SourceExtensions) : ViewModel() {
@@ -29,11 +30,13 @@ class SourceProfilesViewModel @Inject constructor(private val profiles: SourcePr
         else -> false
     }
     init { viewModelScope.launch {
-        try { combine(profiles.catalogs,available) { catalog,keys ->
+        try { combine(profiles.snapshots,available) { snapshot,keys ->
+            val catalog = snapshot.catalog
             val visible=if(keys==null) emptyList() else catalog.profiles.filter { installed(it,keys) }
-            Triple(one.njk.sao.source.SourceCatalog(visible,catalog.selectedId?.takeIf { id -> visible.any { it.id==id } }),
-                keys!=null, catalog.profiles.any { it.id == ALL_SOURCE_ID })
-        }.collect { (catalog,loaded,allEnabled) -> mutable.value = mutable.value.copy(catalog=catalog,loaded=loaded,error=false,allEnabled=allEnabled) } }
+            val shown = SourceCatalog(visible,catalog.selectedId?.takeIf { id -> visible.any { it.id==id } })
+            SourcesState(catalog=shown,loaded=keys!=null,allEnabled=catalog.profiles.any { it.id==ALL_SOURCE_ID },
+                floatingCatalog=shown.forFloating(snapshot.floatingDisabled),floatingDisabled=snapshot.floatingDisabled)
+        }.collect { state -> mutable.value = state.copy(saving=mutable.value.saving) } }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { mutable.value = mutable.value.copy(loaded = true, error = true) }
     } }
@@ -78,9 +81,18 @@ class SourceProfilesViewModel @Inject constructor(private val profiles: SourcePr
             catch (_: Exception) { mutable.value = mutable.value.copy(saving = false, error = true) }
         }
     }
+    fun enableInFloating(id: String, enabled: Boolean) {
+        if (!state.value.loaded || state.value.saving || (id !in state.value.floatingDisabled) == enabled) return
+        mutable.value = mutable.value.copy(saving = true)
+        viewModelScope.launch {
+            try { profiles.enableInFloating(id, enabled); mutable.value = mutable.value.copy(saving = false, error = false) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { mutable.value = mutable.value.copy(saving = false, error = true) }
+        }
+    }
 }
 
-internal fun Context.sourceRows(catalog: SourceCatalog): List<SourceListAdapter.Row> =
+internal fun Context.sourceRows(catalog: SourceCatalog, floatingDisabled: Set<String> = emptySet(), saving: Boolean = false): List<SourceListAdapter.Row> =
     catalog.profiles.map { profile ->
             val config = profile.configuration
             val detail = when (config) {
@@ -89,5 +101,5 @@ internal fun Context.sourceRows(catalog: SourceCatalog): List<SourceListAdapter.
                 is RaysConfig -> getString(R.string.rays_source_description)
                 else -> getString(R.string.source_extension_missing)
             }
-            SourceListAdapter.Row(profile.id, profile.name, detail, profile.id == catalog.selectedId)
+            SourceListAdapter.Row(profile.id, profile.name, detail, profile.id == catalog.selectedId, profile.id !in floatingDisabled, !saving)
         }

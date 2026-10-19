@@ -22,16 +22,15 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
-import javax.inject.Inject
 import javax.inject.Provider
-import javax.inject.Singleton
 
 /** One active provider session. Factory lookup is lazy and configurations remain plain values. */
-@Singleton
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-class SwitchingMediaSource @Inject constructor(private val profiles: SourceProfiles,
+class SwitchingMediaSource(private val profiles: SourceProfiles,
     private val factories: Map<String, @JvmSuppressWildcards Provider<MediaSourceFactory>>,
-    private val dispatchers: FloatingDispatchers) : MediaSource {
+    private val dispatchers: FloatingDispatchers, private val floatingOnly: Boolean = false) : MediaSource {
+    private val catalogs = if (floatingOnly) profiles.floatingCatalogs else profiles.catalogs
+    private suspend fun current() = if (floatingOnly) profiles.currentFloating() else profiles.current()
     private class Session(val identity: String, val source: MediaSource) {
         val lifetime = SupervisorJob()
         fun close() { lifetime.cancel(); (source as? ManagedMediaSource)?.close() }
@@ -45,11 +44,11 @@ class SwitchingMediaSource @Inject constructor(private val profiles: SourceProfi
     private val scope = CoroutineScope(SupervisorJob() + dispatchers.io)
     private var watching = false
     private var active: Session? = null
-    override val identity = profiles.catalogs.map { it.identity }
+    override val identity = catalogs.map { it.identity }
         .catch { error -> if (error is CancellationException) throw error; emit("unavailable") }.distinctUntilChanged()
-    override val changes = profiles.catalogs.map { it.identity }.distinctUntilChanged()
+    override val changes = catalogs.map { it.identity }.distinctUntilChanged()
         .flatMapLatest { flow { emitAll(session().source.changes) }.catch { error -> if(error is CancellationException) throw error } }
-    override val capabilities = profiles.catalogs.map { it.identity }.distinctUntilChanged()
+    override val capabilities = catalogs.map { it.identity }.distinctUntilChanged()
         .flatMapLatest { id -> flow {
             emitAll(session().source.capabilities.map { it.copy(sourceId = id) })
         }.catch { error -> if (error is CancellationException) throw error; emit(SourceCapabilities(sourceId = id)) } }
@@ -62,15 +61,15 @@ class SwitchingMediaSource @Inject constructor(private val profiles: SourceProfi
         if (!watching) {
             watching = true
             scope.launch {
-                try { profiles.catalogs.map { it.identity }.distinctUntilChanged().collect { _ ->
-                    mutex.withLock { if (active?.identity != profiles.current().identity) { active?.close(); active = null } }
+                try { catalogs.map { it.identity }.distinctUntilChanged().collect { _ ->
+                    mutex.withLock { if (active?.identity != current().identity) { active?.close(); active = null } }
                 } } catch (error: Exception) {
                     if (error is CancellationException) throw error
                     mutex.withLock { active?.close(); active = null; watching = false }
                 }
             }
         }
-        val catalog = profiles.current()
+        val catalog = current()
         active?.takeIf { it.identity == catalog.identity } ?: run {
             active?.close(); active = null
             val profile = catalog.selected
@@ -84,14 +83,14 @@ class SwitchingMediaSource @Inject constructor(private val profiles: SourceProfi
         if(session.source is AllMediaSource) session.source.owns(item) else (item.remote?.sourceId ?: "local") == session.identity
     override suspend fun owns(item: MediaItem): Boolean {
         val session = session()
-        return belongs(session, item) && profiles.current().identity == session.identity
+        return belongs(session, item) && current().identity == session.identity
     }
     private suspend fun <T> read(item: MediaItem? = null, expectedSourceId: String? = null, block: suspend (MediaSource) -> T): T {
         val session = session()
         if (expectedSourceId != null) check(expectedSourceId == session.identity) { "Filter belongs to a different source" }
         if (item != null) check(belongs(session, item)) { "Media belongs to a different source" }
         val result = session.read(block)
-        if (profiles.current().identity != session.identity) throw CancellationException("Source changed")
+        if (current().identity != session.identity) throw CancellationException("Source changed")
         return result
     }
     internal suspend fun shutdown() = mutex.withLock { scope.cancel(); active?.close(); active = null }
@@ -100,14 +99,14 @@ class SwitchingMediaSource @Inject constructor(private val profiles: SourceProfi
         val owner = session()
         check(belongs(owner, anchor)) { "Media belongs to a different source" }
         val sequence = owner.read { it.openSequence(anchor) }
-        if (profiles.current().identity != owner.identity) {
+        if (current().identity != owner.identity) {
             sequence.close(); throw CancellationException("Source changed")
         }
         return object : MediaSequence {
             private suspend fun readPage(block: suspend () -> SequencePage): SequencePage {
-                check(profiles.current().identity == owner.identity) { "Sequence belongs to a different source" }
+                check(current().identity == owner.identity) { "Sequence belongs to a different source" }
                 val page = owner.read { block() }
-                if (profiles.current().identity != owner.identity) throw CancellationException("Source changed")
+                if (current().identity != owner.identity) throw CancellationException("Source changed")
                 return page
             }
             override suspend fun initial() = readPage { sequence.initial() }

@@ -22,12 +22,17 @@ import javax.inject.Singleton
 
 data class ExportedMedia(val uri: Uri, val mimeType: String, val file: File)
 
+/** Both browsing surfaces write the same export files, so their staging work shares one lock. */
+@Singleton
+class MediaExportLock @Inject constructor() { internal val mutex = Mutex() }
+
 @Singleton
 class MediaExports @Inject constructor(@ApplicationContext private val context: Context,
     private val source: MediaSource,
     private val dispatchers: FloatingDispatchers = FloatingDispatchers(),
-    private val transcoder: VideoTranscoder = VideoTranscoder(context, dispatchers)) {
-    private val mutex = Mutex()
+    private val transcoder: VideoTranscoder = VideoTranscoder(context, dispatchers),
+    private val exportLock: MediaExportLock = MediaExportLock()) {
+    private val mutex get() = exportLock.mutex
 
     suspend fun prepare(item: MediaItem, rendition: Rendition): ExportedMedia = withContext(dispatchers.io) {
         require(!item.hasMotion || rendition == Rendition.MEDIA) { "Animated sticker conversion is unavailable" }

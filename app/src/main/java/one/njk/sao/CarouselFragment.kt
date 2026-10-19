@@ -35,8 +35,8 @@ class CarouselFragment : Fragment(), MenuProvider {
     private val model: ArtsViewModel by activityViewModels()
     private val sources: SourceProfilesViewModel by activityViewModels()
     @Inject lateinit var loader: ImageLoader
-    @Inject lateinit var source: MediaSource
-    @Inject lateinit var exports: MediaExports
+    @Inject @HomeSources lateinit var source: MediaSource
+    @Inject @HomeSources lateinit var exports: MediaExports
     @Inject lateinit var downloads: MediaDownloads
     @Inject lateinit var clipboard: ClipboardPublisher
     private val filenameRequest=ClipboardRequest()
@@ -126,7 +126,11 @@ class CarouselFragment : Fragment(), MenuProvider {
         if(_binding==null) return
         val state=model.state.value.browse
         val emptySource=sources.state.value.loaded && sources.state.value.catalog.selected==null
-        binding.homeStatus.isVisible = emptySource || state.error || state.loading || state.items.isEmpty()
+        binding.homeLoading.isVisible = state.loading && !emptySource
+        (binding.homeLoading.drawable as? android.graphics.drawable.Animatable)?.let {
+            if (binding.homeLoading.isVisible && viewLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) it.start() else it.stop()
+        }
+        binding.homeStatus.isVisible = !binding.homeLoading.isVisible && (emptySource || state.error || state.items.isEmpty())
         binding.homeStatus.text = when {
             emptySource -> getString(R.string.home_add_source)
             state.loading -> getString(R.string.home_loading)

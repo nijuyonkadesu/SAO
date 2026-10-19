@@ -15,6 +15,7 @@ import one.njk.sao.database.Bookmark
 import one.njk.sao.database.BookmarksDao
 import one.njk.sao.database.SettingsDataStore
 import one.njk.sao.floating.PickerBrowseKey
+import one.njk.sao.floating.HomeSources
 import one.njk.sao.floating.PickerState
 import one.njk.sao.floating.SourceReadException
 import one.njk.sao.source.*
@@ -26,7 +27,7 @@ data class HomeState(val browse: PickerState = PickerState(), val categories: Li
 /** One live result set, retained across view recreation; no query-result or scroll preference writes. */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
-class ArtsViewModel @Inject constructor(private val source: MediaSource,
+class ArtsViewModel @Inject constructor(@HomeSources private val source: MediaSource,
     private val settingsDataStore: SettingsDataStore, private val bookmarksDao: BookmarksDao,
     private val saved: SavedStateHandle, private val dispatchers: FloatingDispatchers) : ViewModel() {
     private val category = MutableStateFlow(saved.get<String>("home_category"))

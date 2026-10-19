@@ -14,6 +14,8 @@ import coil3.ImageLoader
 import coil3.request.Disposable
 import coil3.request.ImageRequest
 import coil3.request.target
+import coil3.request.placeholder
+import coil3.request.error
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -114,15 +116,23 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     private fun load(holder: Holder) {
         val item = holder.item ?: return
         holder.loading?.cancel()
-        holder.binding.preview.setImageDrawable(null)
+        if (home) {
+            holder.binding.preview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            holder.binding.preview.setImageResource(one.njk.sao.R.drawable.eager)
+        } else holder.binding.preview.setImageDrawable(null)
         holder.loading = scope.launch {
             try {
                 val data = source.preview(item)
                 if (holder.item?.id != item.id) return@launch
                 holder.request = loader.enqueue(ImageRequest.Builder(holder.binding.preview.context).data(data).size(1024, 1024)
-                    .target(holder.binding.preview).listener(onSuccess = { _, _ -> decorate(holder) }).build())
+                    .apply { if (home) { placeholder(one.njk.sao.R.drawable.eager); error(one.njk.sao.R.drawable.eager) } }
+                    .target(holder.binding.preview).listener(onSuccess = { _, _ ->
+                        if (home) holder.binding.preview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                        decorate(holder)
+                    }).build())
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (holder.item?.id == item.id) holder.binding.preview.setImageResource(one.njk.sao.R.drawable.ic_picker_media) }
+            catch (_: Exception) { if (holder.item?.id == item.id) holder.binding.preview.setImageResource(
+                if (home) one.njk.sao.R.drawable.eager else one.njk.sao.R.drawable.ic_picker_media) }
         }
     }
     private fun decorate(holder: Holder) {

@@ -46,12 +46,13 @@ class MoeviewRecords(private val store: MoeviewProfiles) {
             "jpg","jpeg" -> "image/jpeg"; "png" -> "image/png"; "webp" -> "image/webp"; "gif" -> "image/gif"; "avif" -> "image/avif"
             "mp4","m4v" -> "video/mp4"; "webm" -> "video/webm"; else -> return null
         }
-        val preview=post.previewUrl ?: post.sampleUrl?.takeUnless { post.isVideo } ?: file.takeUnless { post.isVideo } ?: return null
+        // The website's opened-image view uses sample/large_file_url, not its small grid thumbnail.
+        val preview=if (post.isVideo) post.previewUrl ?: return null else post.sampleUrl ?: file
         if(post.id<=0 || file.length+preview.length>1800 || !MoeviewRuntime.allowedMedia(config.board,file) || !MoeviewRuntime.allowedMedia(config.board,preview)) return null
         val animated=post.mediaType==MediaType.GIF || post.tags.any { it in setOf("animated_webp","animated_png") }
         val token=store.seal(scope(profile).put("id",post.id).put("file",file).put("preview",preview).put("mime",mime).put("animated",animated))
         val originalKey=digest("$file:${post.md5.orEmpty()}")
-        val previewKey=if(animated && !post.isVideo) originalKey else digest(preview)
+        val previewKey=if(!post.isVideo && (animated || preview==file)) originalKey else digest(preview)
         val name=file.toHttpUrlOrNull()?.pathSegments?.lastOrNull()?.takeIf { it.isNotBlank() }?.take(256) ?: "${config.board.id}-${post.id}.$extension"
         return MediaItem("moeview_"+digest("$source:${post.id}"),"${config.board.label} · ${post.id}",token,mime,
             post.tags.take(24).map { it.take(64) },emptyList(),animated,

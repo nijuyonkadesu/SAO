@@ -35,7 +35,8 @@ class MoeviewMediaProvider : ContentProvider() {
                     val media=api.openMedia(profile.config.board,post,variant)
                     val cancel=launch(Dispatchers.Default,start=CoroutineStart.UNDISPATCHED) { try { awaitCancellation() } finally { media.cancel() } }
                     try { media.use { response ->
-                        val limit=if(variant==one.njk.sao.moeview.data.MediaKind.FULL) 64L*1024*1024 else 8L*1024*1024
+                        val fullSize=variant==one.njk.sao.moeview.data.MediaKind.FULL || ref.getString("preview")==ref.getString("file")
+                        val limit=if(fullSize) 64L*1024*1024 else 8L*1024*1024
                         if(response.contentLength>limit) throw ExtensionFailure("MEDIA_TOO_LARGE")
                         val output=ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]); val buffer=ByteArray(32*1024); var size=0L
                         val input=response.byteStream()

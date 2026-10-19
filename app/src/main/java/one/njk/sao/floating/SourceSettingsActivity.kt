@@ -31,14 +31,14 @@ class SourceSettingsActivity : AppCompatActivity() {
         binding.allSources.setOnCheckedChangeListener { _, checked -> model.enableAll(checked) }
         binding.back.setOnClickListener { finish() }
         binding.addSource.setOnClickListener { addMediaSource() }
-        val adapter = SourceListAdapter(model::select) { id ->
+        val adapter = SourceListAdapter(model::select, model::enableInFloating) { id ->
             editMediaSource(model.state.value.catalog.profiles.firstOrNull { it.id == id })
         }
         binding.sourceList.layoutManager = LinearLayoutManager(this); binding.sourceList.adapter = adapter
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.state.collect { state ->
             binding.allSources.isChecked = state.allEnabled
             binding.allSources.isEnabled = state.loaded && !state.saving
-            adapter.submitList(sourceRows(state.catalog)); binding.status.isVisible = state.error
+            adapter.submitList(sourceRows(state.catalog, state.floatingDisabled, state.saving)); binding.status.isVisible = state.error
             binding.sourceList.isEnabled = state.loaded && !state.saving
             binding.addSource.isEnabled = state.loaded && !state.saving
         } } }

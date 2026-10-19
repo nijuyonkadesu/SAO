@@ -39,6 +39,7 @@ class MoeviewDeviceTest {
     private var pageCount=1
     private val paths=java.util.concurrent.ConcurrentLinkedQueue<String>()
     private val failMedia=java.util.concurrent.atomic.AtomicBoolean()
+    private val withoutSample=java.util.concurrent.atomic.AtomicBoolean()
     private val png=ByteArrayOutputStream().use { out -> Bitmap.createBitmap(400,600,Bitmap.Config.ARGB_8888).apply {
         eraseColor(Color.rgb(36,135,190)); compress(Bitmap.CompressFormat.PNG,100,out); recycle()
     }; out.toByteArray() }
@@ -50,7 +51,7 @@ class MoeviewDeviceTest {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val url=request.requestUrl!!
                 paths+=url.encodedPath
-                if(url.encodedPath.startsWith("/media/")) {
+                if(url.encodedPath.contains("/media/")) {
                     if(failMedia.compareAndSet(true,false)) return MockResponse().setResponseCode(403)
                     val ext=url.encodedPath.substringAfterLast('.')
                     return MockResponse().setHeader("Content-Type",when(ext) { "gif" -> "image/gif"; "mp4" -> "video/mp4"; "webm" -> "video/webm"; else -> "image/png" })
@@ -61,11 +62,14 @@ class MoeviewDeviceTest {
                 val count=if(page>pageCount) 0 else if(page>1) 1 else url.queryParameter("limit")?.toInt() ?: 20
                 val rows=JSONArray((0 until count).map { n ->
                     val id=(page-1)*20+n+1; val ext=listOf("png","gif","mp4","webm")[n%4]
-                    val domain=if(dan) "danbooru.donmai.us" else if(gel) "gelbooru.com" else "konachan.com"
+                    val domain=when(request.getHeader("X-Fixture-Board")) {
+                        "danbooru" -> "danbooru.donmai.us"; "gelbooru" -> "gelbooru.com"; "yandere" -> "yande.re"; else -> "konachan.com"
+                    }
                     JSONObject().put("id",id).put(if(dan) "tag_string" else "tags","smile blue_hair")
                         .put("rating",if(dan) "g" else if(gel) "general" else "s").put("file_ext",ext)
                         .put("file_url","https://$domain/media/fixture-$id.$ext")
                         .put(if(dan) "preview_file_url" else "preview_url","https://$domain/media/preview-$id.png")
+                        .apply { if(!withoutSample.get()) put(if(dan) "large_file_url" else "sample_url","https://$domain/media/display-$id.$ext") }
                         .put("created_at",if(gel) "Sun Oct 18 04:00:35 -0500 2026" else if(dan) "2026-10-18T09:00:35Z" else 1792314035)
                 })
                 return MockResponse().setHeader("Content-Type","application/json").setBody(if(gel) JSONObject().put("post",rows).toString() else rows.toString())
@@ -75,7 +79,7 @@ class MoeviewDeviceTest {
         runtime.factory={ config ->
             val rewrite=Interceptor { chain ->
                 val url=chain.request().url.newBuilder().scheme("http").host("127.0.0.1").port(server.port).build()
-                chain.proceed(MoeviewAuthentication.request(config,chain.request()).newBuilder().url(url).build())
+                chain.proceed(MoeviewAuthentication.request(config,chain.request()).newBuilder().url(url).header("X-Fixture-Board",config.board.id).build())
             }
             fun http()=OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor(rewrite).build()
             BooruApi.create(BooruConfig(minRequestIntervalMs=0,maxRetriesPerTransport=0,allowTransportFallback=false,
@@ -149,6 +153,23 @@ class MoeviewDeviceTest {
             if(item.isVideo) assertArrayEquals(formats.getValue(ext),read(uri(row,item,"video")))
             assertEquals("fixture-${index+1}.$ext",item.filename)
         }
+    }
+    @Test fun displayPreviewsUseLargeImagesAcrossAllBoardsAndOriginalFallbackSharesItsCacheKey(): Unit=runBlocking {
+        for(board in Board.entries) {
+            val row=profile(MoeviewConfig(board=board)); val item=page(row).items.first()
+            val ref=records.reference(row,item.asset)
+            assertTrue("${board.label} uses its display image",ref.getString("preview").endsWith("/display-1.png"))
+            assertArrayEquals(png,read(uri(row,item,"preview")))
+            assertTrue(paths.last().endsWith("/display-1.png"))
+            assertArrayEquals(png,read(uri(row,item,"original")))
+            assertTrue(paths.last().endsWith("/fixture-1.png"))
+        }
+        withoutSample.set(true)
+        val row=profile(); val item=page(row).items.first()
+        val ref=records.reference(row,item.asset)
+        assertEquals(ref.getString("file"),ref.getString("preview"))
+        assertEquals(item.remote!!.cacheKeys["original"],item.remote!!.cacheKeys["preview"])
+        assertArrayEquals(png,read(uri(row,item,"preview")))
     }
     @Test fun tamperedReferencesAndStaleGrantsDoNotMakeNetworkRequests(): Unit=runBlocking {
         val row=profile(); val item=page(row).items.first(); val resource=uri(row,item,"original")

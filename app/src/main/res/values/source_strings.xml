@@ -15,4 +15,10 @@
     <string name="source_hold_accessibility">Media source: %1$s. Tap to choose, or hold and drag vertically.</string>
     <string name="source_empty_title">Add a media source</string>
     <string name="source_empty_message">Install a SAO source extension, then add a source to browse your images and videos.</string>
+    <string name="source_floating_heading">Show in floating picker</string>
+    <string name="source_floating_description">These switches only affect the floating picker, including its All results. Every source stays available on the main screen.</string>
+    <string name="source_floating_enabled">Show %1$s in floating picker</string>
+    <string name="source_floating_empty_title">No floating sources enabled</string>
+    <string name="source_floating_empty_message">Enable a source in Media sources to browse it here. Your main screen sources are unchanged.</string>
+    <string name="source_manage">Manage sources</string>
 </resources>

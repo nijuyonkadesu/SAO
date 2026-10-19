@@ -10,6 +10,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -25,6 +27,23 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Host preferences are independent of extension-owned profiles and the main screen's selection. */
+internal data class SourceProfilesSnapshot(val catalog: SourceCatalog = SourceCatalog(),
+    val floatingDisabled: Set<String> = emptySet(), val available: Set<String>? = null) {
+    val floatingCatalog get() = catalog.forFloating(floatingDisabled, available)
+}
+
+internal fun SourceCatalog.forFloating(disabled: Set<String>, available: Set<String>? = null): SourceCatalog {
+    val rows = profiles.mapNotNull { profile ->
+        if (profile.id in disabled) null else when (val config = profile.configuration) {
+            is AllSourceConfiguration -> config.members.filter { it.id !in disabled && (available == null || it.id in available) }
+                .takeIf { it.isNotEmpty() }?.let { profile.copy(configuration = AllSourceConfiguration(it)) }
+            else -> profile.takeIf { available == null || it.id in available }
+        }
+    }
+    return SourceCatalog(rows, selectedId?.let { selected -> rows.firstOrNull { it.id == selected }?.id ?: rows.firstOrNull()?.id })
+}
+
 /** Encrypted profile repository. Only actual configuration changes write to storage. */
 @Singleton
 class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
@@ -33,13 +52,15 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
     private val mediaCache: SourceMediaCache? = null) {
     private val mutex = Mutex()
     private var loaded = false
-    private var available: Set<String>? = null
-    private val value = MutableStateFlow(SourceCatalog())
+    private val value = MutableStateFlow(SourceProfilesSnapshot())
     private val file = EncryptedSettingsFile(context, "source-profiles-v1", "sao-source-profiles-v1")
     private val legacy = EncryptedSettingsFile(context, "immich-connection-v1", "sao-immich-connection-v1")
-    val catalogs = flow { current(); emitAll(value) }
+    internal val snapshots = flow { current(); emitAll(value) }
+    val catalogs = snapshots.map { it.catalog }.distinctUntilChanged()
+    val floatingCatalogs = snapshots.map { it.floatingCatalog }.distinctUntilChanged()
 
-    suspend fun current(): SourceCatalog = withContext(dispatchers.io) { mutex.withLock { load() } }
+    suspend fun current(): SourceCatalog = withContext(dispatchers.io) { mutex.withLock { load().catalog } }
+    suspend fun currentFloating(): SourceCatalog = withContext(dispatchers.io) { mutex.withLock { load().floatingCatalog } }
 
     suspend fun upsert(profile: SourceProfile, select: Boolean = false) = update { catalog ->
         val existing = catalog.profiles.indexOfFirst { it.id == profile.id }
@@ -53,32 +74,37 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
         val remaining = it.profiles.filterNot { profile -> profile.id == id }
         SourceCatalog(remaining, it.selectedId?.takeUnless { selected -> selected == id } ?: remaining.firstOrNull()?.id)
     }
-    suspend fun enableAll(enabled: Boolean) = update { it.withAllSource(enabled, available) }
+    suspend fun enableAll(enabled: Boolean) = update { it.withAllSource(enabled, value.value.available) }
+    suspend fun enableInFloating(id: String, enabled: Boolean) = updateSnapshot {
+        require(id != ALL_SOURCE_ID && it.catalog.profiles.any { profile -> profile.id == id })
+        it.copy(floatingDisabled = if (enabled) it.floatingDisabled - id else it.floatingDisabled + id)
+    }
     /** Installation changes are process state, not preference writes. */
     suspend fun available(ids: Set<String>) = withContext(dispatchers.io) { mutex.withLock {
         val old = load()
-        available = ids
-        value.value = old.withAllSource(available = ids)
+        value.value = old.copy(catalog = old.catalog.withAllSource(available = ids), available = ids)
     } }
-    private suspend fun update(transform: (SourceCatalog) -> SourceCatalog) = withContext(dispatchers.io) { mutex.withLock {
-        val old = load(); val next = transform(old)
+    private suspend fun update(transform: (SourceCatalog) -> SourceCatalog) = updateSnapshot { it.copy(catalog = transform(it.catalog)) }
+    private suspend fun updateSnapshot(transform: (SourceProfilesSnapshot) -> SourceProfilesSnapshot) = withContext(dispatchers.io) { mutex.withLock {
+        val old = load(); val proposed = transform(old)
+        val next = proposed.copy(catalog = proposed.catalog.withAllSource(available = proposed.available),
+            floatingDisabled = proposed.floatingDisabled.intersect(proposed.catalog.profiles.map { it.id }.toSet()))
         if (old != next) {
-            val resolved = next.withAllSource(available = available)
-            write(resolved); value.value = resolved
-            old.profiles.filter { before -> next.profiles.none { it.identity == before.identity } }
+            write(next); value.value = next
+            old.catalog.profiles.filter { before -> next.catalog.profiles.none { it.identity == before.identity } }
                 .forEach { mediaCache?.remove(it.identity) }
         }
     } }
 
-    private fun load(): SourceCatalog {
+    private fun load(): SourceProfilesSnapshot {
         if (!loaded) {
             val json = file.read()
             value.value = if (json != null) decode(json) else {
                 val old = legacy.read()
-                if (old == null) SourceCatalog() else {
+                if (old == null) SourceProfilesSnapshot() else {
                     val profile = SourceProfile(UUID.randomUUID().toString(), "Imported source",
                         UnknownSourceConfiguration("immich",old.toString()))
-                    SourceCatalog(listOf(profile), profile.id.takeIf { old.optBoolean("enabled", true) }).also(::write)
+                    SourceProfilesSnapshot(SourceCatalog(listOf(profile), profile.id.takeIf { old.optBoolean("enabled", true) })).also(::write)
                 }
             }
             // Migration is committed before removing the old file; a failed write keeps it intact.
@@ -86,7 +112,7 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
         }
         return value.value
     }
-    private fun decode(json: JSONObject): SourceCatalog {
+    private fun decode(json: JSONObject): SourceProfilesSnapshot {
         require(json.getInt("version") == 1)
         val rows = json.getJSONArray("profiles")
         val profiles = List(rows.length()) { index ->
@@ -97,10 +123,13 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
         }
         val selected = json.optString("selected")
         val catalog = SourceCatalog(profiles, selected.takeIf { id -> profiles.any { it.id == id } })
-            .withAllSource(json.optBoolean("allEnabled"), available)
-        return if(selected == ALL_SOURCE_ID && catalog.profiles.any { it.id == ALL_SOURCE_ID }) catalog.copy(selectedId = selected) else catalog
+            .withAllSource(json.optBoolean("allEnabled"))
+        val resolved = if(selected == ALL_SOURCE_ID && catalog.profiles.any { it.id == ALL_SOURCE_ID }) catalog.copy(selectedId = selected) else catalog
+        val disabled = SourceWire.strings(json.optJSONArray("floatingDisabled")).toSet().intersect(profiles.map { it.id }.toSet())
+        return SourceProfilesSnapshot(resolved, disabled)
     }
-    private fun write(catalog: SourceCatalog) {
+    private fun write(snapshot: SourceProfilesSnapshot) {
+        val catalog = snapshot.catalog
         val rows = JSONArray()
         catalog.profiles.filterNot { it.id == ALL_SOURCE_ID }.forEach { profile ->
             val config = profile.configuration
@@ -109,7 +138,8 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
             rows.put(JSONObject().put("id", profile.id).put("name", profile.name)
                 .put("kind", config.kind).put("configuration", json))
         }
-        file.write(JSONObject().put("version", 1).put("profiles", rows).put("selected", catalog.selectedId.orEmpty()).put("allEnabled",catalog.profiles.any { it.id == ALL_SOURCE_ID }))
+        file.write(JSONObject().put("version", 1).put("profiles", rows).put("selected", catalog.selectedId.orEmpty())
+            .put("allEnabled",catalog.profiles.any { it.id == ALL_SOURCE_ID }).put("floatingDisabled",JSONArray(snapshot.floatingDisabled.sorted())))
     }
 }
 

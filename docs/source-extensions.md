@@ -8,6 +8,10 @@ Source extensions update independently of SAO. Version 1 accepts extensions sign
 
 [Moeview](moeview-source.md) is another independent APK, serving named Yande.re/Konachan/Gelbooru/Danbooru profiles through the unchanged v1 contract. Its tag queries, board-specific routes, optional credentials and browser verification remain in that extension; SAO needs no provider-specific code or APK update.
 
+In **Settings → Media sources → Show in floating picker**, each profile has a switch. Turning it off removes that profile from the floating picker and its All results, while keeping it available on the main screen. Credentials, settings and cached media are retained. The preference survives restarts and extension-profile refreshes. Disabling the active floating source cancels that session and chooses another enabled source; with none enabled, the picker offers **Manage sources**. Main-screen browsing and its All membership are unchanged. Only an actual switch change writes this host preference.
+
+[Light/dark visibility controls and empty-picker guidance](screenshots/README.md#floating-source-visibility). Validation passed four targeted preference/routing/UI checks, 13 existing source/home checks, 31 host JVM checks and host lint with zero errors. The controls and original home loading sticker were visually checked on Android 15.
+
 ## Ownership
 
 | SAO | Extension APK |

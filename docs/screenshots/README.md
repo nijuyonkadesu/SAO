@@ -103,3 +103,13 @@ The separate [Moeview APK](../moeview-source.md) supplies named booru profiles a
 The real Danbooru verification screen reaches Cloudflare's human-verification checkbox. This capture demonstrates the explicit browser flow; it does **not** establish that clearance or the native API handoff succeeds.
 
 <img src="moeview-cloudflare.png" width="260" alt="Danbooru's human-verification checkbox inside the explicit extension-owned verification screen" />
+
+## Floating source visibility
+
+Per-profile switches under **Show in floating picker** keep configured sources on the main screen while excluding them from the floating selector and its All results. Turning every switch off offers **Manage sources**. These captures use synthetic profiles; the selected main profile remains selected even with its floating switch off.
+
+<img src="floating-source-switches.png" width="220" alt="Floating-only per-source switches alongside existing source editing controls in light mode" /> <img src="floating-source-switches-dark.png" width="220" alt="The same floating-only source settings in dark mode" /> <img src="floating-sources-off.png" width="220" alt="Empty floating picker explains disabled sources and offers Manage sources" />
+
+The original sticker is restored while the main screen fetches results and while individual home images load.
+
+<img src="home-sticker-loading.png" width="220" alt="Original eager sticker centered in the home carousel loading area" />
