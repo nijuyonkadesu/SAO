@@ -8,6 +8,14 @@ The original `eager.webp` sticker appears while the main screen fetches results 
 
 [Light/dark home previews](screenshots/README.md#home-source-collections). The original README images remain the layout reference.
 
+## Custom home categories
+
+Open **Settings → Home categories → Edit**, choose a source profile, then add, edit or remove its chips. The inline editor accepts an optional label, a supported search mode and a query. When the extension advertises suggestions, typing two characters offers its own completions; Moeview supplies board-specific tags. Picking a suggestion preserves the other query terms. Blank labels use the query text. **Reset to source defaults** restores the extension's presets; removing every category intentionally leaves no chips.
+
+This page belongs in SAO's main settings because categories control its home presentation. Extension forms continue to own credentials and domain configuration; the source-management list stays focused on profiles and floating visibility. Choosing a profile here does not switch the browsing source. Overrides are keyed by stable host profile ID, survive renaming/reconfiguration and are removed when the profile is deleted. Only Save, Remove and Reset persist changes; drafts stay in the ViewModel. Floating search and provider defaults are unaffected. Label-only edits update home chips without refetching media or losing carousel focus.
+
+The shared carousel uses Material's placement/scrolling without RecyclerView item-change fades. This avoids a reproduced detached-holder crash when keyboard resizing switches strategies during a search-result update. [Category editor and completion previews](screenshots/README.md#search-suggestions-and-home-categories).
+
 ## Experimental All source
 
 Enable **Settings → Media sources → All sources (experimental)**, then select **All** from either browser. Disabling it while selected returns to a real source. Only installed profiles participate. Credentials, authentication and provider APIs remain in their source APKs.

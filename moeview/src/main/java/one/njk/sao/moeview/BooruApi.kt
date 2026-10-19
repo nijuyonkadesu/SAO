@@ -144,7 +144,7 @@ class BooruApi internal constructor(
      */
     suspend fun tag(board: Board, name: String): Tag? {
         if (name.isBlank()) return null
-        val body = http.fetch(board) { base -> tagUrl(base, board, name, 25) }
+        val body = http.fetch(board) { base -> tagUrl(base, board, name, 25, exact = true) }
         return parseTags(board.apiKind, body, json)
             .firstOrNull { it.name.equals(name, ignoreCase = true) }
     }
@@ -331,15 +331,15 @@ class BooruApi internal constructor(
             ApiKind.DANBOORU -> "$base/posts.json?tags=id:$id&limit=1"
         }
 
-    private fun tagUrl(base: String, board: Board, prefix: String, limit: Int): String =
+    private fun tagUrl(base: String, board: Board, prefix: String, limit: Int, exact: Boolean = false): String =
         when (board.apiKind) {
-            ApiKind.MOEBOORU -> "$base/tag.json?name=${enc(prefix)}&order=count&limit=$limit"
+            ApiKind.MOEBOORU -> "$base/tag.json?name=${enc(prefix + if(exact) "" else "*")}&order=count&limit=$limit"
             ApiKind.GELBOORU ->
                 "$base/index.php?page=dapi&s=tag&q=index&json=1" +
-                    "&name_pattern=${enc(prefix)}&limit=$limit"
+                    "&name_pattern=${enc(prefix + if(exact) "" else "%")}&limit=$limit"
             // brackets kept encoded: danbooru param names contain [ ]
             ApiKind.DANBOORU ->
-                "$base/tags.json?search%5Bname_matches%5D=${enc(prefix)}*" +
+                "$base/tags.json?search%5Bname_matches%5D=${enc(prefix + if(exact) "" else "*")}" +
                     "&search%5Border%5D=count&limit=$limit"
         }
 

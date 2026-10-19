@@ -13,6 +13,7 @@ object SourceWire {
         .put("facets", strings(value.facets.map { it.name })).put("random", value.random).put("sequence", value.sequence)
         .put("defaultMode", value.defaultMode.name).put("changes",value.changesUri)
         .put("categories", JSONArray(value.categories.map { JSONObject().put("id",it.id).put("label",it.label).put("query",query(it.query)).put("adult",it.adult) }))
+        .put("suggestions",strings(value.suggestionModes.map { it.name }))
     fun capabilities(json: JSONObject): SourceCapabilities {
         val modes = enums<SearchMode>(json.optJSONArray("modes"))
         val default = SearchMode.entries.firstOrNull { it.name == json.optString("defaultMode") && it in modes }
@@ -24,7 +25,16 @@ object SourceWire {
             categories=if(categories==null) emptyList() else List(categories.length()) { index ->
                 val row=categories.getJSONObject(index)
                 SourceCategory(row.getString("id"),row.getString("label"),query(row.getJSONObject("query")),row.optBoolean("adult"))
-            }.distinctBy { it.id })
+            }.distinctBy { it.id },suggestionModes=enums<SearchMode>(json.optJSONArray("suggestions")) intersect modes)
+    }
+    fun suggestions(value: SearchSuggestions) = JSONObject().put("start",value.start).put("end",value.end)
+        .put("items",JSONArray(value.items.map { JSONObject().put("value",it.value).put("label",it.label).put("detail",it.detail) }))
+    fun suggestions(json: JSONObject): SearchSuggestions {
+        val rows=json.getJSONArray("items"); require(rows.length()<=20)
+        return SearchSuggestions(json.getInt("start"),json.getInt("end"),List(rows.length()) { index ->
+            val row=rows.getJSONObject(index)
+            SearchSuggestion(row.getString("value"),row.getString("label"),nullable(row,"detail"))
+        })
     }
     fun profile(value: ExtensionProfile) = JSONObject().put("id", value.id).put("name", value.name)
         .put("revision", value.revision).put("summary", value.summary)

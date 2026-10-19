@@ -55,6 +55,7 @@ class ArtsViewModel @Inject constructor(@HomeSources private val source: MediaSo
         }
         var current = retained ?: HomeState(PickerState(query=query,sourceId=spec.sourceId),
             spec.capabilities.categories,spec.category?.id)
+        current=current.copy(categories=spec.capabilities.categories,categoryId=spec.category?.id)
         if(current.browse.loading) {
             emit(current)
             try {

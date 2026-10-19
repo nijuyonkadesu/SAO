@@ -113,3 +113,9 @@ Per-profile switches under **Show in floating picker** keep configured sources o
 The original sticker is restored while the main screen fetches results and while individual home images load.
 
 <img src="home-sticker-loading.png" width="220" alt="Original eager sticker centered in the home carousel loading area" />
+
+## Search suggestions and home categories
+
+**Settings → Home categories** edits SAO's per-profile home chips, separately from extension credentials. Add, edit, remove or reset categories; supported sources offer query completions. Choosing a profile here leaves the browsing source unchanged. These synthetic Moeview fixtures exercise the selected board's tag dictionary and preserve preceding query terms. Light/dark dropdowns and keyboard visibility were reviewed.
+
+<img src="home-category-editor.png" width="220" alt="SAO Home categories page with per-source chips and Add and Reset actions" /> <img src="home-category-suggestions.png" width="220" alt="Inline category editor with a board tag suggestion above the keyboard" /> <img src="floating-tag-suggestions.png" width="220" alt="Floating search offering board-specific completions for the second tag" /> <img src="floating-tag-suggestions-dark.png" width="220" alt="The same floating tag suggestions in Material dark colors" />

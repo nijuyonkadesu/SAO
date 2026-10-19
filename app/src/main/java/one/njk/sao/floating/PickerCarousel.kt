@@ -42,6 +42,9 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
     }
 
     init {
+        // Material owns card placement. RecyclerView change animations can retain detached
+        // holders across the Hero/full-screen switch when IME resizing races a result update.
+        view.itemAnimator = null
         view.layoutManager = manager(false)
         view.adapter = adapter
         snap.attachToRecyclerView(view)

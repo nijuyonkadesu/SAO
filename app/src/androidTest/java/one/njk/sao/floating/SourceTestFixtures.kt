@@ -61,6 +61,11 @@ internal suspend fun SourceProfiles.restore(catalog: SourceCatalog) {
     catalog.profiles.filterNot { it.id == ALL_SOURCE_ID }.forEach { upsert(it) }
     enableAll(catalog.profiles.any { it.id == ALL_SOURCE_ID }); select(catalog.selectedId)
 }
+internal suspend fun SourceProfiles.restore(snapshot: SourceProfilesSnapshot) {
+    restore(snapshot.catalog)
+    snapshot.floatingDisabled.forEach { enableInFloating(it,false) }
+    snapshot.homeCategories.forEach { (id,rows) -> homeCategories(id,rows) }
+}
 
 /** Cross-process controls: the real extension Activity is launched for result by SAO's proxy. */
 internal class ExtensionForm(profile: SourceProfile? = null, installed: InstalledSourceExtension? = null) : AutoCloseable {

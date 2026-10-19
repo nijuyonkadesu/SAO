@@ -57,6 +57,13 @@ class MoeviewDeviceTest {
                     return MockResponse().setHeader("Content-Type",when(ext) { "gif" -> "image/gif"; "mp4" -> "video/mp4"; "webm" -> "video/webm"; else -> "image/png" })
                         .setBody(Buffer().write(if(url.encodedPath.contains("preview")) png else formats.getValue(ext)))
                 }
+                if(url.encodedPath.endsWith("/tag.json") || url.encodedPath.endsWith("/tags.json") || url.queryParameter("s")=="tag") {
+                    val board=request.getHeader("X-Fixture-Board") ?: "konachan"
+                    val tags=JSONArray(listOf("blue_hair","blue_$board").mapIndexed { index,name -> JSONObject()
+                        .put("id",index+1).put("name",name).put("count",1000-index).put("post_count",1000-index).put("type",0).put("category",0) })
+                    return MockResponse().setHeader("Content-Type","application/json")
+                        .setBody(if(board=="gelbooru") JSONObject().put("tag",tags).toString() else tags.toString())
+                }
                 val gel=url.encodedPath.contains("index.php"); val dan=url.encodedPath.endsWith("posts.json")
                 val page=if(gel) (url.queryParameter("pid")?.toInt() ?: 0)+1 else url.queryParameter("page")?.toInt() ?: 1
                 val count=if(page>pageCount) 0 else if(page>1) 1 else url.queryParameter("limit")?.toInt() ?: 20
@@ -125,10 +132,33 @@ class MoeviewDeviceTest {
         val row=profile()
         val caps=SourceWire.capabilities(client.request(row.id,ExtensionProtocol.CAPABILITIES,payload(row)))
         assertEquals(setOf(SearchMode.DESCRIPTION),caps.modes); assertEquals(SearchMode.DESCRIPTION,caps.defaultMode)
+        assertEquals(setOf(SearchMode.DESCRIPTION),caps.suggestionModes)
         assertTrue(caps.facets.isEmpty()); assertFalse(caps.sequence); assertFalse(caps.random)
         assertEquals(10,caps.categories.size)
         val dan=profile(MoeviewConfig(board=Board.DANBOORU))
         assertTrue(SourceWire.capabilities(client.request(dan.id,ExtensionProtocol.CAPABILITIES,payload(dan))).random)
+        assertEquals(0,server.requestCount)
+    }
+    private suspend fun suggestions(row: MoeviewProfile,text: String,cursor: Int=text.length,mode: SearchMode=SearchMode.DESCRIPTION)=
+        SourceWire.suggestions(client.request(row.id,ExtensionProtocol.SUGGESTIONS,payload(row)
+            .put("query",SourceWire.query(MediaQuery(text,mode=mode))).put("cursor",cursor))).validate(text,cursor)
+    @Test fun boardSuggestionsUseTheRightEndpointAndReplaceOnlyTheCurrentToken(): Unit=runBlocking {
+        for(board in Board.entries) {
+            val row=profile(MoeviewConfig(board=board))
+            val query="smile -blu later"; val cursor=query.indexOf(" later")
+            val found=suggestions(row,query,cursor)
+            assertEquals(6,found.start); assertEquals(cursor,found.end)
+            assertEquals(listOf("blue_hair","blue_${board.id}"),found.items.map { it.label })
+            assertEquals("smile -blue_hair later",query.replaceRange(found.start,found.end,found.items.first().value))
+            val request=server.takeRequest().requestUrl!!
+            val key=when(board) { Board.DANBOORU -> "search[name_matches]"; Board.GELBOORU -> "name_pattern"; else -> "name" }
+            assertEquals("blu"+if(board==Board.GELBOORU) "%" else "*",request.queryParameter(key))
+        }
+    }
+    @Test fun shortPrefixesUnsupportedModesAndMetatagsNeverMakeAnHttpCall(): Unit=runBlocking {
+        val row=profile()
+        for(text in listOf("b","smile b","rating:s","blue*","smile ")) assertTrue(suggestions(row,text).items.isEmpty())
+        assertTrue(suggestions(row,"blue",mode=SearchMode.CONTEXT).items.isEmpty())
         assertEquals(0,server.requestCount)
     }
     @Test fun realBinderPagesHaveOpaqueBoundCursorsAndNoSearchResultCache(): Unit=runBlocking {
@@ -238,6 +268,33 @@ class MoeviewDeviceTest {
         check(target!!.performAction(AccessibilityNodeInfo.ACTION_CLICK))
     }
     private fun clickText(text: String)=click { it.text?.toString()==text || it.contentDescription?.toString()==text }
+    private fun clickScrolled(id: String) {
+        waitFor("Visible $id") {
+            val all=nodes(); val control=all.firstOrNull { it.viewIdResourceName=="one.njk.sao:id/$id" }
+            if(control?.isVisibleToUser==true) true else {
+                if(control!=null) control.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
+                else all.firstOrNull { it.isScrollable && it.packageName?.toString()=="one.njk.sao" }?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+                false
+            }
+        }
+        click { it.viewIdResourceName=="one.njk.sao:id/$id" }
+    }
+    private fun input(id: String,text: String) {
+        clickScrolled(id)
+        val node=nodes().first { it.viewIdResourceName=="one.njk.sao:id/$id" }
+        check(node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,android.os.Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,text)
+        }))
+        waitFor("Cursor at end of $id") {
+            val updated=nodes().firstOrNull { it.viewIdResourceName=="one.njk.sao:id/$id" && it.text?.toString()==text }
+            if(updated==null) false
+            else if(updated.textSelectionStart==text.length && updated.textSelectionEnd==text.length) true
+            else updated.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION,android.os.Bundle().apply {
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT,text.length)
+                putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT,text.length)
+            })
+        }
+    }
     private fun visual(stage: String) {
         if(InstrumentationRegistry.getArguments().getString("visualPause")!="true") return
         val stages=InstrumentationRegistry.getArguments().getString("visualStages")
@@ -290,5 +347,44 @@ class MoeviewDeviceTest {
                 else instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
             }
         }
+    }
+    @Test fun saoUsesBoardSuggestionsInFloatingSearchAndItsOwnHomeCategoryEditor(): Unit=runBlocking {
+        val name="Moeview tags "+UUID.randomUUID().toString().take(6)
+        profile(name=name)
+        app.startActivity(app.packageManager.getLaunchIntentForPackage("one.njk.sao")!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        waitFor("SAO home") { nodes().any { it.viewIdResourceName=="one.njk.sao:id/type" } }
+        click { it.viewIdResourceName=="one.njk.sao:id/edit" }
+        waitFor("New profile discovered") { nodes().any { it.text?.toString()==name } }
+        clickText(name)
+        waitFor("Profile selected") { nodes().any { it.contentDescription?.toString()=="$name, selected" } }
+        click { it.viewIdResourceName=="one.njk.sao:id/back" }
+        click { it.viewIdResourceName=="one.njk.sao:id/settings" }
+        clickScrolled("home_categories")
+        waitFor("Host category defaults") { nodes().any { it.text?.toString()=="Twintails" } }
+        clickScrolled("add_category")
+        input("query","blue_ha")
+        waitFor("Board tag suggestions in host category editor") { nodes().any { it.text?.toString()=="blue_hair" } }
+        visual("category-tag-suggestions")
+        clickText("blue_hair")
+        waitFor("Canonical tag inserted") { nodes().any { it.viewIdResourceName=="one.njk.sao:id/query" && it.text?.toString()?.trim()=="blue_hair" } }
+        if(instrumentation.uiAutomation.windows.any { it.type==android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD })
+            instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        clickScrolled("save_category")
+        waitFor("SAO saved custom category") { nodes().any { it.text?.toString()=="blue hair" } }
+        visual("custom-home-categories")
+        clickScrolled("reset_categories")
+        waitFor("Defaults restored") { nodes().none { it.text?.toString()=="blue hair" } }
+        clickScrolled("back")
+        clickScrolled("preview")
+        waitFor("Floating picker") { nodes().any { it.viewIdResourceName=="one.njk.sao:id/search_toggle" } }
+        click { it.viewIdResourceName=="one.njk.sao:id/search_toggle" }
+        input("search","smile blu")
+        waitFor("Board tag suggestions in floating picker") { nodes().any { it.text?.toString()=="blue_hair" } }
+        visual("floating-tag-suggestions")
+        clickText("blue_hair")
+        waitFor("Floating completion preserves preceding tag") { nodes().any {
+            it.viewIdResourceName=="one.njk.sao:id/search" && it.text?.toString()?.trim()=="smile blue_hair"
+        } }
+        click { it.viewIdResourceName=="one.njk.sao:id/close" }
     }
 }

@@ -1,0 +1,16 @@
+<resources>
+    <string name="home_categories_title">Home categories</string>
+    <string name="home_categories_manage">Edit</string>
+    <string name="home_categories_description">Customize home category chips for each source. Tap a chip to edit it or its cross to remove it.</string>
+    <string name="home_categories_profile">Source profile</string>
+    <string name="home_category_add">Add category</string>
+    <string name="home_categories_reset">Reset to source defaults</string>
+    <string name="home_category_details">Category details</string>
+    <string name="home_category_label">Label (optional)</string>
+    <string name="home_category_query">Search query</string>
+    <string name="home_category_save">Save category</string>
+    <string name="home_category_edit">Edit %1$s</string>
+    <string name="home_category_suggestion_help">Type two characters for this source’s suggestions.</string>
+    <string name="home_category_query_help">Uses this source’s search mode. Leave the query empty to browse all results.</string>
+    <string name="home_categories_settings_description">Add, edit or remove home category chips for each source, with suggestions when supported.</string>
+</resources>

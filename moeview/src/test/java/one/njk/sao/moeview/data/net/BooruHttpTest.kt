@@ -71,6 +71,16 @@ class BooruHttpTest {
         assertEquals(SfwMode.SFW, created.config.defaultSfwMode)
         created.close()
     }
+    @Test fun autocompleteUsesEachBoardWildcardWhileExactTagLookupDoesNot(): Unit=runBlocking {
+        for(board in Board.entries) {
+            val body=if(board==Board.GELBOORU) """{"tag":[]}""" else "[]"
+            server.enqueue(MockResponse().setBody(body)); api.tags(board,"blue",limit=12)
+            val key=when(board) { Board.GELBOORU -> "name_pattern"; Board.DANBOORU -> "search[name_matches]"; else -> "name" }
+            assertEquals("blue"+if(board==Board.GELBOORU) "%" else "*",server.takeRequest().requestUrl!!.queryParameter(key))
+            server.enqueue(MockResponse().setBody(body)); api.tag(board,"blue_hair")
+            assertEquals("blue_hair",server.takeRequest().requestUrl!!.queryParameter(key))
+        }
+    }
 
     private fun konachanJson(id: Int) =
         """[{"id":$id,"tags":"blue_archive foxgirl","rating":"q","score":1,"file_url":"https://konachan.net/image/x/konachan-$id.png","preview_url":"https://konachan.net/preview/x/t.jpg"}]"""

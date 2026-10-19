@@ -43,6 +43,7 @@ class PickerActivity : AppCompatActivity() {
     @Inject lateinit var dispatchers: FloatingDispatchers
     @Inject lateinit var apps: AppCatalog
     @Inject lateinit var emojiKeywords: one.njk.sao.floating.emoji.EmojiKeywords
+    @Inject lateinit var suggestionRequests: one.njk.sao.floating.search.SuggestionRequests
     private val model: PickerViewModel by viewModels()
     private val sourcesModel: SourceProfilesViewModel by viewModels()
     private val searchOptions: SearchOptionsViewModel by viewModels()
@@ -75,6 +76,7 @@ class PickerActivity : AppCompatActivity() {
     private var capabilityJob: Job? = null
     private var capabilityMime: String? = null
     private var catalog = SourceCatalog()
+    private var completionCapabilities = SourceCapabilities()
     private var appChoices: List<AppChoice> = emptyList()
     private lateinit var metrics: android.view.WindowMetrics
     private val target get() = AppFamilyResolver.resolve(targetPackage, options.telegramPackages)
@@ -158,6 +160,11 @@ class PickerActivity : AppCompatActivity() {
         binding.search.bind(emojiKeywords, this, binding.searchField) {
             editing && !searchController.visible && !binding.sourcePanel.isVisible && !binding.targetList.isVisible
         }
+        binding.search.sourceSuggestions(context = {
+            val query=model.query.value
+            if(completionCapabilities.sourceId==catalog.identity && query.mode in completionCapabilities.suggestionModes)
+                one.njk.sao.floating.search.SourceCompletionContext(catalog.identity,query) else null
+        }) { context,cursor -> suggestionRequests.run(context.sourceId,cursor) { source.suggestions(context.query,cursor,context.sourceId) } }
         binding.search.setText(model.query.value.text)
         binding.search.doAfterTextChanged {
             if (!syncingQuery) model.search(it?.toString().orEmpty())
@@ -218,6 +225,7 @@ class PickerActivity : AppCompatActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { model.query.collect { syncQueryViews(it); renderHeader(); renderDock() } }
+                launch { source.capabilities.collect { completionCapabilities=it; binding.search.refreshSuggestions() } }
                 launch { sourcesModel.state.collect { state ->
                     catalog = state.floatingCatalog
                     sourceGesture.update()
@@ -360,6 +368,7 @@ class PickerActivity : AppCompatActivity() {
             chip.isChecked = chip.text.toString() == query.text
         }
         syncingQuery = false
+        binding.search.refreshSuggestions()
         searchController.renderQuery()
     }
     private fun expandSearch() {

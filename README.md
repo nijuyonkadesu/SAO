@@ -16,6 +16,8 @@ The [Local Sticker extension](docs/local-sticker-source.md) supports named folde
 
 The [Moeview extension](docs/moeview-source.md) adds Yande.re, Konachan, Gelbooru and Danbooru profiles, tag search/home presets, GIF/video media and optional browser verification. Install `moeview-sao.apk`; the existing SAO host works without an update.
 
+**Settings → Home categories** lets you customize each source's home chips. Supported extensions offer search suggestions in this editor and floating search; Moeview supplies board-specific tags. [Category settings](docs/home-source-browser.md#custom-home-categories).
+
 ## Stack
 - [x] Retrofit - network client in the Immich extension
 - [x] COIL - Image Loader

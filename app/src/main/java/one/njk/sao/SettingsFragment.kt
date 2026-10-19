@@ -38,6 +38,7 @@ class SettingsFragment: Fragment() {
             }
             nsfwToggle.setOnClickListener { viewModel.toggleNsfwMode() }
             exportingToggle.setOnClickListener { viewModel.exportFav() }
+            homeCategories.setOnClickListener { startActivity(android.content.Intent(requireContext(),one.njk.sao.floating.HomeCategoriesActivity::class.java)) }
         }
     }
 

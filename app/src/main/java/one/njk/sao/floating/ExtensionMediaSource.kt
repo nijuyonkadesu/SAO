@@ -73,6 +73,14 @@ class ExtensionMediaSource(private val context: Context, private val profile: So
     override suspend fun filters() = if (SearchFacet.EMOJI_TAGS in loadCapabilities().facets)
         SourceWire.strings(call(ExtensionProtocol.FILTERS).optJSONArray("values")) else emptyList()
     override suspend fun searchModes() = loadCapabilities().modes
+    override suspend fun suggestions(query: MediaQuery, cursor: Int, expectedSourceId: String?): SearchSuggestions {
+        check(expectedSourceId==null || expectedSourceId==profile.identity)
+        if(query.mode !in loadCapabilities().suggestionModes) return SearchSuggestions.empty(cursor)
+        // Obsolete typeahead is cancelled rather than retried; the next edit starts a fresh request.
+        return try { SourceWire.suggestions(request(ExtensionProtocol.SUGGESTIONS,
+            JSONObject().put("query",SourceWire.query(query)).put("cursor",cursor))).validate(query.text,cursor) }
+        catch(error: ExtensionFailure) { throw SourceReadException(error.messageResource(),error) }
+    }
     override suspend fun people(name: String, page: Int, expectedSourceId: String?): PeoplePage {
         check(expectedSourceId == null || expectedSourceId == profile.identity)
         val reply = call(ExtensionProtocol.PEOPLE,JSONObject().put("name",name).put("page",page))

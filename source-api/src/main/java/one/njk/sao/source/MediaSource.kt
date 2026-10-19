@@ -17,6 +17,7 @@ interface MediaSource {
     suspend fun owns(item: MediaItem): Boolean = identity.first() == (item.remote?.sourceId ?: "local")
     suspend fun openSequence(anchor: MediaItem): MediaSequence = throw UnsupportedOperationException("Sequence browsing is unavailable")
     suspend fun searchModes(): Set<SearchMode> = setOf(SearchMode.CONTEXT)
+    suspend fun suggestions(query: MediaQuery, cursor: Int, expectedSourceId: String? = null): SearchSuggestions = SearchSuggestions.empty(cursor)
     suspend fun people(name: String, page: Int = 1, expectedSourceId: String? = null): PeoplePage = PeoplePage(emptyList())
     suspend fun personPreview(person: SearchPerson): Any? = null
     suspend fun places(level: PlaceLevel, country: String? = null, state: String? = null, expectedSourceId: String? = null): List<String> = emptyList()

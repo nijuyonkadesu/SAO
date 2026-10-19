@@ -33,6 +33,8 @@ class MoeviewExtensionService : ExtensionService() {
         return when(operation) {
             ExtensionProtocol.CAPABILITIES -> SourceWire.capabilities(records.capabilities(row.config))
             ExtensionProtocol.SEARCH -> runtime.use(row) { SourceWire.page(records.page(row,source,SourceWire.query(payload.getJSONObject("query")),SourceWire.nullable(payload,"cursor"),it)) }
+            ExtensionProtocol.SUGGESTIONS -> runtime.use(row) { SourceWire.suggestions(MoeviewSuggestions.query(row,
+                SourceWire.query(payload.getJSONObject("query")),payload.getInt("cursor"),it)) }
             ExtensionProtocol.FILTERS -> JSONObject().put("values",JSONArray())
             ExtensionProtocol.MEDIA -> {
                 val item=SourceWire.item(payload.getJSONObject("item"))

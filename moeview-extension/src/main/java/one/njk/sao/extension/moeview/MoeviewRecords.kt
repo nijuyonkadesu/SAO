@@ -9,7 +9,7 @@ import org.json.JSONObject
 /** Domain translation only: one requested page, and an opaque query/profile-bound continuation. */
 class MoeviewRecords(private val store: MoeviewProfiles) {
     fun capabilities(config: MoeviewConfig)=SourceCapabilities(setOf(SearchMode.DESCRIPTION),random=config.board in setOf(Board.GELBOORU,Board.DANBOORU),
-        defaultMode=SearchMode.DESCRIPTION,categories=listOf("All" to "","Smile" to "smile","Solo" to "solo",
+        defaultMode=SearchMode.DESCRIPTION,suggestionModes=setOf(SearchMode.DESCRIPTION),categories=listOf("All" to "","Smile" to "smile","Solo" to "solo",
             "Long hair" to "long_hair","Blue eyes" to "blue_eyes","Animal ears" to "animal_ears",
             "School uniform" to "school_uniform","Twintails" to "twintails","Scenery" to "scenery","Sky" to "sky").map { (label,tag) ->
                 SourceCategory(tag.ifEmpty { "all" },label,MediaQuery(text=tag,mode=SearchMode.DESCRIPTION))

@@ -36,6 +36,12 @@ Capabilities declare supported search modes (`CONTEXT`, `FILENAME`, `DESCRIPTION
 
 Optional v1 `categories` contains up to 40 provider-authored home presets: a stable `id`, display `label`, full `query` and optional `adult` flag. SAO renders those presets as chips and submits their query through the same capability normalization as search. Adult presets follow the existing setting; it is not an image-content filter. Media records may include `filename`, kept separate from an edited title/description. Older extensions remain compatible; without these optional fields the host can browse the source but has no provider presets or trustworthy filename to copy. Immich 1.1.0 and Local Sticker 1.4.0 supply both.
 
+Optional v1 `suggestions` lists the search modes supporting query completion. SAO sends a `suggestions` operation only for an advertised mode, with the full `query` and collapsed UTF-16 `cursor`. The provider returns `{start,end,items:[{value,label,detail?}]}`: an exclusive-end edit range containing the cursor, and at most 20 choices. The host validates bounds, Unicode boundaries and bounded single-line replacements, then preserves text outside that range. Tag syntax and dictionaries belong to the extension. Moeview 1.1.0 implements this for Description; older Immich/Local Sticker APKs continue to work without suggestion requests.
+
+The shared Material dropdown appears in floating search and **Settings → Home categories**. Local `:emoji` completion takes priority. Provider completion waits 300 ms after editing, cancels obsolete work and stops when the screen stops. It has no result cache or automatic retry. Failure cooldowns are scoped to the source revision: Retry-After (seconds or HTTP date, capped at one day), otherwise 30 seconds for HTTP 429 or five seconds for other failures. No background timer or polling resumes requests; a later edit must trigger one.
+
+[Category settings and reviewed screenshots](screenshots/README.md#search-suggestions-and-home-categories). The additive SDK and host/provider JVM suites pass 75 checks. All 24 host and 14 Moeview Android checks pass, covering both autocomplete UIs, unchanged emoji completion, isolated per-profile category persistence, unsaved drafts, source selection, keyboard visibility and carousel focus. All media and credentials in these checks are synthetic localhost fixtures. The signed optimized Moeview APK also passed a public-tag completion smoke test through SAO.
+
 **Settings → Media sources → All sources (experimental)** adds the host-owned All profile. It contains public member references, never credentials. [Aggregation, cursor ownership and failure handling](home-source-browser.md#experimental-all-source) are host responsibilities; extensions need no aggregation implementation.
 
 An optional v1 `changes` capability carries a granted, source-owned content URI. SAO validates its owning package and observes it only while the picker is visible. Notifications are coalesced to at most one local refresh per second; matching items/metadata merge without clearing the list or focus. Random batches remain stable. Older v1 clients ignore this optional field. Extensions without it need no observer or extra API calls.
@@ -51,6 +57,7 @@ An installed APK exports a service handling `one.njk.sao.source.EXTENSION`, with
 | `profiles` | Up to 100 public named profiles and an opaque continuation; no network required |
 | `capabilities` | Supported modes, facets and optional features |
 | `search` | Up to 100 items plus opaque `next` cursor |
+| `suggestions` | Optional: at most 20 query replacements and their UTF-16 edit range |
 | `filters`, `people`, `places` | Supported filter choices; people may be paginated |
 | `media`, `personMedia` | Granted read-only `content://` stream URI |
 | `sequenceOpen`, `sequencePage` | Timeline items, directional cursors and opaque sequence token |

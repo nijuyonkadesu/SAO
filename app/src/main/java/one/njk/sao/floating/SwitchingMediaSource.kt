@@ -50,7 +50,11 @@ class SwitchingMediaSource(private val profiles: SourceProfiles,
         .flatMapLatest { flow { emitAll(session().source.changes) }.catch { error -> if(error is CancellationException) throw error } }
     override val capabilities = catalogs.map { it.identity }.distinctUntilChanged()
         .flatMapLatest { id -> flow {
-            emitAll(session().source.capabilities.map { it.copy(sourceId = id) })
+            val declared=session().source.capabilities
+            val effective=if(floatingOnly) declared else kotlinx.coroutines.flow.combine(declared,profiles.snapshots) { caps,snapshot ->
+                caps.copy(categories=snapshot.homeCategories[snapshot.catalog.selectedId] ?: caps.categories)
+            }
+            emitAll(effective.map { it.copy(sourceId = id) })
         }.catch { error -> if (error is CancellationException) throw error; emit(SourceCapabilities(sourceId = id)) } }
         .stateIn(scope, SharingStarted.WhileSubscribed(0),SourceCapabilities())
     override val advancedSearch = capabilities.map { it.searchOptions }.distinctUntilChanged()
@@ -116,6 +120,8 @@ class SwitchingMediaSource(private val profiles: SourceProfiles,
     }
     override suspend fun filters() = read { it.filters() }
     override suspend fun searchModes() = read { it.searchModes() }
+    override suspend fun suggestions(query: MediaQuery, cursor: Int, expectedSourceId: String?) =
+        read(expectedSourceId=expectedSourceId) { it.suggestions(query,cursor,expectedSourceId) }
     override suspend fun people(name: String, page: Int, expectedSourceId: String?) = read(expectedSourceId = expectedSourceId) { it.people(name, page, expectedSourceId) }
     override suspend fun personPreview(person: SearchPerson) = read(expectedSourceId = person.sourceId) { it.personPreview(person) }
     override suspend fun places(level: PlaceLevel, country: String?, state: String?, expectedSourceId: String?) = read(expectedSourceId = expectedSourceId) { it.places(level, country, state, expectedSourceId) }

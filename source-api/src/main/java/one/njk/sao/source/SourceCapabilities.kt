@@ -17,6 +17,8 @@ data class SourceCapabilities(
     /** Optional read-granted content URI for local index changes; observed only while browsing. */
     val changesUri: String? = null,
     val categories: List<SourceCategory> = emptyList(),
+    /** Optional query completion, scoped to the declared modes; absence means no suggestion IPC. */
+    val suggestionModes: Set<SearchMode> = emptySet(),
 ) {
     val searchOptions get() = modes.isNotEmpty() || facets.isNotEmpty()
     fun normalize(query: MediaQuery): MediaQuery = query.copy(
@@ -49,6 +51,7 @@ object ExtensionProtocol {
     const val DELETE_PROFILE = "deleteProfile"
     const val CAPABILITIES = "capabilities"
     const val SEARCH = "search"
+    const val SUGGESTIONS = "suggestions"
     const val FILTERS = "filters"
     const val PEOPLE = "people"
     const val PLACES = "places"
