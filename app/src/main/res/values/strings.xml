@@ -27,7 +27,6 @@
     <string name="media_filename">Filename</string>
     <string name="media_filename_copied">Filename copied</string>
     <string name="home_add_source">Add a source to browse your collection</string>
-    <string name="home_loading">Loading collection…</string>
     <string name="home_retry">Could not load this collection. Tap to retry.</string>
     <string name="home_empty">No media in this collection</string>
     <string name="home_saved">Saved to SAO in your gallery</string>

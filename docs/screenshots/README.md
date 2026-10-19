@@ -110,9 +110,9 @@ Per-profile switches under **Show in floating picker** keep configured sources o
 
 <img src="floating-source-switches.png" width="220" alt="Floating-only per-source switches alongside existing source editing controls in light mode" /> <img src="floating-source-switches-dark.png" width="220" alt="The same floating-only source settings in dark mode" /> <img src="floating-sources-off.png" width="220" alt="Empty floating picker explains disabled sources and offers Manage sources" />
 
-The original sticker is restored while the main screen fetches results and while individual home images load.
+The original sticker loads inside individual home cards. The carousel stays mounted while metadata and a bounded nearby preview window load, without a separate loading overlay. This delayed-network fixture holds preview bytes so the in-card placeholders remain visible.
 
-<img src="home-sticker-loading.png" width="220" alt="Original eager sticker centered in the home carousel loading area" />
+<img src="home-card-previews.png" width="260" alt="Original sticker placeholders inside home carousel cards while preview transfers are deliberately held" />
 
 ## Search suggestions and home categories
 

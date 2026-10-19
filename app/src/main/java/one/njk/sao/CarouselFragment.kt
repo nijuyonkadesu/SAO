@@ -43,6 +43,7 @@ class CarouselFragment : Fragment(), MenuProvider {
     @Inject lateinit var preferences: FloatingPreferences
     private var holdMs = 160L
     private lateinit var carousel: PickerCarousel
+    private lateinit var previews: CarouselPreviewPrefetcher
     private var categories: List<SourceCategory>? = null
     private var busy = false
     private var titleHold: ResultHoldAction? = null
@@ -59,8 +60,13 @@ class CarouselFragment : Fragment(), MenuProvider {
             val position = carousel.adapter.currentList.indexOfFirst { it.id == item.id }
             if(position >= 0) carousel.view.smoothScrollToPosition(position)
         }
+        previews=CarouselPreviewPrefetcher(viewLifecycleOwner.lifecycleScope,source::preview)
         carousel = PickerCarousel(binding.carouselRecyclerView,adapter,model::current,{ model.focusedId },
-            { _, id, position -> model.focus(id); model.loadMore(position) },::renderActions,{}, {},home=true)
+            { key, id, position ->
+                model.focus(id); model.loadMore(position)
+                if(binding.carouselRecyclerView.scrollState==androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE)
+                    previews.update(key,adapter.currentList,position) else previews.pause()
+            },::renderActions,{}, { previews.pause() },home=true)
         binding.type.setOnClickListener { chooseSource() }
         collectionGesture = HoldDragSelector(binding.type,requireActivity().findViewById<FrameLayout>(android.R.id.content),
             choices={ sources.state.value.catalog.profiles }, selected={ sources.state.value.catalog.let { it.selected ?: it.profiles.first() } },
@@ -94,6 +100,10 @@ class CarouselFragment : Fragment(), MenuProvider {
                 launch { source.changes.sample(1000).collect { model.refreshCurrent() } }
                 launch { preferences.options.collect { holdMs=it.longPressMs.toLong() } }
                 launch { model.state.collect { state ->
+                    if(binding.carouselRecyclerView.scrollState==androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE)
+                        previews.update(PickerBrowseKey(state.browse.sourceId,state.browse.query,null),state.browse.items,
+                            state.browse.items.indexOfFirst { it.id==model.focusedId }.coerceAtLeast(0))
+                    else previews.pause()
                     carousel.render(state.browse)
                     if(categories != state.categories) {
                         categories = state.categories
@@ -117,7 +127,7 @@ class CarouselFragment : Fragment(), MenuProvider {
                     binding.type.text = getString(R.string.collection,state.catalog.selected?.name ?: getString(R.string.picker_source_none))
                     renderStatus()
                 } }
-            } } finally { carousel.pause() }
+            } } finally { previews.pause(); carousel.pause() }
         } }
     }
     override fun onResume() { super.onResume(); sources.refreshExtensions() }
@@ -125,15 +135,12 @@ class CarouselFragment : Fragment(), MenuProvider {
     private fun renderStatus() {
         if(_binding==null) return
         val state=model.state.value.browse
-        val emptySource=sources.state.value.loaded && sources.state.value.catalog.selected==null
-        binding.homeLoading.isVisible = state.loading && !emptySource
-        (binding.homeLoading.drawable as? android.graphics.drawable.Animatable)?.let {
-            if (binding.homeLoading.isVisible && viewLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) it.start() else it.stop()
-        }
-        binding.homeStatus.isVisible = !binding.homeLoading.isVisible && (emptySource || state.error || state.items.isEmpty())
+        val sourceState=sources.state.value
+        val emptySource=sourceState.loaded && sourceState.catalog.selected==null
+        val ready=sourceState.loaded && state.sourceId==sourceState.catalog.identity && !state.loading
+        binding.homeStatus.isVisible = emptySource || ready && (state.error || state.items.isEmpty())
         binding.homeStatus.text = when {
             emptySource -> getString(R.string.home_add_source)
-            state.loading -> getString(R.string.home_loading)
             state.error -> getString(state.errorMessage ?: R.string.home_retry)
             else -> getString(R.string.home_empty)
         }

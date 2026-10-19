@@ -164,11 +164,13 @@ class FloatingSourcesDeviceTest {
                 pauseSourceVisual("floating-sources-off")
             }
             ActivityScenario.launch<MainActivity>(android.content.Intent(app,MainActivity::class.java)).use { scenario ->
-                await(scenario,"Sticker loading placeholder on unchanged main source") { activity ->
-                    activity.findViewById<View>(R.id.home_loading)?.visibility==View.VISIBLE &&
+                await(scenario,"Carousel remains mounted without a loading overlay") { activity ->
+                    ViewModelProvider(activity)[ArtsViewModel::class.java].state.value.browse.loading &&
+                        activity.findViewById<View>(R.id.carousel_recycler_view)?.visibility==View.VISIBLE &&
+                        activity.findViewById<View>(R.id.home_status)?.visibility==View.GONE &&
                         activity.findViewById<TextView>(R.id.type)?.text.toString().contains(row.name)
                 }
-                pauseSourceVisual("home-sticker-loading")
+                pauseSourceVisual("home-source-loading")
                 loadingGate.countDown()
                 await(scenario,"Main still searches a source disabled in floating") { !ViewModelProvider(it)[ArtsViewModel::class.java].state.value.browse.loading }
                 scenario.onActivity { assertEquals(row.identity,ViewModelProvider(it)[ArtsViewModel::class.java].state.value.browse.sourceId) }

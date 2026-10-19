@@ -40,6 +40,9 @@ class MoeviewDeviceTest {
     private val paths=java.util.concurrent.ConcurrentLinkedQueue<String>()
     private val failMedia=java.util.concurrent.atomic.AtomicBoolean()
     private val withoutSample=java.util.concurrent.atomic.AtomicBoolean()
+    private val onlyStatic=java.util.concurrent.atomic.AtomicBoolean()
+    private val holdPreviews=java.util.concurrent.atomic.AtomicBoolean()
+    private val previewGate=java.util.concurrent.CountDownLatch(1)
     private val png=ByteArrayOutputStream().use { out -> Bitmap.createBitmap(400,600,Bitmap.Config.ARGB_8888).apply {
         eraseColor(Color.rgb(36,135,190)); compress(Bitmap.CompressFormat.PNG,100,out); recycle()
     }; out.toByteArray() }
@@ -52,6 +55,7 @@ class MoeviewDeviceTest {
                 val url=request.requestUrl!!
                 paths+=url.encodedPath
                 if(url.encodedPath.contains("/media/")) {
+                    if(holdPreviews.get()) previewGate.await(90,java.util.concurrent.TimeUnit.SECONDS)
                     if(failMedia.compareAndSet(true,false)) return MockResponse().setResponseCode(403)
                     val ext=url.encodedPath.substringAfterLast('.')
                     return MockResponse().setHeader("Content-Type",when(ext) { "gif" -> "image/gif"; "mp4" -> "video/mp4"; "webm" -> "video/webm"; else -> "image/png" })
@@ -68,7 +72,7 @@ class MoeviewDeviceTest {
                 val page=if(gel) (url.queryParameter("pid")?.toInt() ?: 0)+1 else url.queryParameter("page")?.toInt() ?: 1
                 val count=if(page>pageCount) 0 else if(page>1) 1 else url.queryParameter("limit")?.toInt() ?: 20
                 val rows=JSONArray((0 until count).map { n ->
-                    val id=(page-1)*20+n+1; val ext=listOf("png","gif","mp4","webm")[n%4]
+                    val id=(page-1)*20+n+1; val ext=if(onlyStatic.get()) "png" else listOf("png","gif","mp4","webm")[n%4]
                     val domain=when(request.getHeader("X-Fixture-Board")) {
                         "danbooru" -> "danbooru.donmai.us"; "gelbooru" -> "gelbooru.com"; "yandere" -> "yande.re"; else -> "konachan.com"
                     }
@@ -94,6 +98,7 @@ class MoeviewDeviceTest {
         }
     }
     @After fun cleanup(): Unit=runBlocking {
+        previewGate.countDown()
         created.forEach { id ->
             runtime.invalidate(id)
             store.list().firstOrNull { it.id==id }?.let { store.delete(id,it.revision) }
@@ -134,9 +139,30 @@ class MoeviewDeviceTest {
         assertEquals(setOf(SearchMode.DESCRIPTION),caps.modes); assertEquals(SearchMode.DESCRIPTION,caps.defaultMode)
         assertEquals(setOf(SearchMode.DESCRIPTION),caps.suggestionModes)
         assertTrue(caps.facets.isEmpty()); assertFalse(caps.sequence); assertFalse(caps.random)
-        assertEquals(10,caps.categories.size)
+        assertEquals(MoeviewCategories.forBoard(row.config.board),caps.categories)
         val dan=profile(MoeviewConfig(board=Board.DANBOORU))
         assertTrue(SourceWire.capabilities(client.request(dan.id,ExtensionProtocol.CAPABILITIES,payload(dan))).random)
+        assertEquals(0,server.requestCount)
+    }
+    @Test fun boardDefaultsUseReviewedNonemptyGeneralAndCharacterTagsWithoutFetchingDuringDiscovery(): Unit=runBlocking {
+        val reviewed=JSONObject(instrumentation.context.assets.open("category-tags.json").bufferedReader().use { it.readText() }).getJSONObject("boards")
+        for(board in Board.entries) {
+            val row=profile(MoeviewConfig(board=board))
+            val categories=SourceWire.capabilities(client.request(row.id,ExtensionProtocol.CAPABILITIES,payload(row))).categories
+            assertTrue(categories.size in 2..40)
+            assertEquals("all",categories.first().id); assertEquals("",categories.first().query.text)
+            assertEquals(categories.size,categories.map { it.query.text }.distinct().size)
+            val vocabulary=reviewed.getJSONObject(board.name)
+            categories.drop(1).forEach { category ->
+                val tag=vocabulary.getJSONObject(category.query.text)
+                assertTrue(tag.getInt("type") in setOf(0,4)); assertTrue(tag.getBoolean("nonempty"))
+                if(board!=Board.DANBOORU) assertTrue(tag.getBoolean("liveSafeResult"))
+                assertEquals(SearchMode.DESCRIPTION,category.query.mode)
+            }
+        }
+        // Familiar strings can name unrelated artists/circles instead of expressions.
+        val yande=MoeviewCategories.forBoard(Board.YANDERE).map { it.query.text }
+        assertFalse(yande.any { it in setOf("blush","smile","ponytail","hug","happy","deletethistag") })
         assertEquals(0,server.requestCount)
     }
     private suspend fun suggestions(row: MoeviewProfile,text: String,cursor: Int=text.length,mode: SearchMode=SearchMode.DESCRIPTION)=
@@ -320,7 +346,7 @@ class MoeviewDeviceTest {
             clickText(name)
             waitFor("Source selection persisted") { nodes().any { it.contentDescription?.toString()=="$name, selected" } }
             click { it.viewIdResourceName=="one.njk.sao:id/back" }
-            waitFor("Moeview focal card and extension presets") { nodes().any { it.viewIdResourceName=="one.njk.sao:id/media_title" && it.text?.toString()=="Konachan · 1" } && nodes().any { it.text?.toString()=="Twintails" } }
+            waitFor("Moeview focal card and extension presets") { nodes().any { it.viewIdResourceName=="one.njk.sao:id/media_title" && it.text?.toString()=="Konachan · 1" } && nodes().any { it.text?.toString()=="School uniform" } }
             val theme=if(app.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK==android.content.res.Configuration.UI_MODE_NIGHT_YES) "dark" else "light"
             visual("home-$theme")
             click { it.contentDescription?.toString()?.startsWith("Konachan · 3,")==true }
@@ -360,7 +386,7 @@ class MoeviewDeviceTest {
         click { it.viewIdResourceName=="one.njk.sao:id/back" }
         click { it.viewIdResourceName=="one.njk.sao:id/settings" }
         clickScrolled("home_categories")
-        waitFor("Host category defaults") { nodes().any { it.text?.toString()=="Twintails" } }
+        waitFor("Host category defaults") { nodes().any { it.text?.toString()=="School uniform" } }
         clickScrolled("add_category")
         input("query","blue_ha")
         waitFor("Board tag suggestions in host category editor") { nodes().any { it.text?.toString()=="blue_hair" } }
@@ -386,5 +412,32 @@ class MoeviewDeviceTest {
             it.viewIdResourceName=="one.njk.sao:id/search" && it.text?.toString()?.trim()=="smile blue_hair"
         } }
         click { it.viewIdResourceName=="one.njk.sao:id/close" }
+    }
+    @Test fun saoHomeSharesPreviewTransfersAndKeepsPlaceholdersInsideCards(): Unit=runBlocking {
+        onlyStatic.set(true); holdPreviews.set(true)
+        val name="Preview fixture "+UUID.randomUUID().toString().take(6)
+        profile(name=name)
+        try {
+            app.startActivity(app.packageManager.getLaunchIntentForPackage("one.njk.sao")!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+            waitFor("SAO home") { nodes().any { it.viewIdResourceName=="one.njk.sao:id/type" } }
+            click { it.viewIdResourceName=="one.njk.sao:id/edit" }
+            waitFor("Preview source discovered") { nodes().any { it.text?.toString()==name } }
+            clickText(name)
+            waitFor("Preview source selected") { nodes().any { it.contentDescription?.toString()=="$name, selected" } }
+            click { it.viewIdResourceName=="one.njk.sao:id/back" }
+            waitFor("Carousel and card title precede slow image bytes") {
+                nodes().any { it.viewIdResourceName=="one.njk.sao:id/media_title" && it.text?.toString()=="Konachan · 1" } &&
+                    paths.any { it.contains("/media/") }
+            }
+            val pending=paths.filter { it.contains("/media/") }
+            assertTrue("Shared host transfer limit",pending.size<=3)
+            assertEquals("No duplicate visible/prefetch downloads",pending.size,pending.distinct().size)
+            assertTrue(pending.all { it.contains("/display-") })
+            assertFalse(nodes().any { it.viewIdResourceName=="one.njk.sao:id/home_status" && it.isVisibleToUser })
+            visual("home-card-previews")
+            holdPreviews.set(false); previewGate.countDown()
+            waitFor("First four display previews fetched") { (1..4).all { id -> paths.any { it.endsWith("/display-$id.png") } } }
+            assertFalse("No original downloads for prefetch",paths.any { it.contains("/media/fixture-") })
+        } finally { holdPreviews.set(false); previewGate.countDown() }
     }
 }
