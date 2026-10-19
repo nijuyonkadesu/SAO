@@ -1,0 +1,34 @@
+plugins { alias libs.plugins.android.application }
+android {
+    namespace 'one.njk.sao.extension.moeview'
+    compileSdk 37
+    defaultConfig {
+        applicationId 'one.njk.sao.extension.moeview'
+        minSdk 30
+        targetSdk 36
+        versionCode 1
+        versionName '1.0.0'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+    buildFeatures { viewBinding true; buildConfig true }
+    sourceSets { main { assets.srcDir rootProject.file("third_party/material-symbols") } }
+}
+dependencies {
+    implementation project(':source-api')
+    implementation project(':moeview')
+    implementation libs.kotlinx.serialization.json
+    implementation libs.androidx.appcompat
+    implementation libs.lifecycle.viewmodel
+    implementation libs.lifecycle.runtime
+    implementation libs.android.material
+    androidTestImplementation libs.bundles.testing
+    androidTestImplementation libs.mockwebserver
+}

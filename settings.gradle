@@ -24,3 +24,5 @@ include ':immich-provider'
 include ':immich-extension'
 
 include ':local-extension'
+include ':moeview'
+include ':moeview-extension'

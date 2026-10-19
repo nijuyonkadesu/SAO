@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <queries><package android:name="one.njk.sao" /><package android:name="one.njk.sao.testing" /></queries>
+    <application android:label="@string/app_name" android:theme="@style/Theme.MoeviewExtension" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@drawable/ic_extension">
+        <service android:name=".MoeviewExtensionService" android:permission="one.njk.sao.permission.SOURCE_EXTENSION" android:label="@string/provider_name" android:exported="true">
+            <intent-filter><action android:name="one.njk.sao.source.EXTENSION" /></intent-filter>
+            <meta-data android:name="one.njk.sao.source.API_VERSION" android:value="1" />
+            <meta-data android:name="one.njk.sao.source.SETTINGS" android:value="one.njk.sao.extension.moeview.MoeviewSettingsActivity" />
+        </service>
+        <activity android:name=".MoeviewSettingsActivity" android:permission="one.njk.sao.permission.SOURCE_EXTENSION" android:exported="true" />
+        <activity android:name=".BoardVerificationActivity" android:exported="false" />
+        <provider android:name=".MoeviewMediaProvider" android:authorities="${applicationId}.media" android:exported="false" android:grantUriPermissions="true" />
+    </application>
+</manifest>

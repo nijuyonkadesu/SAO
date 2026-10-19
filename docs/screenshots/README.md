@@ -91,3 +91,15 @@ The large-card carousel reads installed extension profiles and their category pr
 Hold **Collection**, drag vertically through looping source choices and release to switch. Tapping retains the full source list. The same selector and configured hold delay are used in the floating picker.
 
 <img src="home-source-collection-hold.png" width="260" alt="Home Collection heading expanded into the shared Material hold-and-drag source selector" />
+
+## Moeview extension
+
+The separate [Moeview APK](../moeview-source.md) supplies named booru profiles and category presets to the existing SAO layout. These home captures use synthetic images and a test-pattern MP4; no personal library is accessed.
+
+<img src="moeview-home.png" width="220" alt="Moeview profile and ten tag categories in the unchanged SAO home carousel" /> <img src="moeview-video-dark.png" width="220" alt="Moeview MP4 playing in the existing dark home carousel" />
+
+<img src="moeview-settings.png" width="220" alt="Extension-owned Material form with board, ratings, base tags and explicit verification" /> <img src="moeview-settings-dark.png" width="220" alt="The same Moeview form in Material dark colors" />
+
+The real Danbooru verification screen reaches Cloudflare's human-verification checkbox. This capture demonstrates the explicit browser flow; it does **not** establish that clearance or the native API handoff succeeds.
+
+<img src="moeview-cloudflare.png" width="260" alt="Danbooru's human-verification checkbox inside the explicit extension-owned verification screen" />

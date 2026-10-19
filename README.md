@@ -14,6 +14,8 @@ Home and the floating picker use the same separately installed source extensions
 
 The [Local Sticker extension](docs/local-sticker-source.md) supports named folders with per-album progress/pause/restart, offline labels/OCR, optional FP32/8-bit CLIP Context search with reusable external model folders, and metadata corrections.
 
+The [Moeview extension](docs/moeview-source.md) adds Yande.re, Konachan, Gelbooru and Danbooru profiles, tag search/home presets, GIF/video media and optional browser verification. Install `moeview-sao.apk`; the existing SAO host works without an update.
+
 ## Stack
 - [x] Retrofit - network client in the Immich extension
 - [x] COIL - Image Loader
@@ -34,4 +36,4 @@ Go to the [Releases](https://github.com/nijuyonkadesu/SAO/releases/tag/Release) 
 - Dunno, maybe add many more APIs into this single app? I wonder...
 - A profile system? fufu-fu (ˉ▽￣～)
 
-The optional [floating media picker](docs/floating-picker.md) supports separately installed Immich/Local Sticker extensions and installed-app [Rays sources](docs/rays-source.md), text/emoji search, GIF/video previews and chat delivery. It shares media playback and focal-card selection with the home screen. [Instagram delivery and modern LSPosed setup](docs/instagram-dm-delivery.md) describe the optional native Paste action.
+The optional [floating media picker](docs/floating-picker.md) supports separately installed Immich/Local Sticker/Moeview extensions and installed-app [Rays sources](docs/rays-source.md), text/emoji search, GIF/video previews and chat delivery. It shares media playback and focal-card selection with the home screen. [Instagram delivery and modern LSPosed setup](docs/instagram-dm-delivery.md) describe the optional native Paste action.

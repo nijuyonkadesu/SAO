@@ -6,6 +6,8 @@ Source extensions update independently of SAO. Version 1 accepts extensions sign
 
 [Profile picker and light/dark extension settings previews](screenshots/README.md#source-extension-profiles).
 
+[Moeview](moeview-source.md) is another independent APK, serving named Yande.re/Konachan/Gelbooru/Danbooru profiles through the unchanged v1 contract. Its tag queries, board-specific routes, optional credentials and browser verification remain in that extension; SAO needs no provider-specific code or APK update.
+
 ## Ownership
 
 | SAO | Extension APK |
