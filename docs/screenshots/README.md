@@ -74,12 +74,20 @@ The optional emoji row is configured in SAO and searches emoji as text. The empt
 
 <img src="local-source-import-methods.png" width="260" alt="Folder, Photo and Files picker options in Local Sticker" /> <img src="local-source-selected-collection.png" width="260" alt="Named selected-media collection with format counts and processing controls" />
 
+Local Sticker 1.4.1 exposes whole-folder import alongside selected-media import, without changing the chosen picker. Android's Photo picker grants selected files, rather than whole cloud albums.
+
+<img src="local-source-whole-folder.png" width="260" alt="Photo picker selected with separate Add photos and videos and Add whole folder actions and album-access guidance" />
+
 ## Home source collections
 
-The original large-card carousel now reads installed extension profiles and their category presets. Its card dimensions, category chips and bottom actions remain; home shares GIF/video playback and focal-card selection with the floating picker. Long-press the title to copy the source filename. These captures use a synthetic localhost fixture, including a test-pattern MP4.
+The large-card carousel reads installed extension profiles and their category presets. A centered Hero layout shows the prominent card and two narrow previews; Material shifts the previews to the available side at the list boundaries. Category chips and bottom actions remain; home shares GIF/video playback and focal-card selection with the floating picker. Long-press the title to copy the source filename. These captures use a synthetic localhost fixture, including a test-pattern MP4.
 
 | Home in light mode | Provider category in dark mode | Muted video preview |
 | --- | --- | --- |
 | <img src="home-source-light.png" width="260" alt="Original home carousel with a source Collection heading, large image card, extension category chips and existing bottom actions" /> | <img src="home-source-category-dark.png" width="260" alt="The same home carousel in dark mode with the extension's Happy category selected" /> | <img src="home-source-video-dark.png" width="260" alt="Synthetic MP4 playing inside the original home card with a Video badge" /> |
 
 [Home, experimental All source and original-file exports](../home-source-browser.md).
+
+Hold **Collection**, drag vertically through looping source choices and release to switch. Tapping retains the full source list. The same selector and configured hold delay are used in the floating picker.
+
+<img src="home-source-collection-hold.png" width="260" alt="Home Collection heading expanded into the shared Material hold-and-drag source selector" />

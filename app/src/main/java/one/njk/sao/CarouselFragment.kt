@@ -3,6 +3,7 @@ package one.njk.sao
 import android.content.Intent
 import android.os.Bundle
 import android.view.*
+import android.widget.FrameLayout
 import androidx.core.view.MenuHost
 import androidx.core.view.MenuProvider
 import androidx.core.view.isVisible
@@ -45,6 +46,7 @@ class CarouselFragment : Fragment(), MenuProvider {
     private var categories: List<SourceCategory>? = null
     private var busy = false
     private var titleHold: ResultHoldAction? = null
+    private var collectionGesture: HoldDragSelector<SourceProfile>? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentCarouselBinding.inflate(inflater,container,false)
@@ -60,6 +62,12 @@ class CarouselFragment : Fragment(), MenuProvider {
         carousel = PickerCarousel(binding.carouselRecyclerView,adapter,model::current,{ model.focusedId },
             { _, id, position -> model.focus(id); model.loadMore(position) },::renderActions,{}, {},home=true)
         binding.type.setOnClickListener { chooseSource() }
+        collectionGesture = HoldDragSelector(binding.type,requireActivity().findViewById<FrameLayout>(android.R.id.content),
+            choices={ sources.state.value.catalog.profiles }, selected={ sources.state.value.catalog.let { it.selected ?: it.profiles.first() } },
+            label={ it.name }, identity={ sources.state.value.catalog.identity }, apply={ sources.select(it.id) },
+            title=R.string.sources_title,chooseAction=R.string.source_hold_choose,
+            nextAction=R.string.source_hold_next,previousAction=R.string.source_hold_previous,
+            hint={ getString(R.string.source_hold_release) },holdDelay={ holdMs })
         binding.homeStatus.setOnClickListener {
             if(sources.state.value.catalog.selected == null) startActivity(Intent(requireContext(),SourceSettingsActivity::class.java))
             else model.retry()
@@ -105,6 +113,7 @@ class CarouselFragment : Fragment(), MenuProvider {
                     renderStatus(); renderActions()
                 } }
                 launch { sources.state.collect { state ->
+                    collectionGesture?.update()
                     binding.type.text = getString(R.string.collection,state.catalog.selected?.name ?: getString(R.string.picker_source_none))
                     renderStatus()
                 } }
@@ -112,6 +121,7 @@ class CarouselFragment : Fragment(), MenuProvider {
         } }
     }
     override fun onResume() { super.onResume(); sources.refreshExtensions() }
+    override fun onStop() { collectionGesture?.cancel(); super.onStop() }
     private fun renderStatus() {
         if(_binding==null) return
         val state=model.state.value.browse
@@ -152,7 +162,7 @@ class CarouselFragment : Fragment(), MenuProvider {
             finally { busy=false; renderActions() }
         }
     }
-    override fun onDestroyView() { filenameRequest.next(); titleHold?.cancel(); titleHold=null; carousel.close(); categories=null; _binding=null; super.onDestroyView() }
+    override fun onDestroyView() { filenameRequest.next(); titleHold?.cancel(); titleHold=null; collectionGesture?.dispose(); collectionGesture=null; carousel.close(); categories=null; _binding=null; super.onDestroyView() }
     override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) { menuInflater.inflate(R.menu.top_app_bar,menu) }
     override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when(menuItem.itemId) {
         R.id.settings -> { findNavController().navigate(CarouselFragmentDirections.actionHomeFragmentToSettingsFragment()); true }

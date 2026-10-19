@@ -76,7 +76,10 @@ class LocalFolderSetupDeviceTest {
             }
             ExtensionForm(installed=extension).use { form ->
                 form.set("source_name",name)
-                form.click("import_method"); click("Folder picker"); form.click("add_folder")
+                val previousMethod=form.text("import_method")
+                form.click("import_method"); click("Photo picker")
+                pauseSourceVisual("local-whole-folder-action")
+                form.click("add_whole_folder")
                 waitFor { node { it.packageName?.toString()?.contains("documentsui")==true }!=null }
                 click("Show roots")
                 click(android.os.Build.MODEL)
@@ -84,7 +87,10 @@ class LocalFolderSetupDeviceTest {
                 click(folder)
                 click("USE THIS FOLDER")
                 click("Allow")
-                form.await("source_name"); form.click("rename")
+                form.await("source_name")
+                assertEquals("Photo picker",form.text("import_method"))
+                form.click("import_method"); click(previousMethod)
+                form.click("rename")
                 waitFor { node { it.isEditable }!=null }
                 check(node { it.isEditable }!!.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,android.os.Bundle().apply {
                     putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"Reactions")

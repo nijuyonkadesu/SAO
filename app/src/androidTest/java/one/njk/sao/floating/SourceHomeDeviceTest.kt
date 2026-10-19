@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.drawable.Animatable
 import android.os.SystemClock
 import android.view.View
+import android.view.MotionEvent
 import android.widget.TextView
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.RecyclerView
@@ -321,6 +322,8 @@ class SourceHomeDeviceTest {
         try {
             profiles.restore(SourceCatalog())
             profiles.upsert(immichProfile("Home fixture",ImmichConfig(server.url("/").toString(),"home-fixture-key")),true)
+            val alternate=immichProfile("Home alternate",ImmichConfig(server.url("/").toString(),"home-alternate-key"))
+            profiles.upsert(alternate,false)
             ActivityScenario.launch<MainActivity>(IntentForHome.create(app)).use { scenario ->
                 lateinit var model: ArtsViewModel
                 scenario.onActivity { model=ViewModelProvider(it)[ArtsViewModel::class.java] }
@@ -336,12 +339,15 @@ class SourceHomeDeviceTest {
                 }
                 await(scenario,"Home filename copied") { it.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.text?.toString()=="fixture-0.png" }
                 pauseSourceVisual("source-home")
-                scenario.onActivity { it.findViewById<RecyclerView>(R.id.carousel_recycler_view).scrollToPosition(1) }
+                scenario.onActivity { activity ->
+                    // Follow the real side-card tap route, including its smooth scroll callbacks.
+                    activity.findViewById<RecyclerView>(R.id.carousel_recycler_view).findViewHolderForAdapterPosition(1)!!.itemView.performClick()
+                }
                 await(scenario,"Home focused GIF animates") { activity ->
                     val holder=activity.findViewById<RecyclerView>(R.id.carousel_recycler_view).findViewHolderForAdapterPosition(1) as? MediaCarouselAdapter.Holder
                     (holder?.binding?.preview?.drawable as? Animatable)?.isRunning==true
                 }
-                scenario.onActivity { it.findViewById<RecyclerView>(R.id.carousel_recycler_view).scrollToPosition(2) }
+                scenario.onActivity { it.findViewById<RecyclerView>(R.id.carousel_recycler_view).smoothScrollToPosition(2) }
                 await(scenario,"Home video plays muted") { activity ->
                     val holder=activity.findViewById<RecyclerView>(R.id.carousel_recycler_view).findViewHolderForAdapterPosition(2) as? MediaCarouselAdapter.Holder
                     val player=holder?.binding?.videoPreview?.player
@@ -351,6 +357,16 @@ class SourceHomeDeviceTest {
                 val wanted=model.state.value.browse.items[7].id
                 scenario.onActivity { it.findViewById<RecyclerView>(R.id.carousel_recycler_view).scrollToPosition(7) }
                 await(scenario,"Scroll to seventh card") { model.focusedId==wanted }
+                scenario.onActivity { activity ->
+                    val grid=activity.findViewById<RecyclerView>(R.id.carousel_recycler_view)
+                    val focal=grid.findViewHolderForAdapterPosition(7)!!.itemView as com.google.android.material.carousel.MaskableFrameLayout
+                    val before=grid.findViewHolderForAdapterPosition(6)!!.itemView as com.google.android.material.carousel.MaskableFrameLayout
+                    val after=grid.findViewHolderForAdapterPosition(8)!!.itemView as com.google.android.material.carousel.MaskableFrameLayout
+                    assertTrue("Prominent focal card",focal.maskRectF.width()>grid.width*.75f)
+                    assertTrue("Both side previews",before.maskRectF.width()>0 && after.maskRectF.width()>0)
+                    assertEquals(grid.width/2f,focal.x+focal.width/2f,2f)
+                }
+                pauseSourceVisual("source-home-centered")
                 val count=searches.get(); scenario.recreate()
                 await(scenario,"Restore focal card") { model.focusedId==wanted && it.findViewById<TextView>(R.id.media_title).text.toString()=="Source image 7" }
                 assertEquals(count,searches.get())
@@ -360,6 +376,36 @@ class SourceHomeDeviceTest {
                 }
                 await(scenario,"Provider-defined category query") { lastQuery=="happy" && !model.state.value.browse.loading }
                 pauseSourceVisual("source-home-category")
+                lateinit var home: MainActivity; var x=0f; var y=0f
+                val down=SystemClock.uptimeMillis()
+                fun send(action: Int,dy: Float=0f) = instrumentation.runOnMainSync {
+                    val event=MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,x,y+dy,0)
+                    home.dispatchTouchEvent(event); event.recycle()
+                }
+                scenario.onActivity { activity ->
+                    home=activity
+                    val anchor=activity.findViewById<View>(R.id.type)
+                    val location=IntArray(2).also(anchor::getLocationOnScreen)
+                    x=location[0]+anchor.width/2f; y=location[1]+anchor.height/2f
+                }
+                send(MotionEvent.ACTION_DOWN)
+                await(scenario,"Home collection expands on hold") { it.findViewById<View>(R.id.hold_choice_card)!=null }
+                pauseSourceVisual("source-home-collection-hold")
+                var distance=0f
+                scenario.onActivity { activity ->
+                    val catalog=ViewModelProvider(activity)[SourceProfilesViewModel::class.java].state.value.catalog
+                    val choices=catalog.profiles
+                    val steps=choices.size+Math.floorMod(choices.indexOfFirst { it.id==catalog.selectedId }-choices.indexOfFirst { it.id==alternate.id },choices.size)
+                    distance=activity.findViewById<View>(R.id.hold_choice_highlight).height*steps.toFloat()
+                }
+                send(MotionEvent.ACTION_MOVE,distance) // Loop through all installed profiles before choosing.
+                send(MotionEvent.ACTION_UP,distance)
+                await(scenario,"Release applies the previewed collection") { it.findViewById<TextView>(R.id.type).text.toString()=="Collection: Home alternate" && !model.state.value.browse.loading }
+                assertEquals(alternate.id,profiles.current().selectedId)
+                scenario.onActivity { it.findViewById<View>(R.id.type).performClick() }
+                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Home fixture"))
+                    .perform(androidx.test.espresso.action.ViewActions.click())
+                await(scenario,"Tap retains the full collection list") { it.findViewById<TextView>(R.id.type).text.toString()=="Collection: Home fixture" && !model.state.value.browse.loading }
             }
             val preferences=access.preferences(); val oldMode=preferences.current().preferStickers
             try {

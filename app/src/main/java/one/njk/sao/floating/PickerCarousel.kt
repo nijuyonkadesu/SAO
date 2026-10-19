@@ -8,7 +8,6 @@ import com.google.android.material.carousel.CarouselLayoutManager
 import com.google.android.material.carousel.CarouselSnapHelper
 import com.google.android.material.carousel.FullScreenCarouselStrategy
 import com.google.android.material.carousel.HeroCarouselStrategy
-import com.google.android.material.carousel.MultiBrowseCarouselStrategy
 
 internal data class PickerBrowseKey(val sourceId: String, val query: MediaQuery, val sequenceId: String?)
 
@@ -57,8 +56,14 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
     }
 
     private fun manager(fullScreen: Boolean) = CarouselLayoutManager(
-        if (fullScreen) FullScreenCarouselStrategy() else if(home) MultiBrowseCarouselStrategy() else HeroCarouselStrategy()).apply {
-        carouselAlignment = if(home) CarouselLayoutManager.ALIGNMENT_START else CarouselLayoutManager.ALIGNMENT_CENTER
+        if (fullScreen) FullScreenCarouselStrategy() else HeroCarouselStrategy().apply {
+            if(home) {
+                // Leave two narrow previews around the prominent home card.
+                val preview = 32 * view.resources.displayMetrics.density
+                smallItemSizeMin = preview; smallItemSizeMax = preview
+            }
+        }).apply {
+        carouselAlignment = CarouselLayoutManager.ALIGNMENT_CENTER
     }
 
     fun render(state: PickerState) {

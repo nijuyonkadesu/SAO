@@ -94,8 +94,9 @@
     <string name="picker_photos">Photo picker</string>
     <string name="picker_files">Files picker</string>
     <string name="picker_folder_help">Grant access to a folder and its subfolders. New supported files are discovered when this source is used.</string>
-    <string name="picker_photos_help">Choose photos and videos, including Google Photos when available through Android’s cloud media provider. Selected items form a collection; new album items must be selected again.</string>
-    <string name="picker_files_help">Choose individual images and videos from a document provider. Access is retained for background indexing.</string>
+    <string name="picker_photos_help">Choose individual photos and videos, including Google Photos when available. Android does not grant access to a whole cloud album. For a whole local collection, use Add whole folder below.</string>
+    <string name="picker_files_help">Choose individual images and videos from a document provider. Access is retained for background indexing. For a whole collection, use Add whole folder below.</string>
+    <string name="add_whole_folder">Add whole folder</string>
     <string name="selected_media">Selected media</string>
     <string name="selected_media_help">Selected items · add more media to expand this collection</string>
     <string name="add_media">Add photos and videos</string>

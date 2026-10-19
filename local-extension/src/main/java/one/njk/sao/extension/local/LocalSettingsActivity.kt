@@ -28,11 +28,11 @@ class LocalSettingsActivity : AppCompatActivity() {
     private val picker=registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if(uri!=null) model.folder(uri) }
     private val photos=registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { model.media(it) }
     private val files=registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { model.media(it) }
-    private fun launchImport(target: String?=null) {
+    private fun launchImport(target: String?=null,method: ImportMethod=model.state.value.importMethod) {
         model.importTarget=target
-        val method=model.state.value.importMethod.let { if(target!=null && it==ImportMethod.FOLDER) ImportMethod.PHOTOS else it }
+        val pickerMethod=if(target!=null && method==ImportMethod.FOLDER) ImportMethod.PHOTOS else method
         try {
-            when(method) {
+            when(pickerMethod) {
                 ImportMethod.FOLDER -> picker.launch(null)
                 ImportMethod.PHOTOS -> photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
                 ImportMethod.FILES -> files.launch(arrayOf("image/*","video/*"))
@@ -51,6 +51,7 @@ class LocalSettingsActivity : AppCompatActivity() {
         binding.back.setOnClickListener { finish() }
         binding.sourceName.doAfterTextChanged { if(populated) model.name=it?.toString().orEmpty() }
         binding.addFolder.setOnClickListener { launchImport() }
+        binding.addWholeFolder.setOnClickListener { launchImport(method=ImportMethod.FOLDER) }
         binding.importMethod.setSimpleItems(ImportMethod.entries.map { getString(it.label) }.toTypedArray())
         binding.importMethod.setOnItemClickListener { _,_,position,_ -> model.importMethod(position) }
         binding.saveLibrary.setOnClickListener { model.save() }
@@ -78,6 +79,7 @@ class LocalSettingsActivity : AppCompatActivity() {
             binding.importMethod.isEnabled=state.loaded && !state.working
             binding.importHelp.setText(state.importMethod.help)
             binding.addFolder.setText(state.importMethod.action)
+            binding.addWholeFolder.isVisible=state.importMethod!=ImportMethod.FOLDER
             binding.indexStatus.bind(state.index,state.library?.paused==true,state.indexWork)
             val modelStatus=state.model
             val label=getString(state.selectedModel.label)
@@ -114,7 +116,7 @@ class LocalSettingsActivity : AppCompatActivity() {
                 listOf(row.pauseFolder,row.restartFolder,row.rename,row.remove,row.addMedia).forEach { it.isEnabled=!state.working }
             }
             binding.error.isVisible=state.error!=null; state.error?.let(binding.error::setText)
-            listOf(binding.addFolder,binding.sourceName,binding.saveLibrary,binding.deleteLibrary).forEach { it.isEnabled=state.loaded && !state.working }
+            listOf(binding.addFolder,binding.addWholeFolder,binding.sourceName,binding.saveLibrary,binding.deleteLibrary).forEach { it.isEnabled=state.loaded && !state.working }
             listOf(binding.rescan,binding.pauseIndexing,binding.browseMetadata).forEach { it.isVisible=state.library!=null; it.isEnabled=!state.working }
             binding.deleteLibrary.isVisible=state.library!=null
             binding.pauseIndexing.setText(if(state.library?.paused==true) R.string.resume else R.string.pause)
