@@ -3,6 +3,8 @@ package one.njk.sao.extension.local
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Build
+import android.provider.MediaStore
 import android.widget.LinearLayout
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
@@ -34,7 +36,7 @@ class LocalSettingsActivity : AppCompatActivity() {
         try {
             when(pickerMethod) {
                 ImportMethod.FOLDER -> picker.launch(null)
-                ImportMethod.PHOTOS -> photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                ImportMethod.PHOTOS -> photos.launch(photoAlbumRequest())
                 ImportMethod.FILES -> files.launch(arrayOf("image/*","video/*"))
             }
         } catch(_: android.content.ActivityNotFoundException) { model.importTarget=null; model.pickerUnavailable() }
@@ -52,6 +54,13 @@ class LocalSettingsActivity : AppCompatActivity() {
         binding.sourceName.doAfterTextChanged { if(populated) model.name=it?.toString().orEmpty() }
         binding.addFolder.setOnClickListener { launchImport() }
         binding.addWholeFolder.setOnClickListener { launchImport(method=ImportMethod.FOLDER) }
+        val cloudSettings=Intent(MediaStore.ACTION_PICK_IMAGES_SETTINGS)
+        val cloudSettingsAvailable=Build.VERSION.SDK_INT>=33 && cloudSettings.resolveActivity(packageManager)!=null
+        binding.cloudMediaSettings.setOnClickListener {
+            try { startActivity(cloudSettings) }
+            catch(_: android.content.ActivityNotFoundException) { model.pickerUnavailable() }
+            catch(_: SecurityException) { model.pickerUnavailable() }
+        }
         binding.importMethod.setSimpleItems(ImportMethod.entries.map { getString(it.label) }.toTypedArray())
         binding.importMethod.setOnItemClickListener { _,_,position,_ -> model.importMethod(position) }
         binding.saveLibrary.setOnClickListener { model.save() }
@@ -78,9 +87,10 @@ class LocalSettingsActivity : AppCompatActivity() {
             if(binding.importMethod.text.toString()!=methodLabel) binding.importMethod.setText(methodLabel,false)
             binding.importMethod.isEnabled=state.loaded && !state.working
             binding.importHelp.setText(state.importMethod.help)
+            binding.cloudMediaSettings.isVisible=state.importMethod==ImportMethod.PHOTOS && cloudSettingsAvailable
             binding.addFolder.setText(state.importMethod.action)
             binding.addWholeFolder.isVisible=state.importMethod!=ImportMethod.FOLDER
-            binding.indexStatus.bind(state.index,state.library?.paused==true,state.indexWork)
+            binding.indexStatus.bind(state.index,state.library?.paused==true,state.indexWork,state.estimates.total)
             val modelStatus=state.model
             val label=getString(state.selectedModel.label)
             if(binding.modelChoice.text.toString()!=label) binding.modelChoice.setText(label,false)
@@ -110,7 +120,7 @@ class LocalSettingsActivity : AppCompatActivity() {
             renderingContext=true; binding.contextSearch.isChecked=state.useContext; renderingContext=false
             rows.forEach { (folder,row) ->
                 val status=state.folderIndexes[folder.uri]
-                row.indexStatus.bind(status,state.library?.paused==true,state.indexWork)
+                row.indexStatus.bind(status,state.library?.paused==true,state.indexWork,state.estimates.folders[folder.uri])
                 row.processingActions.isVisible=status!=null
                 row.pauseFolder.setText(if(status?.paused==true) R.string.resume_album else R.string.pause_album)
                 listOf(row.pauseFolder,row.restartFolder,row.rename,row.remove,row.addMedia).forEach { it.isEnabled=!state.working }
@@ -148,3 +158,9 @@ internal fun AppCompatActivity.dp(value: Int)=(value*resources.displayMetrics.de
 internal fun AppCompatActivity.insets(root: android.view.View) { ViewCompat.setOnApplyWindowInsetsListener(root) { view,value ->
     val bars=value.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime()); view.setPadding(bars.left,bars.top,bars.right,bars.bottom); value
 } }
+
+/** A preference for album browsing, with the AndroidX default fallback on older pickers. */
+internal fun photoAlbumRequest()=PickVisualMediaRequest.Builder()
+    .setMediaType(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+    .setDefaultTab(ActivityResultContracts.PickVisualMedia.DefaultTab.AlbumsTab)
+    .build()

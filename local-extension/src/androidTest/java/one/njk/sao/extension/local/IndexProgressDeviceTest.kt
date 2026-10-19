@@ -30,8 +30,14 @@ class IndexProgressDeviceTest {
             binding.bind(scanning.copy(scanning=false,contextSearch=true,contextProcessed=1),false,IndexWork.RUNNING)
             assertEquals(208,binding.progress.progress)
             assertEquals(context.getString(R.string.album_indexing),binding.phase.text)
+            binding.bind(scanning.copy(scanning=false),false,IndexWork.RUNNING,IndexEta.Remaining(125_000))
+            assertEquals("About 3 min remaining",binding.eta.text.toString()); assertEquals(View.VISIBLE,binding.eta.visibility)
+            binding.bind(scanning.copy(scanning=false),false,IndexWork.RUNNING,IndexEta.Calculating)
+            assertEquals(context.getString(R.string.eta_calculating),binding.eta.text.toString())
+            binding.bind(scanning.copy(scanning=false),false,IndexWork.RUNNING,IndexEta.Waiting)
+            assertEquals(context.getString(R.string.album_waiting),binding.phase.text.toString())
             binding.bind(null,false,IndexWork.IDLE)
-            assertEquals(View.GONE,binding.mediaCounts.visibility)
+            assertEquals(View.GONE,binding.mediaCounts.visibility); assertEquals(View.GONE,binding.eta.visibility)
         }
     }
 }

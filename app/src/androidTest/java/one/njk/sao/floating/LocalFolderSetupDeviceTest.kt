@@ -64,7 +64,7 @@ class LocalFolderSetupDeviceTest {
             "preview-video.mp4" to ("video/mp4" to instrumentation.context.assets.open("preview-video.mp4").use { it.readBytes() }),
             "preview-video.webm" to ("video/webm" to instrumentation.context.assets.open("preview-video.webm").use { it.readBytes() }))
         val files=mutableListOf<Uri>()
-        val previous=access.sources().current()
+        val previous=access.sources().snapshots.first()
         var created: SourceProfile?=null
         try {
             contents.forEach { (file,data) ->
@@ -102,6 +102,7 @@ class LocalFolderSetupDeviceTest {
             }
             val selected=created!!
             assertEquals(selected.id,access.sources().current().selectedId)
+            access.sources().selectFloating(selected.id)
             val source=access.mediaSource()
             var results=MediaPage(emptyList())
             withTimeout(20_000) { while(results.items.isEmpty()) { results=source.page(MediaQuery("smile",mode=SearchMode.DESCRIPTION)); delay(100) } }

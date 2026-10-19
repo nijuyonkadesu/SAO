@@ -23,6 +23,7 @@ class FolderIndexer(context: Context, parameters: WorkerParameters) : CoroutineW
         if(library.revision!=revision || library.paused) return@index Result.success()
         if(inputData.getBoolean(RESET,false)) store.beginIndexRequest(library,this@FolderIndexer.id.toString())
         val deadline=SystemClock.elapsedRealtime()+120_000
+        val timing=IndexTimingSession(library.id,library.revision,SystemClock::elapsedRealtime) { IndexTimings.current.value=it }
         var scanning=!inputData.getBoolean(ANALYSIS_ONLY,false)
         try {
             if(scanning) {
@@ -52,6 +53,7 @@ class FolderIndexer(context: Context, parameters: WorkerParameters) : CoroutineW
                 // Complete both stages for early files before moving through the rest of a large album.
                 // Close one model before loading the other to bound native memory use.
                 if(contextual!=null && (labels==null || contextual.id<labels.id)) {
+                    var started=SystemClock.elapsedRealtime()
                     val encoder=try { ClipEncoder(applicationContext,true,ClipCatalog.get(library.contextModel)) }
                         catch (_: Exception) { store.embeddingsUnavailable(library); continue }
                         catch (_: LinkageError) { store.embeddingsUnavailable(library); continue }
@@ -61,6 +63,7 @@ class FolderIndexer(context: Context, parameters: WorkerParameters) : CoroutineW
                             ensureActive(); if(!current(store,library)) return@index Result.success()
                             val asset=next ?: break
                             if(SystemClock.elapsedRealtime()>=deadline) { continueLater(library,true); return@index Result.success() }
+                            timing.start(asset.root)
                             try {
                                 val vector=encoder.image(applicationContext,asset)
                                 ensureActive(); if(!current(store,library)) return@index Result.success()
@@ -68,11 +71,14 @@ class FolderIndexer(context: Context, parameters: WorkerParameters) : CoroutineW
                             } catch(cancelled: CancellationException) { throw cancelled }
                             catch(_: SecurityException) { store.embedded(asset,null,"PERMISSION_REQUIRED",library.contextModel) }
                             catch(_: Exception) { store.embedded(asset,null,"EMBEDDING_FAILED",library.contextModel) }
+                            timing.completed(IndexStage.CONTEXT,SystemClock.elapsedRealtime()-started)
+                            started=SystemClock.elapsedRealtime()
                             embeddingAfter=asset.id
                             next=store.pendingEmbedding(id,embeddingAfter,library.contextModel)
                         }
                     }
                 } else {
+                    var started=SystemClock.elapsedRealtime()
                     val analyzer=try { MediaAnalyzer() }
                         catch (_: Exception) { store.analysisUnavailable(library); continue }
                         catch (_: LinkageError) { store.analysisUnavailable(library); continue }
@@ -82,6 +88,7 @@ class FolderIndexer(context: Context, parameters: WorkerParameters) : CoroutineW
                             ensureActive(); if(!current(store,library)) return@index Result.success()
                             val asset=next ?: break
                             if(SystemClock.elapsedRealtime()>=deadline) { continueLater(library,true); return@index Result.success() }
+                            timing.start(asset.root)
                             var animated=asset.animated
                             try {
                                 animated=MediaBitmaps.animated(applicationContext,asset)
@@ -91,13 +98,15 @@ class FolderIndexer(context: Context, parameters: WorkerParameters) : CoroutineW
                             } catch(cancelled: CancellationException) { throw cancelled }
                             catch(_: SecurityException) { store.analyzed(asset,null,animated,"PERMISSION_REQUIRED") }
                             catch(_: Exception) { store.analyzed(asset,null,animated,"ANALYSIS_FAILED") }
+                            timing.completed(IndexStage.LABELS,SystemClock.elapsedRealtime()-started)
+                            started=SystemClock.elapsedRealtime()
                             next=store.pending(id)
                         }
                     }
                 }
             }
             Result.success()
-        } finally { store.signal(id) }
+        } finally { timing.finish(); store.signal(id) }
     } } }
     private fun current(store: LocalStore, library: Library) = store.active(library.id,library.revision)
     private suspend fun discover(store: LocalStore, library: Library, directory: LocalStore.Directory, generation: String, deadline: Long) = coroutineScope {

@@ -18,8 +18,9 @@ import java.util.UUID
 class LocalSettingsViewModel(app: Application, private val saved: SavedStateHandle) : AndroidViewModel(app) {
     data class State(val loaded: Boolean=false,val working: Boolean=false,val folders: List<Folder> = emptyList(),
         val library: Library?=null,val index: IndexStatus?=null,val folderIndexes: Map<String,IndexStatus> = emptyMap(),
-        val indexWork: IndexWork=IndexWork.IDLE,val model: ClipModels.Status=ClipModels.Status(),val useContext: Boolean=false,
+        internal val estimates: IndexEstimates=IndexEstimates(),val indexWork: IndexWork=IndexWork.IDLE,val model: ClipModels.Status=ClipModels.Status(),val useContext: Boolean=false,
         val selectedModel: ClipModel=ClipCatalog.immich,val importMethod: ImportMethod=ImportMethod.FOLDER,val error: Int?=null,val finished: Boolean=false)
+    private data class Progress(val overview: IndexOverview?,val work: IndexWork,val model: ClipModel,val modelStatus: ClipModels.Status)
     private val store=LocalStore.get(app)
     private val mutable=MutableStateFlow(State())
     private val selectedModel=MutableStateFlow(ClipCatalog.immich)
@@ -47,12 +48,22 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
             if(library!=null) name=library.name
             mutable.value=State(loaded=true,folders=library?.folders.orEmpty(),library=library,
                 index=overview?.total,folderIndexes=overview?.folders.orEmpty(),model=ClipModels.Status(ready=ready),useContext=library?.contextSearch ?: ready,selectedModel=selected,importMethod=method)
-            mutable.subscriptionCount.map { it>0 }.distinctUntilChanged()
-                .flatMapLatest { if(it) combine(store.changes,FolderIndexer.observe(app,profile),selectedModel.flatMapLatest { selected -> ClipModels.observe(app,selected).map { selected to it } }) { _,work,model -> work to model } else emptyFlow() }.collectLatest { (work,pair) ->
-                val (selected,model)=pair
-                val updated=if(mutable.value.library!=null) withContext(Dispatchers.IO) { store.overview(profile) } else null
-                mutable.update { before -> before.copy(library=updated?.library,index=updated?.total,folderIndexes=updated?.folders.orEmpty(),indexWork=work,
-                    model=model,selectedModel=selected,useContext=before.useContext || !before.model.ready && model.ready) }
+            mutable.subscriptionCount.map { it>0 }.distinctUntilChanged().flatMapLatest { subscribed ->
+                if(!subscribed) emptyFlow() else {
+                    // Timing events reuse the latest durable snapshot instead of querying the
+                    // whole library again. Database refreshes retain their existing triggers.
+                    combine(store.changes,FolderIndexer.observe(app,profile),selectedModel.flatMapLatest { selected ->
+                        ClipModels.observe(app,selected).map { selected to it }
+                    }) { _,work,pair -> work to pair }.mapLatest { (work,pair) ->
+                        val updated=if(mutable.value.library!=null) withContext(Dispatchers.IO) { store.overview(profile) } else null
+                        Progress(updated,work,pair.first,pair.second)
+                    }.combine(IndexTimings.current.map { it?.takeIf { timing -> timing.profile==profile } }.distinctUntilChanged()) { progress,timing -> progress to timing }
+                }
+            }.collect { (progress,timing) ->
+                val updated=progress.overview; val model=progress.modelStatus
+                mutable.update { before -> before.copy(library=updated?.library,index=updated?.total,folderIndexes=updated?.folders.orEmpty(),
+                    estimates=indexEstimates(updated,progress.work,timing),indexWork=progress.work,
+                    model=model,selectedModel=progress.model,useContext=before.useContext || !before.model.ready && model.ready) }
             }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { mutable.update { it.copy(loaded=true,error=R.string.storage_error) } }

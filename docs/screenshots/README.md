@@ -127,3 +127,11 @@ The main screen and floating picker keep separate selection keys in the existing
 | Light | Dark |
 | --- | --- |
 | <img src="installed-extensions.png" width="260" alt="Installed source APKs with versions, App info and Uninstall actions" /> | <img src="installed-extensions-dark.png" width="260" alt="Installed source extensions using Material dark colors" /> |
+
+## Native photo albums
+
+Local Sticker 1.5 opens Android’s Albums tab when supported and provides a Cloud photo settings shortcut. The picker grants selected-media access; it does not link a Google Photos album or follow later additions. These captures use synthetic emulator media. Google Photos custom-album availability requires an account/device check.
+
+| Local Sticker setup | Android Albums tab |
+| --- | --- |
+| <img src="local-cloud-photo-setup.png" width="260" alt="Photo picker import mode with a direct Cloud photo settings shortcut" /> | <img src="local-photo-albums.png" width="260" alt="Android photo picker starts on the Albums tab with synthetic videos and downloads" /> |

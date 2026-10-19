@@ -11,6 +11,8 @@
         android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
     <TextView android:id="@+id/context_counts" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp"
         android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" android:visibility="gone" />
+    <TextView android:id="@+id/eta" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp"
+        android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" android:visibility="gone" />
     <TextView android:id="@+id/problems" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp"
         android:textAppearance="?attr/textAppearanceBodySmall" android:textColor="?attr/colorError" android:visibility="gone" />
 </LinearLayout>

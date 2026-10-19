@@ -9,6 +9,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import one.njk.sao.source.*
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -49,7 +50,7 @@ class LocalPickedSetupDeviceTest {
         val extension=testExtensions(app).installed().firstOrNull { it.component.packageName=="one.njk.sao.extension.local" }
         Assume.assumeNotNull(extension)
         val key=UUID.randomUUID().toString().take(8); val album="SAO-picked-$key"; val name="Picked $key"
-        val previous=access.sources().current(); val files=mutableListOf<Uri>(); var created: SourceProfile?=null
+        val previous=access.sources().snapshots.first(); val files=mutableListOf<Uri>(); var created: SourceProfile?=null
         val contents=linkedMapOf(
             "happy-$key.png" to ("image/png" to instrumentation.context.assets.open("floating/happy.png").use { it.readBytes() }),
             "hello-$key.gif" to ("image/gif" to instrumentation.context.assets.open("floating/hello.gif").use { it.readBytes() }),
@@ -69,9 +70,19 @@ class LocalPickedSetupDeviceTest {
             }
             ExtensionForm(installed=extension).use { form ->
                 form.set("source_name",name); previousMethod=form.text("import_method")
-                form.click("import_method"); click("Photo picker"); form.click("add_folder")
+                form.click("import_method"); click("Photo picker")
+                form.await("cloud_media_settings") { it.isVisibleToUser }
+                pauseSourceVisual("local-photo-setup")
+                form.click("cloud_media_settings")
+                waitFor("Cloud photo settings opened") { nodes().any { it.packageName?.toString()?.contains("providers.media")==true } }
+                pauseSourceVisual("local-cloud-settings")
+                instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                form.await("source_name") { it.isEnabled }
+                form.click("add_folder")
                 waitFor("Photo picker did not open") { nodes().any { it.packageName?.toString()?.contains("providers.media")==true } }
+                waitFor("Albums tab is the default") { nodes().any { it.text?.toString()=="Albums" && it.isSelected } }
                 pauseSourceVisual("local-photo-picker")
+                click("Photos")
                 fun cells()=nodes().filter { it.viewIdResourceName?.endsWith("/icon_thumbnail")==true }.sortedWith(compareBy({ Rect().also(it::getBoundsInScreen).top },{ Rect().also(it::getBoundsInScreen).left }))
                 waitFor("Four synthetic picker thumbnails") { cells().size>=4 }
                 repeat(4) { index ->
@@ -91,6 +102,7 @@ class LocalPickedSetupDeviceTest {
                 try { withTimeout(15_000) { while(created==null) { created=access.sources().current().profiles.firstOrNull { it.name==name }; delay(50) } } }
                 catch(error: TimeoutCancellationException) { throw AssertionError("Save did not return profile $name; fields="+nodes().filter { it.viewIdResourceName?.substringAfterLast('/') in setOf("error","source_name") }.map { "${it.viewIdResourceName}=${it.text}" }+"; profiles="+access.sources().current(),error) }
             }
+            access.sources().selectFloating(requireNotNull(created).id)
             val source=access.mediaSource()
             var results=MediaPage(emptyList())
             withTimeout(60_000) { while(results.items.size!=4) { results=source.page(MediaQuery(mode=SearchMode.FILENAME)); delay(100) } }

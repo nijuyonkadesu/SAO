@@ -6,6 +6,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import one.njk.sao.source.*
 import org.junit.Assert.*
 import org.junit.Assume
@@ -24,10 +25,10 @@ class LocalSourceDeviceTest {
         val rows=ExtensionClient(app,extension!!.component).profiles()
         val fixture=rows.firstOrNull { it.id=="de89d2d4-3110-4fb4-894b-5cef5e304e70" }
         Assume.assumeNotNull(fixture)
-        val previous=access.sources().current()
+        val previous=access.sources().snapshots.first()
         val profile=extension.profile(fixture!!)
         try {
-            access.sources().upsert(profile,true); access.browseSession().reset()
+            access.sources().upsert(profile,true); access.sources().selectFloating(profile.id); access.browseSession().reset()
             val source=access.mediaSource()
             val all=source.page(MediaQuery()).items
             assertTrue(all.any { it.mimeType=="image/png" }); assertTrue(all.any { it.mimeType=="image/gif" })

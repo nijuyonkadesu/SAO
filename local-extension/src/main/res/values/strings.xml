@@ -94,7 +94,7 @@
     <string name="picker_photos">Photo picker</string>
     <string name="picker_files">Files picker</string>
     <string name="picker_folder_help">Grant access to a folder and its subfolders. New supported files are discovered when this source is used.</string>
-    <string name="picker_photos_help">Choose individual photos and videos, including Google Photos when available. Android does not grant access to a whole cloud album. For a whole local collection, use Add whole folder below.</string>
+    <string name="picker_photos_help">Browse albums and select photos or videos. For Google Photos, enable it in Cloud photo settings. Albums shown depend on your photo app; adding an album’s items does not include later additions automatically. For a whole local collection, use Add whole folder.</string>
     <string name="picker_files_help">Choose individual images and videos from a document provider. Access is retained for background indexing. For a whole collection, use Add whole folder below.</string>
     <string name="add_whole_folder">Add whole folder</string>
     <string name="selected_media">Selected media</string>
@@ -102,4 +102,14 @@
     <string name="add_media">Add photos and videos</string>
     <string name="media_import_error">Could not keep access to the selected media. Choose readable images or videos with Photo picker or Files. For large libraries, use Folder picker.</string>
     <string name="picker_unavailable">That picker is unavailable. Choose another import method.</string>
+    <string name="eta_scanning">Time estimate available after scanning</string>
+    <string name="eta_waiting">Time estimate available when processing starts</string>
+    <string name="eta_calculating">Calculating time remaining…</string>
+    <string name="eta_under_minute">Less than a minute remaining</string>
+    <plurals name="eta_minutes">
+        <item quantity="one">About %1$d min remaining</item>
+        <item quantity="other">About %1$d min remaining</item>
+    </plurals>
+    <string name="eta_hours">About %1$d h %2$d min remaining</string>
+    <string name="cloud_media_settings">Cloud photo settings</string>
 </resources>
