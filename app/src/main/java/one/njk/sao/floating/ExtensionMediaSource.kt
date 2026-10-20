@@ -22,10 +22,14 @@ class ExtensionMediaSource(private val context: Context, private val profile: So
     @Volatile private var closed = false
     private val capabilityLock = Mutex()
     private var supported: SourceCapabilities? = null
+    private var discoveryQuery: MediaQuery? = null
     private val capabilityState = MutableStateFlow(SourceCapabilities())
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override val changes = flow {
         val uri=loadCapabilities().changesUri?.let(::validate) ?: return@flow
+        // A newly visible browsing session may reconcile local folders once. Index notifications
+        // within that session keep the query marker and never cause another discovery pass.
+        discoveryQuery=null
         emitAll(kotlinx.coroutines.flow.callbackFlow {
             val observer=object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
                 override fun onChange(selfChange: Boolean) { trySend(Unit) }
@@ -58,12 +62,14 @@ class ExtensionMediaSource(private val context: Context, private val profile: So
     }
     override suspend fun page(query: MediaQuery, cursor: String?): MediaPage {
         val normalized = loadCapabilities().normalize(query)
+        val discover=cursor==null && discoveryQuery!=normalized
         var next = cursor
         val seen = mutableSetOf<String>()
         // Empty filtered pages are advanced by the host, serially and cancellably.
         while (true) {
             currentCoroutineContext().ensureActive()
-            val page = SourceWire.page(call(ExtensionProtocol.SEARCH,JSONObject().put("query",SourceWire.query(normalized)).put("cursor",next)))
+            val page = SourceWire.page(call(ExtensionProtocol.SEARCH,JSONObject().put("query",SourceWire.query(normalized)).put("cursor",next).put("discover",discover)))
+            discoveryQuery=normalized
             check(page.items.all { it.remote?.sourceId == profile.identity }) { "Invalid source identity" }
             if (page.items.isNotEmpty() || page.nextCursor == null) return page
             check(page.nextCursor != next && seen.add(requireNotNull(page.nextCursor))) { "Repeated source cursor" }

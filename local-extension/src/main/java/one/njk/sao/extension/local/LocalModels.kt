@@ -35,6 +35,12 @@ object LocalFormats {
     private val extensions = mapOf("jpg" to "image/jpeg", "jpeg" to "image/jpeg", "png" to "image/png",
         "webp" to "image/webp", "gif" to "image/gif", "heic" to "image/heic", "heif" to "image/heif",
         "avif" to "image/avif", "mp4" to "video/mp4", "webm" to "video/webm", "mkv" to "video/x-matroska")
+    val mimeTypes get()=extensions.values.toSet()
+    fun importFilename(name: String,mime: String): String {
+        if(extensions.containsKey(name.substringAfterLast('.',"").lowercase(Locale.ROOT))) return name
+        val extension=extensions.entries.firstOrNull { it.value==mime }?.key ?: throw one.njk.sao.source.ExtensionFailure("UNSUPPORTED_MEDIA")
+        return "${name.take(240)}.$extension"
+    }
     fun mime(name: String, reported: String?): String? = extensions[name.substringAfterLast('.', "").lowercase(Locale.ROOT)]
         ?: reported?.takeIf { it in extensions.values }
     fun terms(value: String) = MediaSearch.normalize(value).trim().split(Regex("\\s+")).filter(String::isNotBlank).take(24)

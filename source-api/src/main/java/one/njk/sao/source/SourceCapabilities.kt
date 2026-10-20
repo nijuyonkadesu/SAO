@@ -19,6 +19,8 @@ data class SourceCapabilities(
     val categories: List<SourceCategory> = emptyList(),
     /** Optional query completion, scoped to the declared modes; absence means no suggestion IPC. */
     val suggestionModes: Set<SearchMode> = emptySet(),
+    /** Optional media intake; its live destinations/permissions are discovered explicitly. */
+    val imports: Boolean = false,
 ) {
     val searchOptions get() = modes.isNotEmpty() || facets.isNotEmpty()
     fun normalize(query: MediaQuery): MediaQuery = query.copy(
@@ -60,4 +62,8 @@ object ExtensionProtocol {
     const val SEQUENCE_OPEN = "sequenceOpen"
     const val SEQUENCE_PAGE = "sequencePage"
     const val SEQUENCE_CLOSE = "sequenceClose"
+    const val IMPORT_OPTIONS = "importOptions"
+    const val IMPORT_MEDIA = "importMedia"
+    const val IMPORT_COMPLETE = "importComplete"
+    const val IMPORT_CANCEL = "importCancel"
 }

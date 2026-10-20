@@ -143,7 +143,10 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
         action {
             val app=getApplication<Application>(); val resolver=app.contentResolver
             try {
-                folders.filter { it.kind==CollectionKind.TREE }.forEach { resolver.takePersistableUriPermission(Uri.parse(it.uri),Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                folders.filter { it.kind==CollectionKind.TREE }.forEach {
+                    try { resolver.takePersistableUriPermission(Uri.parse(it.uri),Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+                    catch(_: SecurityException) { resolver.takePersistableUriPermission(Uri.parse(it.uri),Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                }
                 additions.values.flatten().distinct().forEach { resolver.takePersistableUriPermission(Uri.parse(it),Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 val prior=state.value.library
                 val library=store.save(profile,title,folders,contextSearch=useContext && ClipModels.ready(app,selected),contextModel=selected.id,selections=additions)
@@ -155,6 +158,7 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
                 val foldersChanged=prior?.folders?.associate { it.uri to it.name }!=library.folders.associate { it.uri to it.name }
                 FolderIndexer.schedule(app,library,force=foldersChanged || prior?.revision!=library.revision,
                     reset=prior?.folders?.map { it.uri }!=library.folders.map { it.uri })
+                FolderIndexer.configureChecks(app)
                 mutable.update { it.copy(library=library,finished=true) }
             } catch (error: Exception) { releaseUnusedGrants(app,store); throw error }
         }
@@ -168,6 +172,7 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
         val app=getApplication<Application>(); val library=store.library(profile)
         store.pause(profile,!library.paused)
         if(library.paused) FolderIndexer.schedule(app,library.copy(paused=false),force=true,reset=false) else FolderIndexer.cancel(app,profile)
+        FolderIndexer.configureChecks(app)
     }
     fun pauseFolder(folder: Folder)=action {
         val app=getApplication<Application>()
@@ -176,6 +181,7 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
             store.pauseFolder(profile,folder.uri,!paused)
         }
         FolderIndexer.schedule(app,store.library(profile),force=true,reset=false)
+        FolderIndexer.configureChecks(app)
     }
     fun restartFolder(folder: Folder)=action {
         val app=getApplication<Application>()
@@ -184,7 +190,9 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
     }
     fun delete()=action {
         val app=getApplication<Application>(); val library=store.library(profile)
+        LocalImports(app,store,library).abandon()
         FolderIndexer.cancel(app,profile); store.delete(profile); releaseUnusedGrants(app,store)
+        FolderIndexer.configureChecks(app)
         app.revokeUriPermission(mediaScope(app,library),Intent.FLAG_GRANT_READ_URI_PERMISSION)
         app.revokeUriPermission(store.changesUri(library),Intent.FLAG_GRANT_READ_URI_PERMISSION)
         mutable.update { it.copy(finished=true) }

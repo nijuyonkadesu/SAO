@@ -77,12 +77,12 @@ class LocalFolderSetupDeviceTest {
             ExtensionForm(installed=extension).use { form ->
                 form.set("source_name",name)
                 val previousMethod=form.text("import_method")
-                form.click("import_method"); click("Photo picker")
+                if(previousMethod!="Photo picker") { form.click("import_method"); click("Photo picker") }
                 pauseSourceVisual("local-whole-folder-action")
                 form.click("add_whole_folder")
                 waitFor { node { it.packageName?.toString()?.contains("documentsui")==true }!=null }
-                click("Show roots")
-                click(android.os.Build.MODEL)
+                if(clickable("Show roots")!=null) { click("Show roots"); click(android.os.Build.MODEL) }
+                else if(clickable("Download")==null && clickable(android.os.Build.MODEL)!=null) click(android.os.Build.MODEL)
                 click("Download")
                 click(folder)
                 click("USE THIS FOLDER")
@@ -103,6 +103,7 @@ class LocalFolderSetupDeviceTest {
             val selected=created!!
             assertEquals(selected.id,access.sources().current().selectedId)
             access.sources().selectFloating(selected.id)
+            access.sources().available(access.sources().current().profiles.map { it.id }.toSet())
             val source=access.mediaSource()
             var results=MediaPage(emptyList())
             withTimeout(20_000) { while(results.items.isEmpty()) { results=source.page(MediaQuery("smile",mode=SearchMode.DESCRIPTION)); delay(100) } }

@@ -14,6 +14,7 @@ object SourceWire {
         .put("defaultMode", value.defaultMode.name).put("changes",value.changesUri)
         .put("categories", JSONArray(value.categories.map { JSONObject().put("id",it.id).put("label",it.label).put("query",query(it.query)).put("adult",it.adult) }))
         .put("suggestions",strings(value.suggestionModes.map { it.name }))
+        .put("imports",value.imports)
     fun capabilities(json: JSONObject): SourceCapabilities {
         val modes = enums<SearchMode>(json.optJSONArray("modes"))
         val default = SearchMode.entries.firstOrNull { it.name == json.optString("defaultMode") && it in modes }
@@ -25,7 +26,8 @@ object SourceWire {
             categories=if(categories==null) emptyList() else List(categories.length()) { index ->
                 val row=categories.getJSONObject(index)
                 SourceCategory(row.getString("id"),row.getString("label"),query(row.getJSONObject("query")),row.optBoolean("adult"))
-            }.distinctBy { it.id },suggestionModes=enums<SearchMode>(json.optJSONArray("suggestions")) intersect modes)
+            }.distinctBy { it.id },suggestionModes=enums<SearchMode>(json.optJSONArray("suggestions")) intersect modes,
+            imports=json.optBoolean("imports"))
     }
     fun suggestions(value: SearchSuggestions) = JSONObject().put("start",value.start).put("end",value.end)
         .put("items",JSONArray(value.items.map { JSONObject().put("value",it.value).put("label",it.label).put("detail",it.detail) }))

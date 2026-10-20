@@ -126,6 +126,8 @@ class ImmichSearchDeviceTest {
         }
         profile = immichProfile("Search fixture", ImmichConfig(server.url("/").toString(), "search-fixture-key"))
         access.sources().upsert(profile, true)
+        access.sources().selectFloating(profile.id)
+        access.sources().available(access.sources().current().profiles.map { it.id }.toSet())
     }
     @After fun cleanup() = runBlocking { access.sources().restore(previous); access.browseSession().reset(); server.shutdown() }
     private fun model(activity: PickerActivity) = ViewModelProvider(activity)[PickerViewModel::class.java]
@@ -257,7 +259,7 @@ class ImmichSearchDeviceTest {
             scenario.onActivity { assertNull(it.findViewById<View>(R.id.hold_choice_card)); assertFalse(it.findViewById<View>(R.id.search_options_panel).isVisible); assertEquals(SearchMode.CONTEXT, model(it).query.value.mode) }
             SystemClock.sleep(250); assertEquals(before, requests.size)
             val switching = held()
-            runBlocking { access.sources().select(null) }
+            runBlocking { access.sources().selectFloating(null) }
             await(scenario, "Switching source must discard the preview") { it.findViewById<View>(R.id.hold_choice_card) == null && model(it).state.value.sourceId == "local" }
             switching.send(MotionEvent.ACTION_UP)
             scenario.onActivity { assertEquals(SearchMode.CONTEXT, model(it).query.value.mode); assertFalse(it.findViewById<View>(R.id.search_options_panel).isVisible) }
@@ -413,13 +415,14 @@ class ImmichSearchDeviceTest {
             drag.send(MotionEvent.ACTION_MOVE, atY = drag.y - drag.row * 3)
             scenario.onActivity {
                 assertEquals("Second library", it.findViewById<View>(R.id.hold_choice_card).contentDescription.toString())
-                assertEquals(profile.id, ViewModelProvider(it)[SourceProfilesViewModel::class.java].state.value.catalog.selectedId)
+                assertEquals(profile.id, ViewModelProvider(it)[SourceProfilesViewModel::class.java].state.value.floatingCatalog.selectedId)
                 assertFalse(it.findViewById<View>(R.id.source_panel).isVisible)
             }
             SystemClock.sleep(250); assertEquals(before, requests.size)
             screenshot("sources-hold-preview.png")
             drag.send(MotionEvent.ACTION_UP, atY = drag.y - drag.row * 3)
-            await(scenario, "Release must activate the selected source") { !model(it).state.value.loading && model(it).state.value.sourceId == second.identity && ViewModelProvider(it)[SourceProfilesViewModel::class.java].state.value.catalog.selectedId == second.id }
+            await(scenario, "Release must activate the selected source") { !model(it).state.value.loading && model(it).state.value.sourceId == second.identity && ViewModelProvider(it)[SourceProfilesViewModel::class.java].state.value.floatingCatalog.selectedId == second.id }
+            scenario.onActivity { assertEquals(profile.id, ViewModelProvider(it)[SourceProfilesViewModel::class.java].state.value.catalog.selectedId) }
             assertEquals(before + 1, requests.size); assertEquals(copied, clip())
             val first = hold(scenario, R.id.source_toggle)
             first.send(MotionEvent.ACTION_UP, atY = first.y + first.row)
@@ -502,6 +505,8 @@ class ImmichSearchDeviceTest {
         assertEquals("opaque-second", requests.last().second.getString("cursor"))
         val other = immichProfile("Second fixture",profile.testConnection())
         access.sources().upsert(other, true)
+        access.sources().selectFloating(other.id)
+        access.sources().available(access.sources().current().profiles.map { it.id }.toSet())
         source.page(contextQuery)
         assertFalse(requests.last().second.has("personIds")); assertFalse(requests.last().second.has("country"))
         assertEquals("VIDEO", requests.last().second.getString("type"))
@@ -593,7 +598,9 @@ class ImmichSearchDeviceTest {
         assertEquals(1, randomCalls.get())
         assertTrue(source.page(query, "not-a-random-cursor").items.isEmpty()); assertEquals(1, randomCalls.get())
         val other = immichProfile("Second random fixture",profile.testConnection())
-        access.sources().upsert(other, true); source.page(query)
+        access.sources().upsert(other, true); access.sources().selectFloating(other.id)
+        access.sources().available(access.sources().current().profiles.map { it.id }.toSet())
+        source.page(query)
         val scoped = requests.last().second.getJSONObject("filter")
         assertFalse(scoped.has("personIds")); assertFalse(scoped.has("country")); assertFalse(scoped.has("state")); assertFalse(scoped.has("city"))
         assertEquals("VIDEO", scoped.getJSONObject("type").getJSONArray("in").getString(0))

@@ -13,6 +13,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
     <queries>
         <intent><action android:name="one.njk.sao.source.EXTENSION" /></intent>
         <package android:name="com.skyd.rays" />
@@ -45,6 +46,15 @@
         tools:targetApi="31">
         <activity android:name=".floating.RaysSettingsActivity" android:exported="false" />
         <activity android:name=".floating.SourceSettingsActivity" android:exported="false" />
+        <activity android:name=".importing.MediaImportActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" /><action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" /><data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
+        <service android:name=".importing.ImportTransferService" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
+        <provider android:name=".importing.ImportMediaProvider" android:authorities="${applicationId}.imports" android:exported="false" android:grantUriPermissions="true" />
         <activity android:name=".floating.HomeCategoriesActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".floating.SourceSetupActivity" android:exported="false" />
         <activity android:name=".floating.TelegramAppsActivity" android:exported="false" />

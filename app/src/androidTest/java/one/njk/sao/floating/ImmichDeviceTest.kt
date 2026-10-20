@@ -56,6 +56,7 @@ class ImmichDeviceTest {
         }; start() }
         profile=immichProfile("Fixture",ImmichConfig(server.url("/").toString(),"fixture-secret"))
         profiles.upsert(profile,true)
+        profiles.selectFloating(profile.id)
         source=SwitchingMediaSource(app,LocalMediaSource(app),access.immichSettings(),FloatingDispatchers())
     }
     @After fun cleanup() = runBlocking { source.shutdown(); profiles.restore(previous); access.browseSession().reset(); server.shutdown() }

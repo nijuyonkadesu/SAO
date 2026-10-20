@@ -81,25 +81,30 @@ class LocalExtensionService : ExtensionService() {
         val library=store.library(profile)
         if(payload.getString("revision")!=library.revision) throw ExtensionFailure("PROFILE_CHANGED")
         if(operation==ExtensionProtocol.DELETE_PROFILE) {
+            LocalImports(this,store,library).abandon()
             FolderIndexer.cancel(this,profile); store.delete(profile); releaseUnusedGrants(this,store)
+            FolderIndexer.configureChecks(this)
             revokeUriPermission(mediaScope(this,library),Intent.FLAG_GRANT_READ_URI_PERMISSION)
             return JSONObject()
         }
         val source=payload.getString("source")
         val catalog=LocalCatalog(store,library,source)
         return when(operation) {
+            ExtensionProtocol.IMPORT_OPTIONS -> ImportWire.options(LocalImports(this,store,library).options())
+            ExtensionProtocol.IMPORT_MEDIA -> ImportWire.receipt(LocalImports(this,store,library).copy(ImportWire.request(payload,caller)))
+            ExtensionProtocol.IMPORT_COMPLETE -> { FolderIndexer.imported(this,library); JSONObject() }
+            ExtensionProtocol.IMPORT_CANCEL -> { LocalImports(this,store,library).cancel(SourceWire.strings(payload.getJSONArray("ids"))); JSONObject() }
             ExtensionProtocol.CAPABILITIES -> {
-                FolderIndexer.schedule(this,library)
                 val updates=store.changesUri(library)
                 grantUriPermission(caller,updates,Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 val context=library.contextSearch && ClipModels.ready(this,ClipCatalog.get(library.contextModel))
                 val modes=setOf(SearchMode.FILENAME,SearchMode.DESCRIPTION,SearchMode.PATH,SearchMode.OCR)+(if(context) setOf(SearchMode.CONTEXT) else emptySet())
                 SourceWire.capabilities(SourceCapabilities(modes,setOf(SearchFacet.MEDIA,SearchFacet.EMOJI_TAGS),random=true,sequence=true,
-                    defaultMode=if(context) SearchMode.CONTEXT else SearchMode.DESCRIPTION,changesUri=updates.toString(),categories=LocalHomeCategories.values))
+                    defaultMode=if(context) SearchMode.CONTEXT else SearchMode.DESCRIPTION,changesUri=updates.toString(),categories=LocalHomeCategories.values,imports=true))
             }
             ExtensionProtocol.SEARCH -> {
-                FolderIndexer.schedule(this,library)
                 val query=SourceWire.query(payload.getJSONObject("query")); val cursor=SourceWire.nullable(payload,"cursor")
+                if(cursor==null && payload.optBoolean("discover")) FolderIndexer.schedule(this,library)
                 if(query.mode==SearchMode.CONTEXT && query.text.isNotBlank() && query.randomRequest==null) {
                     if(!library.contextSearch || !ClipModels.ready(this,ClipCatalog.get(library.contextModel))) throw ExtensionFailure("UNSUPPORTED")
                     SourceWire.page(contextSearch.page(library,source,query,cursor))

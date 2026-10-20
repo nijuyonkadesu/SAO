@@ -82,6 +82,7 @@ androidComponents {
 
 dependencies {
     implementation project(':source-api')
+    implementation libs.work.runtime
     androidTestImplementation project(':immich-provider')
     implementation "com.caverock:androidsvg-aar:1.4"
     // Supplied by LSPosed in the scoped process; never bundled into ordinary SAO.

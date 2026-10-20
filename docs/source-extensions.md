@@ -1,6 +1,6 @@
 # Source extension APKs
 
-Install SAO and `immich-sao.apk`, then open **Settings → Media sources → Add source → Immich**. Give each connection a name. Repeat for more servers, accounts or album scopes; those **profile names** appear in both the home Collection selector and the floating picker. Edit a source to open its extension's settings. Context remains the default when supported.
+Install SAO and `immich-sao.apk`, then open **Settings → Media sources → Add source → Immich**. Give each connection a name. Repeat for more servers, accounts or album scopes; those **profile names** appear in both the home Collection selector and the floating picker. The source edit action opens its intake overview; **Source settings** opens the extension's configuration. Context remains the default when supported.
 
 Source extensions update independently of SAO. Version 1 accepts extensions signed by the same publisher as SAO; debug builds must use the same debug certificate. It does not load arbitrary third-party code into SAO. SAO includes no sample source; installing and configuring a provider supplies its media. Profiles from uninstalled providers are hidden without deleting their saved configuration. The existing Rays integration remains supported during this transition. [Local Sticker](local-sticker-source.md) provides named folders and selected-media collections, configurable folder/photo/file pickers, per-album processing controls, offline labeling/OCR, optional FP32/8-bit CLIP Context search, user-owned model folders and metadata corrections in a separate APK.
 
@@ -18,6 +18,8 @@ The main screen and floating picker use separate selection keys in the same host
 
 ## Ownership
 
+[Media imports and connected folders](media-imports.md) add optional capability-driven sharing, uploads, folder mappings and durable transfer receipts. Credentials and Local's models/index remain extension-owned; the host owns scheduling and retry policy. Originals are retained.
+
 | SAO | Extension APK |
 | --- | --- |
 | Picker, search controls, carousel and playback | Named profiles and their private configuration |
@@ -25,6 +27,7 @@ The main screen and floating picker use separate selection keys in the same host
 | Bounded read retry policy | One requested page and its opaque continuation |
 | Shared media cache, export and WebM conversion | Authenticated read-only media streams |
 | Clipboard, chat paste and Vector/LSPosed | Extension-specific setup and connection verification |
+| Intake UI, folder mappings, durable queue and retry policy | Writable targets, verified writes and backend duplicate handling |
 
 The small `source-api` library defines the contract. `immich-provider` translates Immich API records; `immich-extension` supplies its private store, settings Activity, bound service and streaming provider. SAO's production dependencies include neither module nor the Immich client. Common UI, player, cache and messaging libraries are not dependencies of the extension.
 
@@ -50,6 +53,8 @@ The shared Material dropdown appears in floating search and **Settings → Home 
 
 An optional v1 `changes` capability carries a granted, source-owned content URI. SAO validates its owning package and observes it only while the picker is visible. Notifications are coalesced to at most one local refresh per second; matching items/metadata merge without clearing the list or focus. Random batches remain stable. Older v1 clients ignore this optional field. Extensions without it need no observer or extra API calls.
 
+Search may include the optional `discover` hint for the first page of a changed query or newly visible session. Local Sticker applies its discovery cooldown only to this hint; capability reads, pagination and reactive refreshes do not schedule scans. Extensions can ignore the hint. Configured-folder background checks remain extension-owned for Local and host-owned for remote intake, as described in [media imports](media-imports.md).
+
 ## IPC contract v1
 
 An installed APK exports a service handling `one.njk.sao.source.EXTENSION`, with manifest metadata `one.njk.sao.source.API_VERSION=1` and `one.njk.sao.source.SETTINGS=<fully qualified Activity>`. SAO uses a targeted package-visibility query and verifies the signing certificate. A signature permission protects binding/settings; the service and settings Activity also verify the caller UID and certificate. No persistent binding, background discovery loop, wakelock or network polling is required.
@@ -67,12 +72,17 @@ An installed APK exports a service handling `one.njk.sao.source.EXTENSION`, with
 | `sequenceOpen`, `sequencePage` | Timeline items, directional cursors and opaque sequence token |
 | `deleteProfile` | Remove a profile only if its revision still matches; a mutation, never automatically retried |
 | `import` | Idempotent, signed-caller-only migration of one old encrypted connection |
+| `importOptions` | Optional accepted types, opaque writable targets and public collection summaries |
+| `importMedia` | Stream one granted immutable host snapshot; return an idempotent receipt |
+| `importComplete`, `importCancel` | Finish analysis for a batch, or clean only incomplete provider writes |
 
 Profile discovery cursors include a public-list fingerprint; changes between pages fail explicitly instead of silently dropping profiles. All other profile reads carry the expected configuration revision and host source identity. SAO tags capability updates with the owning source identity, preventing a previous profile’s modes from changing the current search. Media records contain a source-scoped ID, display metadata, format and opaque asset reference, not an authenticated URL. Sequence tokens/cursors are opaque to SAO. Immich's sequence token supports reopening after the bound service has stopped; chronology remains the Photos timeline order.
 
 The legacy migration is the sole credential handoff: an old SAO installation passes its existing opaque configuration once to the trusted Immich extension. SAO replaces and erases its old credential record **only after acknowledgement**. If the extension is absent or migration fails, that encrypted legacy record remains intact and inactive. Fresh configurations are entered exclusively in the extension.
 
 ## Errors and retry policy
+
+The table below describes reads. [Imports](media-imports.md) use their own durable queue, duplicate checks and bounded write retry policy. They never reuse browsing retries.
 
 Callbacks return a safe `{ "code": "…", "retryAfter": "…" }` failure, never raw exception text, response bodies, URLs or secrets. Reliable media pipes use the same error shape. Cancellation remains coroutine cancellation rather than an error toast.
 

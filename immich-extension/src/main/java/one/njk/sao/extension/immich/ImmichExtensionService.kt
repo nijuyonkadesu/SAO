@@ -35,10 +35,13 @@ class ImmichExtensionService : ExtensionService() {
         if(payload.getString("revision") != connection.revision) throw ExtensionFailure("PROFILE_CHANGED")
         if (operation == ExtensionProtocol.DELETE_PROFILE) { connections.delete(profile); return JSONObject() }
         val identity = payload.getString("source")
+        if(operation==ExtensionProtocol.IMPORT_OPTIONS) return ImportWire.options(ImmichImports(this,connection).options())
+        if(operation==ExtensionProtocol.IMPORT_MEDIA) return ImportWire.receipt(ImmichImports(this,connection).upload(ImportWire.request(payload,caller)))
+        if(operation==ExtensionProtocol.IMPORT_COMPLETE || operation==ExtensionProtocol.IMPORT_CANCEL) return JSONObject()
         ImmichAdapter(connection.config,identity,FloatingDispatchers()).use { source ->
             return when (operation) {
                 ExtensionProtocol.CAPABILITIES -> SourceWire.capabilities(source.searchModes().let { modes -> SourceCapabilities(modes,SearchFacet.entries.toSet(),random=true,sequence=true,
-                    defaultMode=if(SearchMode.CONTEXT in modes) SearchMode.CONTEXT else SearchMode.FILENAME, categories=ImmichHomeCategories.values) })
+                    defaultMode=if(SearchMode.CONTEXT in modes) SearchMode.CONTEXT else SearchMode.FILENAME, categories=ImmichHomeCategories.values,imports=true) })
                 ExtensionProtocol.SEARCH -> SourceWire.page(source.page(SourceWire.query(payload.getJSONObject("query")),SourceWire.nullable(payload,"cursor")))
                 ExtensionProtocol.FILTERS -> JSONObject().put("values",SourceWire.strings(source.filters()))
                 ExtensionProtocol.PEOPLE -> source.people(payload.optString("name"),payload.optInt("page",1),identity).let {

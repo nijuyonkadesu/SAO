@@ -36,7 +36,8 @@ interface ImmichApi {
     suspend fun deleteAssets(@Body assets: DeleteAssets)
     @POST("trash/restore/assets") suspend fun restoreAssets(@Body assets: BulkIds): TrashResult
     @Multipart @POST("assets") suspend fun upload(@Part assetData: MultipartBody.Part,
-        @Part("fileCreatedAt") created: RequestBody, @Part("fileModifiedAt") modified: RequestBody): UploadResult
+        @Part("fileCreatedAt") created: RequestBody, @Part("fileModifiedAt") modified: RequestBody,
+        @Header("x-immich-checksum") checksum: String? = null): UploadResult
     @Streaming @GET("assets/{id}/original") suspend fun original(@Path("id") id: String,
         @Query("edited") edited: Boolean = true): ResponseBody
     @Streaming @GET("assets/{id}/thumbnail") suspend fun thumbnail(@Path("id") id: String,

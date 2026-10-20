@@ -1,4 +1,7 @@
 <resources>
+    <string name="import_settings">Collections and processing</string>
+    <string name="import_collection_folder">Indexed in place · %1$d files · %2$d pending</string>
+    <string name="import_collection_picked">Selected media · %1$d files · %2$d pending</string>
     <string name="title">Local Sticker library</string>
     <string name="setup">Choose folders or selected photos, GIFs and videos. Media is indexed automatically and stays with its original storage provider.</string>
     <string name="back">Back</string>
@@ -59,7 +62,7 @@
     <string name="analyzing">%1$d files indexed; %2$d awaiting analysis.</string>
     <string name="indexed">%1$d files indexed.</string>
     <string name="index_errors">%1$s %2$d files could not be analyzed; %3$d folders unavailable. Rescan to retry; choose a folder again to restore access.</string>
-    <string name="constraints">Checks for new files when you use this source, up to every five minutes. Rescan checks now. Indexing waits when battery or storage is low.</string>
+    <string name="constraints">Checks connected folders when you search and about every six hours in the background. Unchanged files keep their tags and embeddings. Rescan checks now. Processing waits when battery or storage is low.</string>
     <string name="profile_summary">%1$d collections · %2$d indexed</string>
     <string name="configuration_error">Enter a name and add at least one readable collection.</string>
     <string name="folder_error">Could not read that folder. Choose it again using the system picker.</string>

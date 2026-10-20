@@ -6,6 +6,8 @@ The extension recursively indexes supported JPEG/PNG/WebP/GIF/HEIF/AVIF images a
 
 ## Import methods
 
+Local Sticker 1.6 also accepts [media shared through SAO](media-imports.md). Its source overview lists collections and writable destinations; **Collections and processing** opens these extension settings. Shared originals are copied without overwriting existing files, registered directly and analyzed off the main thread. Existing folder/selected-media collections keep their in-place behavior.
+
 - **Folder picker:** recursively discovers supported media in the granted folder. New files are picked up during the normal throttled scan.
 - **Photo picker:** Android’s multi-select image/video picker opens its **Albums** tab when supported. **Cloud photo settings** opens the Android provider selector directly; choose Google Photos and allow access there. Google Photos must be installed and enabled as the eligible cloud media provider. Android supplies selected-item access, not a live grant to a whole Google Photos album. Select the items you want; use **Add photos and videos** on that collection to append more later. Local Sticker 1.4.1 also exposes **Add whole folder** directly below the import action: grant one local directory to include all supported media and subfolders, without changing your default picker. This adds a separate folder collection; it does not convert or expand a cloud album grant.
 - **Files picker:** selects multiple supported media files from a document provider using `ACTION_OPEN_DOCUMENT`.
@@ -28,7 +30,7 @@ Choose **Browse and correct metadata** to edit a file's title, description, tags
 
 Indexing runs in one-time, battery/storage-constrained WorkManager jobs. Directory checkpoints and analysis state survive process death and constrained job restarts. Labels/OCR and Context are interleaved in bounded batches, so early files become semantically searchable before all OCR finishes; one model closes before the next loads. Work yields between bounded passes and stops on cancellation. There are no periodic scan jobs, keepalive foreground services, screen-on flags or custom wake locks. Android/WorkManager holds its normal execution wake lock only during scheduled work; this is unrelated to floating-icon recovery. Removing folder access does not erase existing metadata. Choose the folder again to restore access, then rescan.
 
-Initial save starts a scan. Using a source checks for new/changed files at most once every five minutes; **Rescan folders** requests a check immediately and retries failed files. Unchanged files retain their prior analysis. A failed folder traversal cannot prune that folder's existing entries. Automatic analysis failures remain visible in the metadata browser and do not prevent manual tagging or exporting readable originals.
+Initial save starts a scan. A newly visible browsing session or changed query may check for new/changed files, with a five-minute cooldown. Capability reads, later pages and reactive index updates never start scans. Configured folders also receive an Android-managed check about every six hours; paused collections do not process. **Rescan folders** checks immediately and retries failed files. Unchanged files retain prior analysis. A failed traversal cannot prune existing entries. Analysis failures remain visible and do not prevent corrections or exporting readable originals.
 
 ## Context search
 

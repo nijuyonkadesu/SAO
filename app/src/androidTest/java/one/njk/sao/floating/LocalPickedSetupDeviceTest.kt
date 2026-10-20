@@ -70,7 +70,7 @@ class LocalPickedSetupDeviceTest {
             }
             ExtensionForm(installed=extension).use { form ->
                 form.set("source_name",name); previousMethod=form.text("import_method")
-                form.click("import_method"); click("Photo picker")
+                if(previousMethod!="Photo picker") { form.click("import_method"); click("Photo picker") }
                 form.await("cloud_media_settings") { it.isVisibleToUser }
                 pauseSourceVisual("local-photo-setup")
                 form.click("cloud_media_settings")
@@ -103,9 +103,16 @@ class LocalPickedSetupDeviceTest {
                 catch(error: TimeoutCancellationException) { throw AssertionError("Save did not return profile $name; fields="+nodes().filter { it.viewIdResourceName?.substringAfterLast('/') in setOf("error","source_name") }.map { "${it.viewIdResourceName}=${it.text}" }+"; profiles="+access.sources().current(),error) }
             }
             access.sources().selectFloating(requireNotNull(created).id)
+            access.sources().available(access.sources().current().profiles.map { it.id }.toSet())
             val source=access.mediaSource()
             var results=MediaPage(emptyList())
-            withTimeout(60_000) { while(results.items.size!=4) { results=source.page(MediaQuery(mode=SearchMode.FILENAME)); delay(100) } }
+            try { withTimeout(60_000) { while(results.items.size!=4) { results=source.page(MediaQuery(mode=SearchMode.FILENAME)); delay(100) } } }
+            catch(error: TimeoutCancellationException) {
+                val config=requireNotNull(created).configuration as ExtensionConfig
+                val overview=ExtensionClient(app,extension!!.component).request(config.profile,ExtensionProtocol.IMPORT_OPTIONS,
+                    JSONObject().put("source",requireNotNull(created).identity).put("revision",config.revision))
+                throw AssertionError("Selected collection did not publish four items: items=${results.items.map { it.filename to it.mimeType }}; active=${access.sources().currentFloating().identity}; expected=${requireNotNull(created).identity}; overview=$overview",error)
+            }
             val expected=contents.values.associate { it.first to it.second }
             assertEquals(expected.keys,results.items.map { it.mimeType }.toSet())
             // The photo picker may deliberately expose provider IDs instead of original filenames.

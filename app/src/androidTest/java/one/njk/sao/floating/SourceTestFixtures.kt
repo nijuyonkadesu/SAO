@@ -58,15 +58,20 @@ internal suspend fun SourceProfiles.restore(catalog: SourceCatalog) {
             }
         }
     }
-    current().profiles.forEach { remove(it.id) }
     catalog.profiles.filterNot { it.id == ALL_SOURCE_ID }.forEach { upsert(it) }
+    // Retained profiles must not emit a temporary removal: production observers correctly
+    // dispose their sessions, grants and import queues when a profile is actually deleted.
+    current().profiles.filter { value -> catalog.profiles.none { it.id==value.id } }.forEach { remove(it.id) }
     enableAll(catalog.profiles.any { it.id == ALL_SOURCE_ID }); select(catalog.selectedId)
 }
 internal suspend fun SourceProfiles.restore(snapshot: SourceProfilesSnapshot) {
     restore(snapshot.catalog)
-    snapshot.homeCategories.forEach { (id,rows) -> homeCategories(id,rows) }
+    snapshot.catalog.profiles.forEach { profile ->
+        homeCategories(profile.id,snapshot.homeCategories[profile.id])
+        if(profile.id!=ALL_SOURCE_ID) enableInFloating(profile.id,profile.id !in snapshot.floatingDisabled)
+    }
+    snapshot.available?.let { available(it) }
     selectFloating(snapshot.floatingSelectedId)
-    snapshot.floatingDisabled.forEach { enableInFloating(it,false) }
 }
 
 /** Cross-process controls: the real extension Activity is launched for result by SAO's proxy. */

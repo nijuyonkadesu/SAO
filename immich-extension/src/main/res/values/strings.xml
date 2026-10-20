@@ -9,7 +9,7 @@
   <string name="immich_album_hint">Test the connection to load your albums.</string>
   <string name="immich_all_photos">All media</string>
   <string name="immich_saved_album">Saved album</string>
-  <string name="immich_credentials_description">Create an Immich API key with asset.read, asset.view, asset.download and tag.read. Add album.read to choose an album. The key is encrypted on this device. Use HTTPS to protect it in transit.</string>
+  <string name="immich_credentials_description">Browsing needs asset.read, asset.view, asset.download and tag.read. Add album.read to choose an album. Uploading also needs asset.upload; a selected owned album needs albumAsset.create. Credentials stay encrypted in this extension.</string>
   <string name="immich_test">Test connection</string>
   <string name="immich_save">Save and use Immich</string>
   <string name="immich_checking">Checking connection…</string>

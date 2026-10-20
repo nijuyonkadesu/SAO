@@ -200,5 +200,28 @@ class FolderIndexer(context: Context, parameters: WorkerParameters) : CoroutineW
             WorkManager.getInstance(context).enqueueUniqueWork(name(library.id),if(force) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,request(library,reset=reset))
         }
         fun cancel(context: Context, id: String) { WorkManager.getInstance(context).cancelUniqueWork(name(id)); requested.remove(id) }
+        fun imported(context: Context,library: Library) {
+            if(library.paused || library.folders.all { it.paused }) return
+            WorkManager.getInstance(context).enqueueUniqueWork(name(library.id),ExistingWorkPolicy.APPEND_OR_REPLACE,request(library,analysisOnly=true))
+        }
+        /** Explicitly configured collections get a coarse system-managed catch-up, independent of overlay visibility. */
+        fun configureChecks(context: Context) {
+            val enabled=LocalStore.get(context).libraries().any { !it.paused && it.folders.any { folder -> !folder.paused && folder.kind==CollectionKind.TREE } }
+            val work=WorkManager.getInstance(context)
+            if(enabled) work.enqueueUniquePeriodicWork("local-folder-check",ExistingPeriodicWorkPolicy.KEEP,
+                PeriodicWorkRequestBuilder<LocalFolderCheckWorker>(6,java.util.concurrent.TimeUnit.HOURS)
+                    .setInitialDelay(6,java.util.concurrent.TimeUnit.HOURS)
+                    .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).setRequiresStorageNotLow(true).build()).build())
+            else work.cancelUniqueWork("local-folder-check")
+        }
+    }
+}
+
+class LocalFolderCheckWorker(context: Context,parameters: WorkerParameters): CoroutineWorker(context,parameters) {
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        LocalStore.get(applicationContext).libraries().forEach { library ->
+            if(library.folders.any { it.kind==CollectionKind.TREE && !it.paused }) FolderIndexer.schedule(applicationContext,library)
+        }
+        Result.success()
     }
 }

@@ -37,7 +37,7 @@ abstract class ExtensionService : Service() {
             try { callback.asBinder().linkToDeath(death,0) } catch (_: android.os.RemoteException) { return }
             val job = scope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    val response = withTimeout(85_000) { execute(profile,operation,JSONObject(payload),caller) }.toString()
+                    val response = withTimeout(if(operation==ExtensionProtocol.IMPORT_MEDIA) 8*60_000L else 85_000L) { execute(profile,operation,JSONObject(payload),caller) }.toString()
                     require(response.length * 2 <= ExtensionProtocol.MAX_RESPONSE)
                     callback.complete(id,response)
                 } catch (timeout: TimeoutCancellationException) {

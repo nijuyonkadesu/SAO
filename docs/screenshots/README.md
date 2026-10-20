@@ -135,3 +135,14 @@ Local Sticker 1.5 opens Android’s Albums tab when supported and provides a Clo
 | Local Sticker setup | Android Albums tab |
 | --- | --- |
 | <img src="local-cloud-photo-setup.png" width="260" alt="Photo picker import mode with a direct Cloud photo settings shortcut" /> | <img src="local-photo-albums.png" width="260" alt="Android photo picker starts on the Albums tab with synthetic videos and downloads" /> |
+
+## Media imports and folder mappings
+
+Each writable profile has one intake overview: destination, added/pending counts, collection summaries or connected-folder mappings, and a link to its extension settings. Originals remain intact. These Android 15 captures use synthetic media and UUID-named test folders; both themes use Material 3 components.
+
+| Light | Dark |
+| --- | --- |
+| <img src="media-import-local.png" width="260" alt="Local collection overview with Add media and Files actions and indexed-file counts" /> | <img src="media-import-local-dark.png" width="260" alt="Local collection intake using Material dark colors" /> |
+| <img src="media-import-folder.png" width="260" alt="Immich connected-folder mapping, completed count, last check and folder controls" /> | <img src="media-import-folder-dark.png" width="260" alt="Connected-folder mapping and Material text actions in dark mode" /> |
+
+[Setup, scheduling and retry behavior](../media-imports.md).

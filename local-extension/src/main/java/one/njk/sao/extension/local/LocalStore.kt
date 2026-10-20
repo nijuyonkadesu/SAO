@@ -262,6 +262,13 @@ class LocalStore private constructor(private val context: android.app.Applicatio
         }
         if(updated) changed(profile,false)
     }
+    /** Known completed imports publish directly, sharing the current scan generation atomically. */
+    fun imported(library: Library,folder: Folder,entry: one.njk.sao.source.MediaDocuments.Entry) = transaction { db ->
+        val generation=db.rawQuery("SELECT generation FROM scans WHERE profile=?",arrayOf(library.id)).use {
+            if(it.moveToFirst()) it.getString(0) else "import"
+        }
+        discovered(library.id,generation,folder.uri,entry.uri.toString(),entry.name,"${folder.name}/${entry.name}",entry.mime,entry.modified,entry.size,library.revision)
+    }
     fun scanFinished(profile: String, generation: String) {
         transaction { db ->
             // Only successful, completely traversed roots can remove absent files.

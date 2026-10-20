@@ -70,7 +70,7 @@ class ExtensionClient(private val context: Context, val component: ComponentName
                     }
                 }
             })
-            withTimeout(90_000) { result.await() }
+            withTimeout(if(operation==ExtensionProtocol.IMPORT_MEDIA) 8*60_000L+5_000 else 90_000L) { result.await() }
         } catch (error: TimeoutCancellationException) {
             currentCoroutineContext().ensureActive()
             throw ExtensionFailure("TIMEOUT")
