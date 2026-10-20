@@ -8,8 +8,11 @@ import dagger.hilt.android.EntryPointAccessors
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** A signed extension can read/control only its own named profile. SQLite state, never backend credentials. */
+/** An approved extension can read/control only its own named profile. SQLite state, never backend credentials. */
 class ImportSettingsService: ExtensionService() {
+    override fun acceptsCaller(uid: Int): String? = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+        EntryPointAccessors.fromApplication(application,one.njk.sao.floating.ExtensionTrustAccess::class.java).extensionTrust().caller(uid)
+    }
     override fun descriptor()=JSONObject().put("name","SAO import settings")
     override suspend fun execute(profile: String,operation: String,payload: JSONObject,caller: String): JSONObject {
         val repository=imports()

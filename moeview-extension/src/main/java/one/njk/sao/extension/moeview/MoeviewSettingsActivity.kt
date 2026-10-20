@@ -1,9 +1,7 @@
 package one.njk.sao.extension.moeview
 
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -11,7 +9,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.*
-import com.google.android.material.color.DynamicColors
 import kotlinx.coroutines.launch
 import one.njk.sao.extension.moeview.databinding.ActivityMoeviewSettingsBinding
 import one.njk.sao.moeview.data.Board
@@ -19,7 +16,7 @@ import one.njk.sao.moeview.data.SfwMode
 import one.njk.sao.source.ExtensionProtocol
 import one.njk.sao.source.settings.SourceSettingsGuard
 
-class MoeviewSettingsActivity : AppCompatActivity() {
+class MoeviewSettingsActivity : one.njk.sao.source.settings.SourceSettingsActivity() {
     private val model by lazy { ViewModelProvider(this)[MoeviewSettingsViewModel::class.java] }
     private val verification=registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val data=result.data
@@ -27,12 +24,7 @@ class MoeviewSettingsActivity : AppCompatActivity() {
             it.copy(clearance=data.getStringExtra("cookies").orEmpty(),browserAgent=data.getStringExtra("agent").orEmpty())
         }
     }
-    override fun onCreate(savedInstanceState: Bundle?) {
-        val caller=callingPackage
-        if(caller !in setOf("one.njk.sao","one.njk.sao.testing") || packageManager.checkSignatures(packageName,requireNotNull(caller))!=PackageManager.SIGNATURE_MATCH) {
-            super.onCreate(savedInstanceState); finish(); return
-        }
-        DynamicColors.applyToActivityIfAvailable(this); super.onCreate(savedInstanceState); enableEdgeToEdge()
+    override fun onSourceCreate(savedInstanceState: Bundle?,caller: String) {
         val binding=ActivityMoeviewSettingsBinding.inflate(layoutInflater); setContentView(binding.root)
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view,insets ->
             val bars=insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime()); view.setPadding(bars.left,bars.top,bars.right,bars.bottom); insets

@@ -2,7 +2,6 @@ package one.njk.sao.extension.immich
 
 import android.content.ContentProvider
 import android.content.ContentValues
-import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
@@ -19,10 +18,7 @@ class ImmichMediaProvider : ContentProvider() {
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor = openFile(uri,mode,null)
     override fun openFile(uri: Uri, mode: String, signal: android.os.CancellationSignal?): ParcelFileDescriptor {
         val app = requireNotNull(context)
-        val caller = app.packageManager.getPackagesForUid(Binder.getCallingUid()).orEmpty().firstOrNull {
-            it in setOf("one.njk.sao","one.njk.sao.testing",app.packageName) &&
-                app.packageManager.checkSignatures(app.packageName,it) == PackageManager.SIGNATURE_MATCH
-        }
+        val caller=one.njk.sao.source.SourceAccess.caller(app,Binder.getCallingUid())
         check(caller != null && mode == "r") { "Read access denied" }
         val parts = uri.pathSegments; require(parts.size == 4)
         val pipe = ParcelFileDescriptor.createReliablePipe()

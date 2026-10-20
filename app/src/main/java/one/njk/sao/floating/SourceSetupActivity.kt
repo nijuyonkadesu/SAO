@@ -15,7 +15,7 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class SourceSetupActivity : AppCompatActivity() {
     @Inject lateinit var extensions: SourceExtensions
-    private var extension: InstalledSourceExtension? = null
+    @Inject lateinit var trust: ExtensionTrust
     private val launcher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         lifecycleScope.launch {
             try {
@@ -29,18 +29,38 @@ class SourceSetupActivity : AppCompatActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (savedInstanceState != null) return
-        lifecycleScope.launch {
-            try {
-                val component = ComponentName.unflattenFromString(intent.getStringExtra("component").orEmpty())
-                val found = extensions.installed().firstOrNull { it.component == component } ?: error("Extension unavailable")
-                extension = found
-                extensions.migrate(found)
-                launcher.launch(Intent().setComponent(ComponentName(found.component.packageName,found.settings))
-                    .putExtra(ExtensionProtocol.PROFILE,intent.getStringExtra(ExtensionProtocol.PROFILE)))
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { android.widget.Toast.makeText(this@SourceSetupActivity,one.njk.sao.R.string.source_extension_failed,android.widget.Toast.LENGTH_LONG).show(); finish() }
+        supportFragmentManager.setFragmentResultListener(ExtensionTrustDialog.RESULT,this) { _,result ->
+            if(!result.getBoolean(ExtensionTrustDialog.ALLOWED)) { finish(); return@setFragmentResultListener }
+            lifecycleScope.launch {
+                try {
+                    val component=ComponentName.unflattenFromString(intent.getStringExtra("component").orEmpty()) ?: error("Extension unavailable")
+                    check(result.getString(ExtensionTrustDialog.PACKAGE)==component.packageName)
+                    trust.approve(component.packageName,requireNotNull(result.getString(ExtensionTrustDialog.SIGNER)))
+                    open()
+                } catch(cancelled: CancellationException) { throw cancelled }
+                catch(_: Exception) { unavailable() }
+            }
         }
+        if(savedInstanceState==null) open()
+    }
+    private fun open() { lifecycleScope.launch {
+        try {
+            val component=ComponentName.unflattenFromString(intent.getStringExtra("component").orEmpty())
+            val found=extensions.candidates().firstOrNull { it.component==component } ?: error("Extension unavailable")
+            if(found.approval==ExtensionApproval.UNTRUSTED) {
+                if(supportFragmentManager.findFragmentByTag(ExtensionTrustDialog.RESULT)==null)
+                    ExtensionTrustDialog.create(found.name,found.component.packageName,found.signer).show(supportFragmentManager,ExtensionTrustDialog.RESULT)
+                return@launch
+            }
+            extensions.migrate(found)
+            launcher.launch(Intent().setComponent(ComponentName(found.component.packageName,found.settings))
+                .putExtra(ExtensionProtocol.PROFILE,intent.getStringExtra(ExtensionProtocol.PROFILE)))
+        } catch(cancelled: CancellationException) { throw cancelled }
+        catch(_: Exception) { unavailable() }
+    } }
+    private fun unavailable() {
+        android.widget.Toast.makeText(this,one.njk.sao.R.string.source_extension_failed,android.widget.Toast.LENGTH_LONG).show()
+        finish()
     }
     companion object {
         const val EXTRA_FLOATING = "floating_selection"

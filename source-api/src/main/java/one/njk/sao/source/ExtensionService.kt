@@ -16,9 +16,7 @@ abstract class ExtensionService : Service() {
     protected open fun failure(error: Exception) = ExtensionFailure("REQUEST_FAILED")
     protected abstract fun descriptor(): JSONObject
     protected abstract suspend fun execute(profile: String, operation: String, payload: JSONObject, caller: String): JSONObject
-    protected open fun acceptsCaller(uid: Int): String? = packageManager.getPackagesForUid(uid).orEmpty().firstOrNull {
-        packageManager.checkSignatures(packageName,it) == PackageManager.SIGNATURE_MATCH
-    }
+    protected open fun acceptsCaller(uid: Int): String? = SourceAccess.caller(this,uid)
     private val binder = object : ISourceExtension.Stub() {
         override fun descriptor(): String {
             check(acceptsCaller(Binder.getCallingUid()) != null) { "Untrusted client" }

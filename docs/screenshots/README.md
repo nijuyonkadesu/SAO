@@ -164,3 +164,11 @@ NSFW Mode retains its original wording. Marked sources stay configured and edita
 | Disabled source | Local source flag | Metadata additions |
 | --- | --- | --- |
 | ![NSFW source disabled](nsfw-source-disabled.png) | ![Local NSFW source setting](local-nsfw-setting.png) | ![Additions alongside generated data](local-additive-metadata.png) |
+
+## Independent extension publishers
+
+A differently signed APK remains unverified after explicit approval. The warning identifies its package and SHA-256 signing certificate; Cancel grants nothing, and Revoke access blocks its sources and subsequent Binder/media access. These reviewed Android 15 captures use an independently signed synthetic Immich fixture.
+
+| Approval warning | Allowed publisher and revoke control |
+| --- | --- |
+| ![Extension certificate warning](extension-trust-warning.png) | ![Unverified publisher with revoke control](extension-trust-allowed.png) |

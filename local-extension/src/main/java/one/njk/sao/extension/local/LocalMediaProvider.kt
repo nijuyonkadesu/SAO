@@ -2,7 +2,6 @@ package one.njk.sao.extension.local
 
 import android.content.ContentProvider
 import android.content.ContentValues
-import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
@@ -20,8 +19,7 @@ class LocalMediaProvider : ContentProvider() {
     override fun openFile(uri: Uri, mode: String)=openFile(uri,mode,null)
     override fun openFile(uri: Uri, mode: String, signal: CancellationSignal?): ParcelFileDescriptor {
         val app=requireNotNull(context)
-        val callers=app.packageManager.getPackagesForUid(Binder.getCallingUid()).orEmpty()
-        require(mode=="r" && callers.any { it in setOf(app.packageName,"one.njk.sao","one.njk.sao.testing") && app.packageManager.checkSignatures(app.packageName,it)==PackageManager.SIGNATURE_MATCH })
+        require(mode=="r" && one.njk.sao.source.SourceAccess.caller(app,Binder.getCallingUid())!=null)
         val parts=uri.pathSegments; require(parts.size==5)
         val pipe=ParcelFileDescriptor.createReliablePipe()
         val job=scope.launch(start=CoroutineStart.LAZY) {

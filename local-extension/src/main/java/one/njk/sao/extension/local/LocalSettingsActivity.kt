@@ -1,12 +1,10 @@
 package one.njk.sao.extension.local
 
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Build
 import android.provider.MediaStore
 import android.widget.LinearLayout
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -15,7 +13,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.*
-import com.google.android.material.color.DynamicColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -26,7 +23,7 @@ import one.njk.sao.source.ExtensionProtocol
 import one.njk.sao.source.settings.SourceIntakeSection
 import one.njk.sao.source.settings.SourceSettingsGuard
 
-class LocalSettingsActivity : AppCompatActivity() {
+class LocalSettingsActivity : one.njk.sao.source.settings.SourceSettingsActivity() {
     private val model by lazy { ViewModelProvider(this)[LocalSettingsViewModel::class.java] }
     private val modelPicker=registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if(uri!=null) model.modelFolder(uri) }
     private val picker=registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if(uri!=null) model.folder(uri) }
@@ -43,12 +40,7 @@ class LocalSettingsActivity : AppCompatActivity() {
             }
         } catch(_: android.content.ActivityNotFoundException) { model.importTarget=null; model.pickerUnavailable() }
     }
-    override fun onCreate(savedInstanceState: Bundle?) {
-        val caller=callingPackage
-        if(caller !in setOf("one.njk.sao","one.njk.sao.testing") || packageManager.checkSignatures(packageName,requireNotNull(caller))!=PackageManager.SIGNATURE_MATCH) {
-            super.onCreate(savedInstanceState); finish(); return
-        }
-        DynamicColors.applyToActivityIfAvailable(this); super.onCreate(savedInstanceState); enableEdgeToEdge()
+    override fun onSourceCreate(savedInstanceState: Bundle?,caller: String) {
         val binding=ActivityLocalSettingsBinding.inflate(layoutInflater); setContentView(binding.root); insets(binding.root)
         val intake=SourceIntakeSection(this,binding.intake.root,binding.root)
         val guard=SourceSettingsGuard(this,binding.saveLibrary,{ model.hasChanges },{ model.state.value.working },model::save)

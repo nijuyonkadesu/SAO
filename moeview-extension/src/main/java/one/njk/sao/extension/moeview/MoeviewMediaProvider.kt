@@ -2,7 +2,6 @@ package one.njk.sao.extension.moeview
 
 import android.content.ContentProvider
 import android.content.ContentValues
-import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
@@ -20,9 +19,7 @@ class MoeviewMediaProvider : ContentProvider() {
     override fun openFile(uri: Uri,mode: String)=openFile(uri,mode,null)
     override fun openFile(uri: Uri,mode: String,signal: CancellationSignal?): ParcelFileDescriptor {
         val app=requireNotNull(context)
-        check(mode=="r" && app.packageManager.getPackagesForUid(Binder.getCallingUid()).orEmpty().any {
-            it in setOf("one.njk.sao","one.njk.sao.testing",app.packageName) && app.packageManager.checkSignatures(app.packageName,it)==PackageManager.SIGNATURE_MATCH
-        })
+        check(mode=="r" && one.njk.sao.source.SourceAccess.caller(app,Binder.getCallingUid())!=null)
         val parts=uri.pathSegments; require(parts.size==4)
         val pipe=ParcelFileDescriptor.createReliablePipe()
         val job=scope.launch(start=CoroutineStart.LAZY) {

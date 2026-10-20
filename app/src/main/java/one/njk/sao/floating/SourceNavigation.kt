@@ -20,9 +20,9 @@ private fun Context.extensions() = EntryPointAccessors.fromApplication(applicati
 internal fun Context.addMediaSource(floating: Boolean = false) {
     val activity = this as? AppCompatActivity ?: return
     activity.lifecycleScope.launch {
-        val installed = extensions().installed()
+        val installed = extensions().candidates()
         val rays = RaysClient.packages.filter { RaysClient.installed(this@addMediaSource,it) }
-        val labels = installed.map { it.name } + rays.map { getString(if (it == RaysClient.DEBUG_PACKAGE) R.string.source_rays_debug else R.string.source_rays) }
+        val labels = installed.map { if(it.approval==ExtensionApproval.UNTRUSTED) "${it.name} · ${getString(R.string.source_trust_short)}" else it.name } + rays.map { getString(if (it == RaysClient.DEBUG_PACKAGE) R.string.source_rays_debug else R.string.source_rays) }
         if (labels.isEmpty()) {
             MaterialAlertDialogBuilder(activity).setTitle(R.string.source_add).setMessage(R.string.source_extension_install).setPositiveButton(android.R.string.ok,null).show(); return@launch
         }

@@ -32,6 +32,7 @@ class ExtensionClient(private val context: Context, val component: ComponentName
         return result
     }
     suspend fun request(profile: String = "", operation: String, payload: JSONObject = JSONObject()): JSONObject = withContext(Dispatchers.IO) {
+        SourceAccess.requireTarget(context,component.packageName)
         require(payload.toString().length * 2 <= ExtensionProtocol.MAX_REQUEST)
         val ready = CompletableDeferred<ISourceExtension>()
         var pending: CompletableDeferred<JSONObject>? = null

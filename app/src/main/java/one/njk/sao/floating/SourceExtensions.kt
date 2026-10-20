@@ -13,55 +13,62 @@ import javax.inject.Singleton
 
 /** Only public profile metadata is retained by SAO. Credentials remain in the provider APK. */
 data class ExtensionConfig(val packageName: String, val service: String, val profile: String,
-    val revision: String, val providerName: String, val summary: String = "") : SourceConfiguration {
+    val revision: String, val providerName: String, val summary: String = "", val signer: String = "") : SourceConfiguration {
     override val kind = "extension"
-    override val identity get() = digest("$packageName|$service|$profile|$revision")
+    override val identity get() = digest("$packageName|$service|$profile|$revision" + signer.takeIf(String::isNotEmpty)?.let { "|signer:$it" }.orEmpty())
     val component get() = ComponentName(packageName,service)
 }
 class ExtensionConfigurationCodec @Inject constructor() : SourceConfigurationCodec {
     override fun encode(configuration: SourceConfiguration) = (configuration as ExtensionConfig).let {
         JSONObject().put("package",it.packageName).put("service",it.service).put("profile",it.profile)
-            .put("revision",it.revision).put("provider",it.providerName).put("summary",it.summary)
+            .put("revision",it.revision).put("provider",it.providerName).put("summary",it.summary).put("signer",it.signer)
     }
     override fun decode(json: JSONObject) = ExtensionConfig(json.getString("package"),json.getString("service"),
-        json.getString("profile"),json.getString("revision"),json.getString("provider"),json.optString("summary"))
+        json.getString("profile"),json.getString("revision"),json.getString("provider"),json.optString("summary"),json.optString("signer"))
 }
 
 data class InstalledSourceExtension(val component: ComponentName, val name: String, val settings: String,
-    val legacyKinds: Set<String>) {
+    val legacyKinds: Set<String>, val approval: ExtensionApproval = ExtensionApproval.PUBLISHER, val signer: String = "") {
     fun profile(value: ExtensionProfile): SourceProfile {
         val id = java.util.UUID.nameUUIDFromBytes("${component.flattenToString()}:${value.id}".toByteArray()).toString()
-        return SourceProfile(id,value.name,ExtensionConfig(component.packageName,component.className,value.id,value.revision,name,value.summary),value.nsfw)
+        return SourceProfile(id,value.name,ExtensionConfig(component.packageName,component.className,value.id,value.revision,name,value.summary,signer.takeUnless { approval==ExtensionApproval.PUBLISHER }.orEmpty()),value.nsfw)
     }
 }
 
 /** Package inventory is separate from providers that pass the binding trust/protocol checks. */
-data class InstalledExtensionApp(val packageName: String, val name: String, val version: String)
+data class InstalledExtensionApp(val packageName: String, val name: String, val version: String,
+    val approval: ExtensionApproval = ExtensionApproval.PUBLISHER, val signer: String = "", val compatible: Boolean = true)
 
 @Singleton
 class SourceExtensions @Inject constructor(@ApplicationContext private val context: Context,
-    private val profiles: SourceProfiles) {
+    private val profiles: SourceProfiles,
+    private val trust: ExtensionTrust = ExtensionTrust(context,one.njk.sao.database.SettingsDataStore(context))) {
     suspend fun installedApps(): List<InstalledExtensionApp> = withContext(Dispatchers.IO) {
         val manager = context.packageManager
+        val compatiblePackages=candidates().map { it.component.packageName }.toSet()
         manager.queryIntentServices(android.content.Intent(ExtensionProtocol.ACTION),
             PackageManager.GET_META_DATA or PackageManager.MATCH_DISABLED_COMPONENTS)
             .mapNotNull { it.serviceInfo?.applicationInfo }.distinctBy { it.packageName }.mapNotNull { app ->
                 try {
                     val info = manager.getPackageInfo(app.packageName, 0)
-                    InstalledExtensionApp(app.packageName, manager.getApplicationLabel(app).toString(), info.versionName.orEmpty())
+                    val signer=SourceSignatures.identity(context,app.packageName)
+                    val compatible=app.packageName in compatiblePackages
+                    InstalledExtensionApp(app.packageName, manager.getApplicationLabel(app).toString(), info.versionName.orEmpty(),trust.status(app.packageName,signer),signer,compatible)
                 } catch (_: PackageManager.NameNotFoundException) { null }
             }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
-    suspend fun installed(): List<InstalledSourceExtension> = withContext(Dispatchers.IO) {
+    suspend fun installed(): List<InstalledSourceExtension> = candidates().filter { it.approval!=ExtensionApproval.UNTRUSTED }
+    /** Metadata-only discovery never binds an unapproved APK or reads its profiles. */
+    suspend fun candidates(): List<InstalledSourceExtension> = withContext(Dispatchers.IO) {
         val manager = context.packageManager
         manager.queryIntentServices(android.content.Intent(ExtensionProtocol.ACTION),PackageManager.GET_META_DATA).mapNotNull { result ->
             val service = result.serviceInfo ?: return@mapNotNull null
             val data = service.metaData ?: return@mapNotNull null
-            if (!service.enabled || !service.exported || data.getInt(ExtensionProtocol.API_VERSION) != ExtensionProtocol.VERSION ||
-                manager.checkSignatures(context.packageName,service.packageName) != PackageManager.SIGNATURE_MATCH) return@mapNotNull null
+            if (!service.enabled || !service.exported || data.getInt(ExtensionProtocol.API_VERSION) != ExtensionProtocol.VERSION) return@mapNotNull null
             val settings = data.getString(ExtensionProtocol.SETTINGS) ?: return@mapNotNull null
+            val signer=SourceSignatures.identity(context,service.packageName)
             InstalledSourceExtension(ComponentName(service.packageName,service.name),service.loadLabel(manager).toString(),settings,
-                data.getString(ExtensionProtocol.LEGACY_KINDS).orEmpty().split(',').filter(String::isNotBlank).toSet())
+                data.getString(ExtensionProtocol.LEGACY_KINDS).orEmpty().split(',').filter(String::isNotBlank).toSet(),trust.status(service.packageName,signer),signer)
         }
     }
     suspend fun installedRays(): Set<String> = withContext(Dispatchers.IO) {
@@ -71,12 +78,17 @@ class SourceExtensions @Inject constructor(@ApplicationContext private val conte
         val manager = context.packageManager
         val service = try { manager.getServiceInfo(config.component,PackageManager.GET_META_DATA) }
             catch (_: PackageManager.NameNotFoundException) { throw ExtensionFailure("UNAVAILABLE") }
-        if(manager.checkSignatures(context.packageName,config.packageName) != PackageManager.SIGNATURE_MATCH) throw ExtensionFailure("UNTRUSTED")
+        if(!trust.allowed(config.packageName)) throw ExtensionFailure("UNTRUSTED")
         if(service.metaData?.getInt(ExtensionProtocol.API_VERSION) != ExtensionProtocol.VERSION) throw ExtensionFailure("INCOMPATIBLE")
-        installed().firstOrNull { it.component == config.component } ?: throw ExtensionFailure("UNAVAILABLE")
+        val installed=installed().firstOrNull { it.component == config.component } ?: throw ExtensionFailure("UNAVAILABLE")
+        val expected=installed.signer.takeUnless { installed.approval==ExtensionApproval.PUBLISHER }.orEmpty()
+        if(config.signer!=expected) throw ExtensionFailure("PROFILE_CHANGED")
+        installed
     }
     suspend fun refresh(extension: InstalledSourceExtension, selectedProfile: String? = null, floating: Boolean = false) {
-        val rows = ReadRetry.run { ExtensionClient(context,extension.component).profiles() }.map(extension::profile)
+        val current=candidates().firstOrNull { it.component==extension.component } ?: throw ExtensionFailure("UNAVAILABLE")
+        if(current.approval==ExtensionApproval.UNTRUSTED) throw ExtensionFailure("UNTRUSTED")
+        val rows = ReadRetry.run { ExtensionClient(context,current.component).profiles() }.map(current::profile)
         val old = profiles.current()
         val linked = old.profiles.filter { (it.configuration as? ExtensionConfig)?.component == extension.component }
         linked.filter { existing -> rows.none { it.id == existing.id } }.forEach { profiles.remove(it.id) }
@@ -85,6 +97,7 @@ class SourceExtensions @Inject constructor(@ApplicationContext private val conte
     }
     /** One-time opaque legacy handoff, only to an installed extension signed by this publisher. */
     suspend fun migrate(extension: InstalledSourceExtension) {
+        if(!SourceSignatures.samePublisher(context,extension.component.packageName)) return
         val old = profiles.current()
         for (profile in old.profiles) {
             val config = profile.configuration as? UnknownSourceConfiguration ?: continue

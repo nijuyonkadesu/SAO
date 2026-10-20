@@ -22,6 +22,7 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class ImportActionActivity: AppCompatActivity() {
     private val model: ImportActionViewModel by viewModels()
+    @Inject lateinit var trust: one.njk.sao.floating.ExtensionTrust
     private var launched=false
     private var shownError: String?=null
     private var dialog: androidx.appcompat.app.AlertDialog?=null
@@ -31,9 +32,13 @@ class ImportActionActivity: AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val caller=callingPackage
-        if(caller==null || packageManager.checkSignatures(packageName,caller)!=PackageManager.SIGNATURE_MATCH) { finish(); return }
+        if(caller==null) { finish(); return }
+        // initialize() validates profile ownership and current signer approval before showing a picker.
         launched=savedInstanceState?.getBoolean("launched")==true
-        model.initialize(caller)
+        lifecycleScope.launch {
+            if(!trust.allowed(caller)) { finish(); return@launch }
+            model.initialize(caller)
+        }
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.RESUMED) { model.state.collect { state ->
             if(state.done) { setResult(RESULT_OK); finish(); return@collect }
             if(state.error!=null) {

@@ -26,7 +26,8 @@ class SourceIntakeSection(private val activity: AppCompatActivity,container: and
     private var revision: String?=null
     private var targets: List<ImportTarget>?=null
     private var routes: List<SourceIntakeViewModel.Route>?=null
-    private val picker=activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { model.reload() }
+    private val picker=(activity as? SourceSettingsActivity)?.intakeLauncher { model.reload() }
+        ?: activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { model.reload() }
     init {
         activity.lifecycle.addObserver(object: DefaultLifecycleObserver {
             override fun onPause(owner: LifecycleOwner) { model.scrollPosition=scroll.scrollY }

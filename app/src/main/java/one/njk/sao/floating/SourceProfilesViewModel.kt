@@ -21,7 +21,7 @@ data class SourcesState(val catalog: SourceCatalog = SourceCatalog(), val loaded
     val browsingCatalog: SourceCatalog = catalog, val nsfwAllowed: Boolean = true)
 
 @HiltViewModel
-class SourceProfilesViewModel @Inject constructor(private val profiles: SourceProfiles, private val extensions: SourceExtensions) : ViewModel() {
+class SourceProfilesViewModel @Inject constructor(private val profiles: SourceProfiles, private val extensions: SourceExtensions, private val trust: ExtensionTrust) : ViewModel() {
     private val mutable = MutableStateFlow(SourcesState())
     val state = mutable.asStateFlow()
     private val available = MutableStateFlow<Set<String>?>(null)
@@ -65,6 +65,19 @@ class SourceProfilesViewModel @Inject constructor(private val profiles: SourcePr
                 mutable.value=mutable.value.copy(error=failed)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { mutable.value = mutable.value.copy(error = true) }
+        }
+    }
+    fun extensionApproval(packageName: String,signer: String,allowed: Boolean) {
+        if(state.value.saving) return
+        mutable.value=state.value.copy(saving=true)
+        viewModelScope.launch {
+            try {
+                refreshJob?.cancel(); refreshJob?.join()
+                if(allowed) trust.approve(packageName,signer) else trust.revoke(packageName)
+                mutable.value=state.value.copy(saving=false,error=false)
+                refreshExtensions()
+            } catch(cancelled: CancellationException) { throw cancelled }
+            catch(_: Exception) { mutable.value=state.value.copy(saving=false,error=true) }
         }
     }
     fun enableAll(enabled: Boolean) {

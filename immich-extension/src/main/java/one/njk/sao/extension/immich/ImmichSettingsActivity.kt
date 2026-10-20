@@ -1,10 +1,8 @@
 package one.njk.sao.extension.immich
 
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.ArrayAdapter
-import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModelProvider
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -14,23 +12,15 @@ import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.google.android.material.color.DynamicColors
 import kotlinx.coroutines.launch
 import one.njk.sao.extension.immich.databinding.ActivityImmichSettingsBinding
 import one.njk.sao.source.ExtensionProtocol
 import one.njk.sao.source.settings.SourceIntakeSection
 import one.njk.sao.source.settings.SourceSettingsGuard
 
-class ImmichSettingsActivity : AppCompatActivity() {
+class ImmichSettingsActivity : one.njk.sao.source.settings.SourceSettingsActivity() {
     private val model by lazy { ViewModelProvider(this)[ImmichSettingsViewModel::class.java] }
-    override fun onCreate(savedInstanceState: Bundle?) {
-        val caller = callingPackage
-        if (caller !in setOf("one.njk.sao","one.njk.sao.testing") ||
-            packageManager.checkSignatures(packageName,requireNotNull(caller)) != PackageManager.SIGNATURE_MATCH) {
-            super.onCreate(savedInstanceState); finish(); return
-        }
-        DynamicColors.applyToActivityIfAvailable(this)
-        super.onCreate(savedInstanceState); enableEdgeToEdge()
+    override fun onSourceCreate(savedInstanceState: Bundle?,caller: String) {
         val binding = ActivityImmichSettingsBinding.inflate(layoutInflater); setContentView(binding.root)
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view,insets ->
             val bars=insets.getInsets(WindowInsetsCompat.Type.systemBars()); view.setPadding(bars.left,bars.top,bars.right,bars.bottom); insets

@@ -34,4 +34,13 @@
     <string name="home_bookmarked">Bookmarked</string>
     <string name="home_action_failed">Could not prepare this file. Please try again.</string>
     <string name="home_share">Share media</string>
+    <string name="source_trust_short">Unverified publisher</string>
+    <string name="source_trust_title">Allow unverified extension?</string>
+    <string name="source_trust_warning">%1$s is signed by a different publisher. It can process searches and media you send to its sources, including selected uploads. Only allow APKs from a publisher you trust.\n\nPackage: %2$s\nSigning certificate SHA-256:\n%3$s</string>
+    <string name="source_trust_allow">Allow extension</string>
+    <string name="source_trust_review">Review and allow</string>
+    <string name="source_trust_revoke">Revoke access</string>
+    <string name="source_trust_publisher">Verified publisher</string>
+    <string name="source_trust_user">Unverified publisher · Allowed by you</string>
+    <string name="source_trust_untrusted">Unverified publisher · Access not allowed</string>
 </resources>

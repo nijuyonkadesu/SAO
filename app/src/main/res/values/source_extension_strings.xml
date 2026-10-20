@@ -9,7 +9,7 @@
 <string name="source_extension_auth">The source rejected its credentials or permissions. Open the source settings.</string>
 <string name="source_extension_rate_limit">The source asked SAO to wait. Retry later.</string>
 <string name="source_extension_tls">Could not verify the source’s secure connection. Check its settings.</string>
-<string name="source_extension_untrusted">This extension’s signing identity is not trusted.</string>
+<string name="source_extension_untrusted">Review and allow this extension in Settings → Media sources.</string>
 <string name="source_extension_network">The source could not be reached or timed out. Tap to retry.</string>
 <string name="source_media_missing">This media is no longer available from the source.</string>
 <string name="source_setup_storage_error">Could not read or save the source configuration.</string>

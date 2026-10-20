@@ -44,9 +44,17 @@ class SourceSettingsActivity : AppCompatActivity() {
             editMediaSource(model.state.value.catalog.profiles.firstOrNull { it.id==id })
         }
         val header = SourceSettingsHeaderAdapter(model::enableAll,uploads::wifiOnly)
+        supportFragmentManager.setFragmentResultListener(ExtensionTrustDialog.RESULT,this) { _,result ->
+            if(result.getBoolean(ExtensionTrustDialog.ALLOWED)) model.extensionApproval(requireNotNull(result.getString(ExtensionTrustDialog.PACKAGE)),requireNotNull(result.getString(ExtensionTrustDialog.SIGNER)),true)
+        }
         val extensions = InstalledExtensionsAdapter(
             { openPackage(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package",it,null))) },
-            { openPackage(Intent(Intent.ACTION_DELETE, Uri.fromParts("package",it,null))) })
+            { openPackage(Intent(Intent.ACTION_DELETE, Uri.fromParts("package",it,null))) },
+            { app ->
+                if(app.approval==ExtensionApproval.USER) model.extensionApproval(app.packageName,app.signer,false)
+                else if(supportFragmentManager.findFragmentByTag(ExtensionTrustDialog.RESULT)==null)
+                    ExtensionTrustDialog.create(app.name,app.packageName,app.signer).show(supportFragmentManager,ExtensionTrustDialog.RESULT)
+            })
         binding.sourceList.layoutManager = LinearLayoutManager(this)
         binding.sourceList.adapter = ConcatAdapter(header,adapter,extensions)
         var initialProfilesShown = savedInstanceState != null
@@ -66,7 +74,7 @@ class SourceSettingsActivity : AppCompatActivity() {
                     if (!userScrolled) binding.sourceList.scrollToPosition(0)
                 }
             }
-            extensions.submitApps(state.installedExtensions,state.loaded)
+            extensions.submitApps(state.installedExtensions,state.loaded,state.saving)
             binding.status.isVisible = state.error
             binding.sourceList.isEnabled = state.loaded && !state.saving
             binding.addSource.isEnabled = state.loaded && !state.saving
