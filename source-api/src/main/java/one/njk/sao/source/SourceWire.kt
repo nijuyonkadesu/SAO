@@ -39,8 +39,8 @@ object SourceWire {
         })
     }
     fun profile(value: ExtensionProfile) = JSONObject().put("id", value.id).put("name", value.name)
-        .put("revision", value.revision).put("summary", value.summary)
-    fun profile(json: JSONObject) = ExtensionProfile(json.getString("id"), json.getString("name"), json.getString("revision"), json.optString("summary"))
+        .put("revision", value.revision).put("summary", value.summary).put("nsfw", value.nsfw)
+    fun profile(json: JSONObject) = ExtensionProfile(json.getString("id"), json.getString("name"), json.getString("revision"), json.optString("summary"), json.optBoolean("nsfw"))
     fun person(value: SearchPerson) = JSONObject().put("id", value.id).put("name", value.name).put("source", value.sourceId)
     fun person(json: JSONObject) = SearchPerson(json.getString("id"), json.getString("name"), nullable(json, "source"))
     fun query(value: MediaQuery): JSONObject = JSONObject().put("text", value.text).put("filter", value.filter)

@@ -37,7 +37,8 @@ data class SourceCapabilities(
     )
 }
 
-data class ExtensionProfile(val id: String, val name: String, val revision: String, val summary: String = "")
+/** Public whole-source classification; older v1 providers omit nsfw and remain compatible. */
+data class ExtensionProfile(val id: String, val name: String, val revision: String, val summary: String = "", val nsfw: Boolean = false)
 
 object ExtensionProtocol {
     const val VERSION = 1

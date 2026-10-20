@@ -19,7 +19,7 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
     data class State(val loaded: Boolean=false,val working: Boolean=false,val folders: List<Folder> = emptyList(),
         val library: Library?=null,val index: IndexStatus?=null,val folderIndexes: Map<String,IndexStatus> = emptyMap(),
         internal val estimates: IndexEstimates=IndexEstimates(),val indexWork: IndexWork=IndexWork.IDLE,val model: ClipModels.Status=ClipModels.Status(),val useContext: Boolean=false,
-        val selectedModel: ClipModel=ClipCatalog.immich,val importMethod: ImportMethod=ImportMethod.FOLDER,val error: Int?=null,val finished: Boolean=false)
+        val selectedModel: ClipModel=ClipCatalog.immich,val nsfw: Boolean=false,val importMethod: ImportMethod=ImportMethod.FOLDER,val error: Int?=null,val finished: Boolean=false)
     private data class Progress(val overview: IndexOverview?,val work: IndexWork,val model: ClipModel,val modelStatus: ClipModels.Status)
     private val store=LocalStore.get(app)
     private val mutable=MutableStateFlow(State())
@@ -34,8 +34,8 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
     private val selections=mutableMapOf<String,List<String>>()
     internal val importsUnchanged get()=state.value.library?.let { state.value.folders.map { folder -> Triple(folder.uri,folder.name,folder.kind) }==it.folders.map { folder -> Triple(folder.uri,folder.name,folder.kind) } && selections.isEmpty() }==true
     var name=app.getString(R.string.default_name)
-    private data class Draft(val name: String,val folders: List<Triple<String,String,CollectionKind>>,val context: Boolean,val model: String)
-    private fun draft()=state.value.let { Draft(name,it.folders.map { folder -> Triple(folder.uri,folder.name,folder.kind) },it.useContext,it.selectedModel.id) }
+    private data class Draft(val name: String,val folders: List<Triple<String,String,CollectionKind>>,val context: Boolean,val model: String,val nsfw: Boolean)
+    private fun draft()=state.value.let { Draft(name,it.folders.map { folder -> Triple(folder.uri,folder.name,folder.kind) },it.useContext,it.selectedModel.id,it.nsfw) }
     private var initial: Draft?=null
     val hasChanges get()=state.value.loaded && (initial!=draft() || selections.isNotEmpty())
     init { viewModelScope.launch {
@@ -52,7 +52,7 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
             val ready=withContext(Dispatchers.IO) { ClipModels.ready(app,selected) }
             if(library!=null) name=library.name
             mutable.value=State(loaded=true,folders=library?.folders.orEmpty(),library=library,
-                index=overview?.total,folderIndexes=overview?.folders.orEmpty(),model=ClipModels.Status(ready=ready),useContext=library?.contextSearch ?: ready,selectedModel=selected,importMethod=method)
+                index=overview?.total,folderIndexes=overview?.folders.orEmpty(),model=ClipModels.Status(ready=ready),useContext=library?.contextSearch ?: ready,selectedModel=selected,importMethod=method,nsfw=library?.nsfw ?: false)
             initial=draft()
             mutable.subscriptionCount.map { it>0 }.distinctUntilChanged().flatMapLatest { subscribed ->
                 if(!subscribed) emptyFlow() else {
@@ -118,6 +118,7 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
     fun pickerUnavailable() { mutable.update { it.copy(error=R.string.picker_unavailable) } }
     fun rename(folder: Folder, name: String) { if(name.isNotBlank()) mutable.update { before -> before.copy(folders=before.folders.map { if(it.uri==folder.uri) it.copy(name=name.trim()) else it }) } }
     fun remove(folder: Folder) { selections.remove(folder.uri); mutable.update { before -> before.copy(folders=before.folders.filterNot { it.uri==folder.uri }) } }
+    fun nsfw(enabled: Boolean) { mutable.update { it.copy(nsfw=enabled) } }
     fun useContext(enabled: Boolean) { mutable.update { it.copy(useContext=enabled && it.model.ready) } }
     fun selectModel(index: Int) {
         if(state.value.working) return
@@ -145,7 +146,7 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
     fun save() {
         if(name.isBlank() || state.value.folders.isEmpty()) { mutable.update { it.copy(error=R.string.configuration_error) }; return }
         val additions=selections.mapValues { it.value.toList() }
-        val folders=state.value.folders.toList(); val title=name; val useContext=state.value.useContext; val selected=state.value.selectedModel
+        val folders=state.value.folders.toList(); val title=name; val nsfw=state.value.nsfw; val useContext=state.value.useContext; val selected=state.value.selectedModel
         action {
             val app=getApplication<Application>(); val resolver=app.contentResolver
             try {
@@ -155,7 +156,7 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
                 }
                 additions.values.flatten().distinct().forEach { resolver.takePersistableUriPermission(Uri.parse(it),Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 val prior=state.value.library
-                val library=store.save(profile,title,folders,contextSearch=useContext && ClipModels.ready(app,selected),contextModel=selected.id,selections=additions)
+                val library=store.save(profile,title,folders,contextSearch=useContext && ClipModels.ready(app,selected),contextModel=selected.id,selections=additions,nsfw=nsfw)
                 if(prior!=null && prior.revision!=library.revision) {
                     app.revokeUriPermission(mediaScope(app,prior),Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     app.revokeUriPermission(store.changesUri(prior),Intent.FLAG_GRANT_READ_URI_PERMISSION)

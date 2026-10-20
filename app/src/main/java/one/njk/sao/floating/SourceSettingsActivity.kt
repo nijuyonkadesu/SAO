@@ -58,7 +58,7 @@ class SourceSettingsActivity : AppCompatActivity() {
         })
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.state.collect { state ->
             header.update(state.allEnabled,state.loaded && !state.saving)
-            adapter.submitList(sourceRows(state.catalog, state.floatingDisabled, state.saving)) {
+            adapter.submitList(sourceRows(state.catalog, state.floatingDisabled, state.saving, state.nsfwAllowed)) {
                 // Profiles can arrive after the inventory; keep the initial top instead of
                 // anchoring the APK cards below newly inserted profiles. Respect a user's drag.
                 if (!initialProfilesShown && adapter.itemCount > 0) {

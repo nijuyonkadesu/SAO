@@ -69,13 +69,13 @@ class CarouselFragment : Fragment(), MenuProvider {
             },::renderActions,{}, { previews.pause() },home=true)
         binding.type.setOnClickListener { chooseSource() }
         collectionGesture = HoldDragSelector(binding.type,requireActivity().findViewById<FrameLayout>(android.R.id.content),
-            choices={ sources.state.value.catalog.profiles }, selected={ sources.state.value.catalog.let { it.selected ?: it.profiles.first() } },
-            label={ it.name }, identity={ sources.state.value.catalog.identity }, apply={ sources.select(it.id) },
+            choices={ sources.state.value.browsingCatalog.profiles }, selected={ sources.state.value.browsingCatalog.let { it.selected ?: it.profiles.first() } },
+            label={ it.name }, identity={ sources.state.value.browsingCatalog.identity }, apply={ sources.select(it.id) },
             title=R.string.sources_title,chooseAction=R.string.source_hold_choose,
             nextAction=R.string.source_hold_next,previousAction=R.string.source_hold_previous,
             hint={ getString(R.string.source_hold_release) },holdDelay={ holdMs })
         binding.homeStatus.setOnClickListener {
-            if(sources.state.value.catalog.selected == null) startActivity(Intent(requireContext(),SourceSettingsActivity::class.java))
+            if(sources.state.value.browsingCatalog.selected == null) startActivity(Intent(requireContext(),SourceSettingsActivity::class.java))
             else model.retry()
         }
         titleHold = ResultHoldAction(binding.mediaTitle,{ !carousel.centeredItem?.filename.isNullOrBlank() },
@@ -124,7 +124,7 @@ class CarouselFragment : Fragment(), MenuProvider {
                 } }
                 launch { sources.state.collect { state ->
                     collectionGesture?.update()
-                    binding.type.text = getString(R.string.collection,state.catalog.selected?.name ?: getString(R.string.picker_source_none))
+                    binding.type.text = getString(R.string.collection,state.browsingCatalog.selected?.name ?: getString(R.string.picker_source_none))
                     renderStatus()
                 } }
             } } finally { previews.pause(); carousel.pause() }
@@ -136,8 +136,8 @@ class CarouselFragment : Fragment(), MenuProvider {
         if(_binding==null) return
         val state=model.state.value.browse
         val sourceState=sources.state.value
-        val emptySource=sourceState.loaded && sourceState.catalog.selected==null
-        val ready=sourceState.loaded && state.sourceId==sourceState.catalog.identity && !state.loading
+        val emptySource=sourceState.loaded && sourceState.browsingCatalog.selected==null
+        val ready=sourceState.loaded && state.sourceId==sourceState.browsingCatalog.identity && !state.loading
         binding.homeStatus.isVisible = emptySource || ready && (state.error || state.items.isEmpty())
         binding.homeStatus.text = when {
             emptySource -> getString(R.string.home_add_source)
@@ -155,7 +155,7 @@ class CarouselFragment : Fragment(), MenuProvider {
         binding.bottomAppBar.menu.findItem(R.id.bookmark).isEnabled=item!=null && !busy
     }
     private fun chooseSource() {
-        val catalog=sources.state.value.catalog
+        val catalog=sources.state.value.browsingCatalog
         if(catalog.profiles.isEmpty()) { startActivity(Intent(requireContext(),SourceSettingsActivity::class.java)); return }
         MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.sources_title)
             .setSingleChoiceItems(catalog.profiles.map { it.name }.toTypedArray(),catalog.profiles.indexOfFirst { it.id==catalog.selectedId }) { dialog,index ->

@@ -133,6 +133,14 @@ class MoeviewDeviceTest {
         assertFalse(SourceWire.profile(discovered).toString().contains("fixture-secret-key"))
         assertEquals(0,server.requestCount)
     }
+    @Test fun publicProfilesMarkBothNonSafeAndUnfilteredSourcesWithoutNetwork(): Unit=runBlocking {
+        for(rating in SfwMode.entries) {
+            val row=profile(MoeviewConfig(rating=rating))
+            val public=client.profiles().single { it.id==row.id }
+            assertEquals(rating!=SfwMode.SFW,public.nsfw)
+        }
+        assertEquals(0,server.requestCount)
+    }
     @Test fun capabilitiesExposeTagMetadataAndOnlySupportedOperations(): Unit=runBlocking {
         val row=profile()
         val caps=SourceWire.capabilities(client.request(row.id,ExtensionProtocol.CAPABILITIES,payload(row)))

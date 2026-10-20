@@ -9,15 +9,16 @@ data class Folder(val uri: String, val name: String, val paused: Boolean=false, 
     val documentId get() = if(kind==CollectionKind.TREE) android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(uri)) else "selected"
 }
 data class Library(val id: String, val name: String, val revision: String, val folders: List<Folder>,
-    val paused: Boolean = false, val lastScan: Long = 0, val contextSearch: Boolean=false, val contextModel: String=ClipModels.MODEL)
+    val paused: Boolean = false, val lastScan: Long = 0, val contextSearch: Boolean=false, val contextModel: String=ClipModels.MODEL, val nsfw: Boolean=false)
 data class LocalAsset(val id: Long, val profile: String, val root: String, val uri: String,
     val filename: String, val path: String, val mime: String, val modified: Long, val size: Long,
     val signature: String, val animated: Boolean = false, val labels: String = "", val ocr: String = "",
     val title: String? = null, val description: String? = null, val tags: String? = null,
     val pending: Boolean = true, val failure: String? = null, val ocrOverride: String? = null) {
     val displayTitle get() = title?.takeIf(String::isNotBlank) ?: filename
-    val effectiveTags get() = (tags ?: labels).split('\n').filter(String::isNotBlank).distinct()
-    val effectiveOcr get() = ocrOverride ?: ocr
+    val effectiveTags get() = (labels.split('\n') + tags.orEmpty().split('\n')).filter(String::isNotBlank).distinct()
+    /** Legacy column name; user text now supplements recognition instead of replacing it. */
+    val effectiveOcr get() = listOf(ocr, ocrOverride.orEmpty()).filter(String::isNotBlank).distinct().joinToString("\n")
 }
 data class IndexStatus(val total: Int, val pending: Int, val failed: Int, val scanning: Boolean, val folderErrors: Int,
     val images: Int=0, val animated: Int=0, val videos: Int=0, val scanned: Boolean=false,

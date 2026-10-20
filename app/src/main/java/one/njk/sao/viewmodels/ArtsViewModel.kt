@@ -40,8 +40,7 @@ class ArtsViewModel @Inject constructor(@HomeSources private val source: MediaSo
         private set
     private var applied: PickerBrowseKey? = null
     private data class Browse(val sourceId: String, val capabilities: SourceCapabilities, val category: SourceCategory?)
-    val state = combine(source.identity, source.capabilities, category, settingsDataStore.currentModeFlow()) { id, declared, chosen, adult ->
-        val caps=declared.copy(categories=declared.categories.filter { adult || !it.adult })
+    val state = combine(source.identity, source.capabilities, category) { id, caps, chosen ->
         if(caps.sourceId != id) null else Browse(id, caps,
             caps.categories.firstOrNull { it.id == chosen } ?: caps.categories.firstOrNull())
     }.filterNotNull().distinctUntilChanged().flatMapLatest { spec -> flow {

@@ -15,12 +15,12 @@ import one.njk.sao.source.digest
 import java.util.UUID
 
 /** Extension-private durable metadata. Callers perform all database work on IO. Originals stay in SAF. */
-class LocalStore private constructor(private val context: android.app.Application) : SQLiteOpenHelper(context, "local-library.db", null, 7) {
+class LocalStore private constructor(private val context: android.app.Application) : SQLiteOpenHelper(context, "local-library.db", null, 8) {
     val changes = MutableStateFlow(0L)
     init { setWriteAheadLoggingEnabled(true) }
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE profiles(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision TEXT NOT NULL, paused INTEGER NOT NULL DEFAULT 0, last_scan INTEGER NOT NULL DEFAULT 0, context_search INTEGER NOT NULL DEFAULT 0, reset_request TEXT NOT NULL DEFAULT '', context_model TEXT NOT NULL DEFAULT '${ClipModels.MODEL}')")
+        db.execSQL("CREATE TABLE profiles(id TEXT PRIMARY KEY, name TEXT NOT NULL, revision TEXT NOT NULL, paused INTEGER NOT NULL DEFAULT 0, last_scan INTEGER NOT NULL DEFAULT 0, context_search INTEGER NOT NULL DEFAULT 0, reset_request TEXT NOT NULL DEFAULT '', context_model TEXT NOT NULL DEFAULT '${ClipModels.MODEL}', nsfw INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE folders(profile TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, uri TEXT NOT NULL, name TEXT NOT NULL, error TEXT, paused INTEGER NOT NULL DEFAULT 0, last_scan INTEGER NOT NULL DEFAULT 0, kind TEXT NOT NULL DEFAULT 'TREE', PRIMARY KEY(profile,uri))")
         db.execSQL("CREATE TABLE assets(id INTEGER PRIMARY KEY AUTOINCREMENT, profile TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, root TEXT NOT NULL, uri TEXT NOT NULL, filename TEXT NOT NULL, filename_search TEXT NOT NULL, path TEXT NOT NULL, path_search TEXT NOT NULL, mime TEXT NOT NULL, modified INTEGER NOT NULL, size INTEGER NOT NULL, signature TEXT NOT NULL, animated INTEGER NOT NULL DEFAULT 0, labels TEXT NOT NULL DEFAULT '', ocr TEXT NOT NULL DEFAULT '', ocr_override TEXT, ocr_search TEXT NOT NULL DEFAULT '', title TEXT, description TEXT, tags TEXT, searchable TEXT NOT NULL DEFAULT '', pending INTEGER NOT NULL DEFAULT 1, failure TEXT, seen TEXT NOT NULL, UNIQUE(profile,uri))")
         db.execSQL("CREATE INDEX asset_order ON assets(profile,modified DESC,id DESC)")
@@ -59,6 +59,18 @@ class LocalStore private constructor(private val context: android.app.Applicatio
             createSelections(db)
         }
         if(old<6) db.execSQL("ALTER TABLE profiles ADD COLUMN context_model TEXT NOT NULL DEFAULT '${ClipModels.MODEL}'")
+        if(old<8 && new>=8) {
+            db.execSQL("ALTER TABLE profiles ADD COLUMN nsfw INTEGER NOT NULL DEFAULT 0")
+            // Rebuild search documents in bounded batches; original labels/text remain untouched.
+            var after=0L
+            while(true) {
+                val batch=db.rawQuery("SELECT * FROM assets WHERE id>? ORDER BY id LIMIT 128",arrayOf(after.toString())).use { c ->
+                    buildList { while(c.moveToNext()) add(asset(c)) }
+                }
+                if(batch.isEmpty()) break
+                batch.forEach { index(db,it) }; after=batch.last().id
+            }
+        }
     }
     private var lastSignal = 0L
     @Synchronized private fun changed(profile: String?=null, force: Boolean=true) {
@@ -84,7 +96,7 @@ class LocalStore private constructor(private val context: android.app.Applicatio
         val folders=rows("SELECT uri,name,paused,last_scan,kind FROM folders WHERE profile=? ORDER BY rowid",listOf(id)).use { f -> buildList {
             while(f.moveToNext()) add(Folder(f.text("uri"),f.text("name"),f.number("paused")!=0L,f.number("last_scan"),CollectionKind.valueOf(f.text("kind"))))
         } }
-        return Library(id,c.text("name"),c.text("revision"),folders,c.number("paused")!=0L,c.number("last_scan"),c.number("context_search")!=0L,c.text("context_model"))
+        return Library(id,c.text("name"),c.text("revision"),folders,c.number("paused")!=0L,c.number("last_scan"),c.number("context_search")!=0L,c.text("context_model"),c.number("nsfw")!=0L)
     }
     fun library(id: String) = rows("SELECT * FROM profiles WHERE id=?",listOf(id)).use { c ->
         if(!c.moveToFirst()) throw ExtensionFailure("PROFILE_MISSING") else library(c)
@@ -92,7 +104,7 @@ class LocalStore private constructor(private val context: android.app.Applicatio
     fun active(id: String, revision: String) = rows("SELECT paused,revision FROM profiles WHERE id=?",listOf(id)).use {
         it.moveToFirst() && it.getInt(0)==0 && it.getString(1)==revision
     }
-    fun save(id: String, name: String, folders: List<Folder>, contextSearch: Boolean?=null, contextModel: String?=null, selections: Map<String,List<String>> = emptyMap()): Library {
+    fun save(id: String, name: String, folders: List<Folder>, contextSearch: Boolean?=null, contextModel: String?=null, selections: Map<String,List<String>> = emptyMap(), nsfw: Boolean?=null): Library {
         UUID.fromString(id); require(name.isNotBlank() && folders.isNotEmpty())
         require(folders.distinctBy { it.uri }.size==folders.size)
         transaction { db ->
@@ -107,10 +119,11 @@ class LocalStore private constructor(private val context: android.app.Applicatio
             }
             val same=prior?.folders?.map { it.uri to it.kind }?.toSet()==folders.map { it.uri to it.kind }.toSet() && !membershipChanged
             val enabled=contextSearch ?: prior?.contextSearch ?: false
+            val adult=nsfw ?: prior?.nsfw ?: false
             val model=contextModel ?: prior?.contextModel ?: ClipModels.MODEL; ClipCatalog.get(model)
             val revision=prior?.revision?.takeIf { same && enabled==prior.contextSearch && model==prior.contextModel } ?: UUID.randomUUID().toString()
-            if(prior==null) db.insertOrThrow("profiles",null,ContentValues().apply { put("id",id); put("name",name.trim()); put("revision",revision); put("context_search",if(enabled) 1 else 0); put("context_model",model) })
-            else db.update("profiles",ContentValues().apply { put("name",name.trim()); put("revision",revision); put("context_search",if(enabled) 1 else 0); put("context_model",model) },"id=?",arrayOf(id))
+            if(prior==null) db.insertOrThrow("profiles",null,ContentValues().apply { put("id",id); put("name",name.trim()); put("revision",revision); put("context_search",if(enabled) 1 else 0); put("context_model",model); put("nsfw",if(adult) 1 else 0) })
+            else db.update("profiles",ContentValues().apply { put("name",name.trim()); put("revision",revision); put("context_search",if(enabled) 1 else 0); put("context_model",model); put("nsfw",if(adult) 1 else 0) },"id=?",arrayOf(id))
             val removed=prior?.folders.orEmpty().filter { old -> folders.none { it.uri==old.uri } }
             removed.forEach { db.delete("assets","profile=? AND root=?",arrayOf(id,it.uri)); db.delete("folders","profile=? AND uri=?",arrayOf(id,it.uri)) }
             folders.forEach { f ->
@@ -184,12 +197,12 @@ class LocalStore private constructor(private val context: android.app.Applicatio
     }
     fun corrections(id: Long, profile: String, title: String, description: String, tags: String, reset: Boolean=false, ocr: String?=null) {
         transaction { db ->
-            val previous=asset(id,profile)
+            asset(id,profile) // Validate ownership before changing metadata.
             db.update("assets",ContentValues().apply {
                 if(reset) { putNull("title"); putNull("description"); putNull("tags"); putNull("ocr_override") }
                 else { put("title",title.trim().take(512)); put("description",description.take(8192)); val normalized=LocalFormats.tags(tags)
-                    if(previous.tags==null && normalized==LocalFormats.tags(previous.labels)) putNull("tags") else put("tags",normalized)
-                    if(ocr!=null) { if(previous.ocrOverride==null && ocr==previous.ocr) putNull("ocr_override") else put("ocr_override",ocr.take(32768)) } }
+                    put("tags",normalized.takeIf(String::isNotBlank))
+                    if(ocr!=null) put("ocr_override",ocr.take(32768).takeIf(String::isNotBlank)) }
             },"id=? AND profile=?",arrayOf(id.toString(),profile))
             index(db,asset(id,profile))
         }; changed(profile)
@@ -374,9 +387,9 @@ class LocalStore private constructor(private val context: android.app.Applicatio
         val order=if(query.randomRequest!=null) "RANDOM()" else if(newer) "a.modified ASC,a.id ASC" else "a.modified DESC,a.id DESC"
         return rows("SELECT a.* FROM assets a WHERE ${where.joinToString(" AND ")} ORDER BY $order LIMIT ${limit.coerceIn(1,101)}",args).use { c -> buildList { while(c.moveToNext()) add(asset(c)) } }
     }
-    fun emojiFilters(profile: String): List<String> = rows("SELECT coalesce(tags,labels) FROM assets WHERE profile=? AND (tags IS NOT NULL OR labels<>'')",listOf(profile)).use { c ->
+    fun emojiFilters(profile: String): List<String> = rows("SELECT labels,tags FROM assets WHERE profile=? AND (tags IS NOT NULL OR labels<>'')",listOf(profile)).use { c ->
         val result=linkedSetOf<String>()
-        while(c.moveToNext()) for(i in 0..0) c.getString(i).orEmpty().split('\n').filter { value -> value.codePoints().anyMatch { it in 0x1f000..0x1faff || it in 0x2600..0x27ff } }.forEach(result::add)
+        while(c.moveToNext()) for(i in 0..1) c.getString(i).orEmpty().split('\n').filter { value -> value.codePoints().anyMatch { it in 0x1f000..0x1faff || it in 0x2600..0x27ff } }.forEach(result::add)
         result.toList().take(200)
     }
     companion object {

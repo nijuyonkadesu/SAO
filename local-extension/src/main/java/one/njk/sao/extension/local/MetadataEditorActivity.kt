@@ -24,7 +24,7 @@ class MetadataEditorViewModel(app: Application,saved: SavedStateHandle): Android
     init { viewModelScope.launch {
         try {
             val asset=withContext(Dispatchers.IO) { store.asset(id,profile) }
-            title=asset.title.orEmpty(); description=asset.description.orEmpty(); tags=asset.effectiveTags.joinToString(", "); ocr=asset.effectiveOcr
+            title=asset.title.orEmpty(); description=asset.description.orEmpty(); tags=asset.tags.orEmpty().split('\n').filter(String::isNotBlank).joinToString(", "); ocr=asset.ocrOverride.orEmpty()
             mutable.value=State(asset)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { mutable.value=State(error=true) }
@@ -55,6 +55,7 @@ class MetadataEditorActivity : AppCompatActivity() {
                 val asset=state.asset
                 binding.filename.text=asset.filename
                 binding.autoLabels.text=when { asset.failure!=null -> getString(R.string.analysis_failed); asset.pending -> getString(R.string.not_analyzed); else -> getString(R.string.auto_labels,asset.labels.split('\n').joinToString(", ")) }
+                binding.autoOcr.text=getString(R.string.auto_ocr,asset.ocr.ifBlank { getString(R.string.no_detected_text) })
                 binding.mediaTitle.setText(model.title); binding.description.setText(model.description); binding.tags.setText(model.tags); binding.ocr.setText(model.ocr); populated=true
                 lifecycleScope.launch {
                     val bitmap=try { withContext(Dispatchers.IO) { MediaBitmaps.read(applicationContext,android.net.Uri.parse(asset.uri),asset.mime,720) } }

@@ -70,6 +70,7 @@ class LocalSettingsActivity : AppCompatActivity() {
         binding.saveLibrary.setOnClickListener { model.save() }
         binding.rescan.setOnClickListener { model.rescan() }
         binding.pauseIndexing.setOnClickListener { model.pause() }
+        binding.nsfw.setOnCheckedChangeListener { _,checked -> if(!renderingContext) model.nsfw(checked) }
         binding.contextSearch.setOnCheckedChangeListener { _,checked -> if(!renderingContext) model.useContext(checked) }
         binding.modelChoice.setSimpleItems(ClipCatalog.all.map { getString(it.label) }.toTypedArray())
         binding.modelChoice.setOnItemClickListener { _,_,position,_ -> model.selectModel(position) }
@@ -126,7 +127,8 @@ class LocalSettingsActivity : AppCompatActivity() {
             binding.pauseDownload.isVisible=!modelStatus.ready && modelStatus.work!=IndexWork.IDLE
             binding.downloadModel.isEnabled=!state.working; binding.pauseDownload.isEnabled=!state.working
             binding.contextSearch.isEnabled=modelStatus.ready && !state.working
-            renderingContext=true; binding.contextSearch.isChecked=state.useContext; renderingContext=false
+            renderingContext=true; binding.contextSearch.isChecked=state.useContext; binding.nsfw.isChecked=state.nsfw; renderingContext=false
+            binding.nsfw.isEnabled=state.loaded && !state.working
             rows.forEach { (folder,row) ->
                 val status=state.folderIndexes[folder.uri]
                 row.indexStatus.bind(status,state.library?.paused==true,state.indexWork,state.estimates.folders[folder.uri])

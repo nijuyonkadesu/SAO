@@ -30,7 +30,7 @@ class LocalLibraryDeviceTest {
         return store.search(library.id,MediaQuery(name,mode=SearchMode.FILENAME)).single()
     }
     @After fun cleanup() { ids.forEach { FolderIndexer.cancel(app,it); store.delete(it) } }
-    @Test fun metadataSearchKeepsUnicodeAndModeBoundariesAndOverridesSurviveRescan() {
+    @Test fun metadataAdditionsPreserveGeneratedSearchAndSurviveRescan() {
         val library=library(); val asset=add(library,"photo.png")
         store.analyzed(asset,Analysis(listOf("Cat","Comics"),"HELLO WORLD"),false,null)
         assertEquals(1,store.search(library.id,MediaQuery("cat hello",mode=SearchMode.DESCRIPTION)).size)
@@ -39,16 +39,62 @@ class LocalLibraryDeviceTest {
         store.corrections(asset.id,library.id,"My reaction","a skill issue","😂, 👩🏽‍💻",ocr="CORRECTED TEXT")
         assertEquals(1,store.search(library.id,MediaQuery("skill 😂",mode=SearchMode.DESCRIPTION)).size)
         assertEquals(1,store.search(library.id,MediaQuery("👩🏽‍💻",mode=SearchMode.DESCRIPTION)).size)
-        assertTrue(store.search(library.id,MediaQuery("cat",mode=SearchMode.DESCRIPTION)).isEmpty())
-        assertTrue(store.search(library.id,MediaQuery("hello",mode=SearchMode.OCR)).isEmpty())
+        assertEquals(1,store.search(library.id,MediaQuery("cat",mode=SearchMode.DESCRIPTION)).size)
+        assertEquals(1,store.search(library.id,MediaQuery("hello",mode=SearchMode.OCR)).size)
         val changed=add(library,"photo.png",time=2)
         store.analyzed(changed,Analysis(listOf("Dog"),"new recognition"),false,null)
         val current=store.asset(asset.id,library.id)
-        assertEquals("My reaction",current.displayTitle); assertEquals("CORRECTED TEXT",current.effectiveOcr)
-        assertEquals(listOf("😂","👩🏽‍💻"),current.effectiveTags)
+        assertEquals("My reaction",current.displayTitle); assertEquals("new recognition\nCORRECTED TEXT",current.effectiveOcr)
+        assertEquals(listOf("Dog","😂","👩🏽‍💻"),current.effectiveTags)
         store.corrections(asset.id,library.id,"","","",reset=true)
         assertEquals(listOf("Dog"),store.asset(asset.id,library.id).effectiveTags)
         assertEquals("new recognition",store.asset(asset.id,library.id).effectiveOcr)
+    }
+    @Test fun additionsDeduplicateAndResetLeavesGeneratedEmojiAndTextSearchable() {
+        val library=library(); val asset=add(library,"emoji.png")
+        store.analyzed(asset,Analysis(listOf("Cat","🐱"),"Original recognition"),false,null)
+        store.corrections(asset.id,library.id,"","","Cat, 😂",ocr="Additional text")
+        assertEquals(listOf("Cat","🐱","😂"),store.asset(asset.id,library.id).effectiveTags)
+        assertEquals(setOf("🐱","😂"),store.emojiFilters(library.id).toSet())
+        assertEquals(1,store.search(library.id,MediaQuery("Original Additional",mode=SearchMode.OCR)).size)
+        store.corrections(asset.id,library.id,"","","",ocr="")
+        assertEquals(listOf("Cat","🐱"),store.asset(asset.id,library.id).effectiveTags)
+        assertEquals("Original recognition",store.asset(asset.id,library.id).effectiveOcr)
+        assertEquals(1,store.search(library.id,MediaQuery("Original",mode=SearchMode.OCR)).size)
+        assertTrue(store.search(library.id,MediaQuery("Additional",mode=SearchMode.OCR)).isEmpty())
+    }
+    @Test fun nsfwIsAnOptionalPublicProfileFlagWithoutRebuildingMedia(): Unit=runBlocking {
+        val initial=library(); val asset=add(initial,"retained.png")
+        assertFalse(initial.nsfw)
+        val marked=store.save(initial.id,initial.name,initial.folders,nsfw=true)
+        assertTrue(store.library(initial.id).nsfw); assertEquals(initial.revision,marked.revision)
+        assertEquals(asset.signature,store.asset(asset.id,initial.id).signature)
+        val client=ExtensionClient(app,android.content.ComponentName(app,LocalExtensionService::class.java))
+        assertTrue(client.profiles().single { it.id==initial.id }.nsfw)
+        store.save(initial.id,initial.name,initial.folders)
+        assertTrue(store.library(initial.id).nsfw)
+        store.save(initial.id,initial.name,initial.folders,nsfw=false)
+        assertFalse(client.profiles().single { it.id==initial.id }.nsfw)
+    }
+    @Test fun versionSevenUpgradeReindexesGeneratedAndManualMetadataTogether() {
+        val file=File(app.cacheDir,"additive-migration-${UUID.randomUUID()}.db")
+        try { android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(file,null).use { db ->
+            store.onCreate(db)
+            db.execSQL("ALTER TABLE profiles DROP COLUMN nsfw")
+            db.execSQL("INSERT INTO profiles(id,name,revision) VALUES('fixture','Fixture','1')")
+            db.execSQL("INSERT INTO assets(id,profile,root,uri,filename,filename_search,path,path_search,mime,modified,size,signature,seen,labels,ocr,tags,ocr_override) VALUES(1,'fixture','tree','content://fixture/1','test.png','test.png','test.png','test.png','image/png',1,1,'1','1','Generated','Recognized','Manual','Added')")
+            store.onUpgrade(db,7,8)
+            db.rawQuery("SELECT nsfw FROM profiles",null).use { assertTrue(it.moveToFirst()); assertEquals(0,it.getInt(0)) }
+            db.rawQuery("SELECT description,ocr FROM metadata WHERE rowid=1",null).use {
+                assertTrue(it.moveToFirst()); val text=it.getString(0)
+                for(term in listOf("generated","recognized","manual","added")) assertTrue(text.contains(term))
+                assertTrue(it.getString(1).contains("recognized")); assertTrue(it.getString(1).contains("added"))
+            }
+            db.rawQuery("SELECT labels,ocr,tags,ocr_override FROM assets WHERE id=1",null).use {
+                assertTrue(it.moveToFirst()); assertEquals("Generated",it.getString(0)); assertEquals("Recognized",it.getString(1))
+                assertEquals("Manual",it.getString(2)); assertEquals("Added",it.getString(3))
+            }
+        } } finally { file.delete() }
     }
     @Test fun pagingAndSequenceKeepEveryItemWithTiedSavedTimesAndExactAnchor() {
         val library=library(); val all=(0..144).map { add(library,"reaction-$it.png",time=(it/3).toLong()) }
@@ -131,7 +177,7 @@ class LocalLibraryDeviceTest {
         FolderIndexer.change(app,library.id) { store.restartFolder(library.id,root) }
         val current=store.asset(first.id,library.id)
         assertTrue(current.pending); assertEquals("My title",current.displayTitle)
-        assertEquals(listOf("😂"),current.effectiveTags); assertEquals("Corrected",current.effectiveOcr)
+        assertEquals(listOf("Smile","😂"),current.effectiveTags); assertEquals("Old text\nCorrected",current.effectiveOcr)
         assertFalse(store.asset(untouched.id,library.id).pending)
         assertFalse(store.library(library.id).folders.first().paused)
         assertEquals(root,store.directory(library.id)!!.root)
@@ -188,7 +234,7 @@ class LocalLibraryDeviceTest {
         store.analyzed(asset,Analysis(listOf("Smile"),"Automatic text"),false,null)
         assertEquals(0,store.status(library.id).failed)
         assertEquals("My title",store.asset(asset.id,library.id).displayTitle)
-        assertEquals(listOf("😂"),store.asset(asset.id,library.id).effectiveTags)
+        assertEquals(listOf("Smile","😂"),store.asset(asset.id,library.id).effectiveTags)
     }
     @Test fun bundledModelsIndexRecursiveImagesGifAndVideosWithoutNetworkOrGmsSetup() = runBlocking {
         val files=File(app.filesDir,"test-documents").apply { deleteRecursively(); mkdirs() }

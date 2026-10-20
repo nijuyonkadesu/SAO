@@ -31,7 +31,7 @@ data class InstalledSourceExtension(val component: ComponentName, val name: Stri
     val legacyKinds: Set<String>) {
     fun profile(value: ExtensionProfile): SourceProfile {
         val id = java.util.UUID.nameUUIDFromBytes("${component.flattenToString()}:${value.id}".toByteArray()).toString()
-        return SourceProfile(id,value.name,ExtensionConfig(component.packageName,component.className,value.id,value.revision,name,value.summary))
+        return SourceProfile(id,value.name,ExtensionConfig(component.packageName,component.className,value.id,value.revision,name,value.summary),value.nsfw)
     }
 }
 

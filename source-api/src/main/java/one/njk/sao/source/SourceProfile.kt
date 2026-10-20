@@ -9,7 +9,7 @@ interface SourceConfiguration {
     val identity: String
 }
 
-data class SourceProfile(val id: String, val name: String, val configuration: SourceConfiguration) {
+data class SourceProfile(val id: String, val name: String, val configuration: SourceConfiguration, val nsfw: Boolean = false) {
     init { UUID.fromString(id); require(name.isNotBlank()) }
     val identity get() = "$id:${configuration.identity}"
     override fun toString() = "SourceProfile(id=$id, name=$name, kind=${configuration.kind})"

@@ -156,3 +156,11 @@ Editing a profile opens its extension settings directly. Configuration, collecti
 | Light | Dark |
 | --- | --- |
 | <img src="source-upload-wifi.png" width="260" alt="Global Upload only on Wi-Fi setting in SAO Media sources" /> | <img src="source-upload-wifi-dark.png" width="260" alt="Enabled Wi-Fi upload switch and upload guidance in Material dark colors" /> |
+
+## NSFW source access and additive metadata
+
+NSFW Mode retains its original wording. Marked sources stay configured and editable while their disabled switches explain how to restore access; both browsers and All apply the same policy. Local Sticker keeps automatic tags/text visible and combines them with the editable additions. Android 15 captures use synthetic media only.
+
+| Disabled source | Local source flag | Metadata additions |
+| --- | --- | --- |
+| ![NSFW source disabled](nsfw-source-disabled.png) | ![Local NSFW source setting](local-nsfw-setting.png) | ![Additions alongside generated data](local-additive-metadata.png) |

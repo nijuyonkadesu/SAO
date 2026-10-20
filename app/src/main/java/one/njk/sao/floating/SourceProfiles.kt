@@ -7,6 +7,9 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
 import dagger.hilt.android.qualifiers.ApplicationContext
+import one.njk.sao.database.SettingsDataStore
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -31,8 +34,22 @@ import javax.inject.Singleton
 internal data class SourceProfilesSnapshot(val catalog: SourceCatalog = SourceCatalog(),
     val floatingDisabled: Set<String> = emptySet(), val available: Set<String>? = null,
     val homeCategories: Map<String,List<SourceCategory>> = emptyMap(),
-    val floatingSelectedId: String? = catalog.selectedId) {
-    val floatingCatalog get() = catalog.forFloating(floatingDisabled, available, floatingSelectedId)
+    val floatingSelectedId: String? = catalog.selectedId, val nsfwAllowed: Boolean = true) {
+    val browsingCatalog get() = catalog.forBrowsing(nsfwAllowed, available)
+    val floatingCatalog get() = browsingCatalog.forFloating(floatingDisabled, available, floatingSelectedId)
+}
+
+/** Eligibility is derived in memory; blocked profiles and their saved choices remain intact. */
+internal fun SourceCatalog.forBrowsing(nsfwAllowed: Boolean, available: Set<String>? = null): SourceCatalog {
+    val eligible = profiles.filter { !it.nsfw || nsfwAllowed }.filter { it.id == ALL_SOURCE_ID || available == null || it.id in available }
+    val ids = eligible.map { it.id }.toSet()
+    val rows = eligible.mapNotNull { profile ->
+        val config = profile.configuration
+        if (config is AllSourceConfiguration) config.members.filter { it.id in ids && (!it.nsfw || nsfwAllowed) }
+            .takeIf { it.isNotEmpty() }?.let { profile.copy(configuration = AllSourceConfiguration(it)) }
+        else profile
+    }
+    return SourceCatalog(rows, selectedId?.let { chosen -> rows.firstOrNull { it.id == chosen }?.id ?: rows.firstOrNull()?.id })
 }
 
 internal fun SourceCatalog.forFloating(disabled: Set<String>, available: Set<String>? = null,
@@ -58,12 +75,17 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
     private val value = MutableStateFlow(SourceProfilesSnapshot())
     private val file = EncryptedSettingsFile(context, "source-profiles-v1", "sao-source-profiles-v1")
     private val legacy = EncryptedSettingsFile(context, "immich-connection-v1", "sao-immich-connection-v1")
-    internal val snapshots = flow { current(); emitAll(value) }
+    private val settings = SettingsDataStore(context)
+    internal val snapshots = combine(flow { current(); emitAll(value) }, settings.currentModeFlow()) { snapshot, allowed ->
+        snapshot.copy(nsfwAllowed = allowed)
+    }
     val catalogs = snapshots.map { it.catalog }.distinctUntilChanged()
+    val browsingCatalogs = snapshots.map { it.browsingCatalog }.distinctUntilChanged()
     val floatingCatalogs = snapshots.map { it.floatingCatalog }.distinctUntilChanged()
 
     suspend fun current(): SourceCatalog = withContext(dispatchers.io) { mutex.withLock { load().catalog } }
-    suspend fun currentFloating(): SourceCatalog = withContext(dispatchers.io) { mutex.withLock { load().floatingCatalog } }
+    suspend fun currentBrowsing(): SourceCatalog = snapshots.first().browsingCatalog
+    suspend fun currentFloating(): SourceCatalog = snapshots.first().floatingCatalog
 
     suspend fun upsert(profile: SourceProfile, select: Boolean = false) = updateSnapshot { snapshot ->
         val catalog = snapshot.catalog
@@ -74,20 +96,31 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
         snapshot.copy(catalog = SourceCatalog(profiles, if (select) profile.id else catalog.selectedId ?: profile.id),
             floatingSelectedId = snapshot.floatingSelectedId ?: profile.id)
     }
-    suspend fun select(id: String?) = update { it.copy(selectedId = id) }
-    suspend fun selectFloating(id: String?) = updateSnapshot {
-        require(id == null || it.catalog.profiles.any { profile -> profile.id == id })
-        it.copy(floatingSelectedId = id)
+    suspend fun select(id: String?) {
+        val allowed = settings.currentModeFlow().first()
+        update { catalog -> if (catalog.profiles.any { it.id == id && it.nsfw && !allowed }) catalog else catalog.copy(selectedId = id) }
+    }
+    suspend fun selectFloating(id: String?) {
+        val allowed = settings.currentModeFlow().first()
+        updateSnapshot {
+            if (it.catalog.profiles.any { profile -> profile.id == id && profile.nsfw && !allowed }) return@updateSnapshot it
+            require(id == null || it.catalog.profiles.any { profile -> profile.id == id })
+            it.copy(floatingSelectedId = id)
+        }
     }
     suspend fun remove(id: String) = update {
         val remaining = it.profiles.filterNot { profile -> profile.id == id }
         SourceCatalog(remaining, it.selectedId?.takeUnless { selected -> selected == id } ?: remaining.firstOrNull()?.id)
     }
     suspend fun enableAll(enabled: Boolean) = update { it.withAllSource(enabled, value.value.available) }
-    suspend fun enableInFloating(id: String, enabled: Boolean) = updateSnapshot {
-        require(id != ALL_SOURCE_ID && it.catalog.profiles.any { profile -> profile.id == id })
-        it.copy(floatingDisabled = if (enabled) it.floatingDisabled - id else it.floatingDisabled + id,
-            floatingSelectedId = it.floatingSelectedId ?: id.takeIf { enabled })
+    suspend fun enableInFloating(id: String, enabled: Boolean) {
+        val allowed = settings.currentModeFlow().first()
+        updateSnapshot {
+            if (enabled && it.catalog.profiles.any { profile -> profile.id == id && profile.nsfw && !allowed }) return@updateSnapshot it
+            require(id != ALL_SOURCE_ID && it.catalog.profiles.any { profile -> profile.id == id })
+            it.copy(floatingDisabled = if (enabled) it.floatingDisabled - id else it.floatingDisabled + id,
+                floatingSelectedId = it.floatingSelectedId ?: id.takeIf { enabled })
+        }
     }
     suspend fun homeCategories(id: String, categories: List<SourceCategory>?) = updateSnapshot {
         require(id==ALL_SOURCE_ID || it.catalog.profiles.any { profile -> profile.id==id })
@@ -142,7 +175,7 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
             val row = rows.getJSONObject(index); val kind = row.getString("kind")
             val configuration = row.getJSONObject("configuration")
             SourceProfile(row.getString("id"), row.getString("name"), codecs[kind]?.decode(configuration)
-                ?: UnknownSourceConfiguration(kind, configuration.toString()))
+                ?: UnknownSourceConfiguration(kind, configuration.toString()), row.optBoolean("nsfw"))
         }
         val selected = json.optString("selected")
         val catalog = SourceCatalog(profiles, selected.takeIf { id -> profiles.any { it.id == id } })
@@ -166,7 +199,7 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
             val json = if (config is UnknownSourceConfiguration) JSONObject(config.json)
                 else checkNotNull(codecs[config.kind]).encode(config)
             rows.put(JSONObject().put("id", profile.id).put("name", profile.name)
-                .put("kind", config.kind).put("configuration", json))
+                .put("kind", config.kind).put("configuration", json).put("nsfw", profile.nsfw))
         }
         file.write(JSONObject().put("version", 1).put("profiles", rows).put("selected", catalog.selectedId.orEmpty())
             .put("floatingSelected",snapshot.floatingSelectedId.orEmpty())

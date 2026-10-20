@@ -5,6 +5,8 @@
         <ImageView android:id="@+id/preview" android:layout_width="match_parent" android:layout_height="180dp" android:layout_marginTop="16dp" android:scaleType="fitCenter" android:contentDescription="@string/thumbnail" />
         <TextView android:id="@+id/filename" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:textAppearance="?attr/textAppearanceTitleMedium" />
         <TextView android:id="@+id/auto_labels" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textAppearance="?attr/textAppearanceBodyMedium" />
+        <TextView android:id="@+id/auto_ocr" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:maxLines="5" android:ellipsize="end" android:textAppearance="?attr/textAppearanceBodyMedium" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/corrections_additive" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
         <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:hint="@string/media_title">
             <com.google.android.material.textfield.TextInputEditText android:id="@+id/media_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textCapSentences" android:maxLines="2" />
         </com.google.android.material.textfield.TextInputLayout>

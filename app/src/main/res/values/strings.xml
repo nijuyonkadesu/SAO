@@ -6,11 +6,12 @@
     <string name="previous">Previous</string>
     <string name="collection">Collection: %s</string>
     <!-- Settings Page -->
-    <string name="nsfw_mode">Adult collection presets</string>
+    <string name="source_nsfw_blocked">Disabled — enable NSFW Mode in Settings to use this source.</string>
+    <string name="nsfw_mode">NSFW Mode</string>
     <string name="enabled">Enabled</string>
     <string name="disabled">Disabled</string>
     <string name="export_list">Export List</string>
-    <string name="nsfw_desc">Show adult categories offered by sources. Individual files are not filtered.</string>
+    <string name="nsfw_desc">Be cautious and move away if you have no idea on what this is all about</string>
     <string name="export">Export</string>
     <string name="exporting_desc">Not even a natural calamity can destroy any of your hard yearned gems… so do export regularly</string>
     <string name="import_list">Import List</string>

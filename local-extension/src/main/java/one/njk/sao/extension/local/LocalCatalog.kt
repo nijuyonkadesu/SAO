@@ -67,9 +67,9 @@ class LocalExtensionService : ExtensionService() {
         if(operation==ExtensionProtocol.PROFILES) {
             val profiles=store.libraries().map { library ->
                 val status=store.status(library.id)
-                ExtensionProfile(library.id,library.name,library.revision,getString(R.string.profile_summary,library.folders.size,status.total))
+                ExtensionProfile(library.id,library.name,library.revision,getString(R.string.profile_summary,library.folders.size,status.total),nsfw=library.nsfw)
             }
-            val fingerprint=digest(profiles.joinToString { "${it.id}:${it.name}:${it.revision}" })
+            val fingerprint=digest(profiles.joinToString { "${it.id}:${it.name}:${it.revision}:${it.nsfw}" })
             val cursor=SourceWire.nullable(payload,"cursor")?.split(':')
             val start=if(cursor==null) 0 else {
                 if(cursor.size!=2 || cursor[0]!=fingerprint) throw ExtensionFailure("PROFILE_CHANGED")

@@ -29,8 +29,8 @@ import javax.inject.Provider
 class SwitchingMediaSource(private val profiles: SourceProfiles,
     private val factories: Map<String, @JvmSuppressWildcards Provider<MediaSourceFactory>>,
     private val dispatchers: FloatingDispatchers, private val floatingOnly: Boolean = false) : MediaSource {
-    private val catalogs = if (floatingOnly) profiles.floatingCatalogs else profiles.catalogs
-    private suspend fun current() = if (floatingOnly) profiles.currentFloating() else profiles.current()
+    private val catalogs = if (floatingOnly) profiles.floatingCatalogs else profiles.browsingCatalogs
+    private suspend fun current() = if (floatingOnly) profiles.currentFloating() else profiles.currentBrowsing()
     private class Session(val identity: String, val source: MediaSource) {
         val lifetime = SupervisorJob()
         fun close() { lifetime.cancel(); (source as? ManagedMediaSource)?.close() }
@@ -52,7 +52,7 @@ class SwitchingMediaSource(private val profiles: SourceProfiles,
         .flatMapLatest { id -> flow {
             val declared=session().source.capabilities
             val effective=if(floatingOnly) declared else kotlinx.coroutines.flow.combine(declared,profiles.snapshots) { caps,snapshot ->
-                caps.copy(categories=snapshot.homeCategories[snapshot.catalog.selectedId] ?: caps.categories)
+                caps.copy(categories=snapshot.homeCategories[snapshot.browsingCatalog.selectedId] ?: caps.categories)
             }
             emitAll(effective.map { it.copy(sourceId = id) })
         }.catch { error -> if (error is CancellationException) throw error; emit(SourceCapabilities(sourceId = id)) } }

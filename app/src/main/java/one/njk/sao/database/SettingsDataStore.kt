@@ -5,7 +5,6 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 class SettingsDataStore(private val context: Context) {
@@ -17,11 +16,8 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun toggleMode(){
         context.rolesDataStore.edit {
-            it[NSFW_MODE] = !currentMode()
+            it[NSFW_MODE] = !(it[NSFW_MODE] ?: true)
         }
-    }
-    private suspend fun currentMode(): Boolean {
-        return context.rolesDataStore.data.first()[NSFW_MODE] ?: true
     }
     fun currentModeFlow(): Flow<Boolean> {
         return context.rolesDataStore.data.map {

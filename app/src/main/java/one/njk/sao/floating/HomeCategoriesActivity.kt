@@ -73,9 +73,9 @@ class HomeCategoriesActivity : AppCompatActivity() {
         },lookup=model::suggestions)
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) {
             launch { sources.state.collect { state ->
-                choices=state.catalog.profiles
+                choices=state.browsingCatalog.profiles
                 binding.profile.setSimpleItems(choices.map { it.name }.toTypedArray())
-                model.catalog(state.catalog)
+                model.catalog(state.browsingCatalog)
             } }
             launch { model.state.collect { state ->
                 rendering=true
