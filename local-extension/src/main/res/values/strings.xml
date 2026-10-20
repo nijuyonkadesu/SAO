@@ -115,4 +115,5 @@
     </plurals>
     <string name="eta_hours">About %1$d h %2$d min remaining</string>
     <string name="cloud_media_settings">Cloud photo settings</string>
+    <string name="section_profile">Profile</string>
 </resources>

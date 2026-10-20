@@ -94,13 +94,14 @@ class FolderImportDeviceTest {
             val app=fixture.app; val access=EntryPointAccessors.fromApplication(app,SourceExtensionAccess::class.java)
             val previous=access.sources().snapshots.first()
             val extension=testExtensions(app).installed().single { it.component.packageName=="one.njk.sao.extension.local" }
-            val name="Local import ${java.util.UUID.randomUUID().toString().take(8)}"
+            val name="Local reactions ${java.util.UUID.randomUUID().toString().take(8)}"
             val original=fixture.image("12345.png",Color.GREEN)
             var profile: SourceProfile?=null
             try {
                 ExtensionForm(installed=extension).use { form ->
                     form.set("source_name",name); form.click("import_method"); fixture.click("Folder picker")
-                    form.click("add_folder"); fixture.chooseFolder(); form.click("save_library")
+                    form.click("add_folder"); fixture.chooseFolder()
+                    form.click("save_library")
                     withTimeout(12_000) { while(profile==null) { profile=access.sources().current().profiles.firstOrNull { it.name==name }; delay(50) } }
                 }
                 val selected=profile!!; val repository=app.imports()
@@ -125,8 +126,12 @@ class FolderImportDeviceTest {
                     repository.transfer(false,network=false)
                     assertEquals(2,media.page(MediaQuery(mode=SearchMode.FILENAME)).items.size)
                 } finally { media.close() }
-                ActivityScenario.launch<MediaImportActivity>(Intent(app,MediaImportActivity::class.java).putExtra("source",selected.id)).use {
-                    delay(500); pauseSourceVisual("media-import-local")
+                ExtensionForm(selected,extension).use { form ->
+                    form.await("source_name")
+                    form.await("intake_add_media") { it.isEnabled }
+                    form.await("name")
+                    form.await("intake_status") { it.text.toString().contains("1 added") }
+                    pauseSourceVisual("inline-local-settings")
                 }
             } finally {
                 profile?.let { value ->

@@ -6,8 +6,8 @@ android {
         applicationId 'one.njk.sao.extension.immich'
         minSdk 30
         targetSdk 36
-        versionCode 3
-        versionName '1.2.0'
+        versionCode 4
+        versionName '1.2.1'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     buildTypes {
@@ -22,6 +22,7 @@ android {
 }
 dependencies {
     implementation project(':immich-provider')
+    implementation project(':source-settings')
     implementation libs.androidx.appcompat
     implementation libs.lifecycle.viewmodel
     implementation libs.lifecycle.runtime

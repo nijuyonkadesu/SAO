@@ -9,8 +9,8 @@ android {
         applicationId 'one.njk.sao.extension.local'
         minSdk 30
         targetSdk 36
-        versionCode 9
-        versionName '1.6.0'
+        versionCode 10
+        versionName '1.6.1'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     buildTypes {
@@ -33,6 +33,7 @@ android {
 }
 dependencies {
     implementation project(':source-api')
+    implementation project(':source-settings')
     implementation libs.androidx.activity
     implementation libs.androidx.appcompat
     implementation libs.lifecycle.viewmodel

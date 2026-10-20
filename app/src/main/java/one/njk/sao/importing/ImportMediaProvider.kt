@@ -16,7 +16,7 @@ class ImportMediaProvider: ContentProvider() {
         if(uri.pathSegments.size!=1) throw FileNotFoundException()
         return requireNotNull(context).imports().store.task(uri.lastPathSegment.orEmpty()) ?: throw FileNotFoundException()
     }
-    override fun getType(uri: Uri)=task(uri).mime
+    override fun getType(uri: Uri)=if(uri.lastPathSegment=="changes") "vnd.android.cursor.item/vnd.sao.imports" else task(uri).mime
     override fun openFile(uri: Uri,mode: String): ParcelFileDescriptor {
         if(mode!="r") throw SecurityException("Read only")
         val file=task(uri).staged?.let(::File) ?: throw FileNotFoundException()

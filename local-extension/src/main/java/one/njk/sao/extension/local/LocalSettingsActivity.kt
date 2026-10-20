@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import one.njk.sao.extension.local.databinding.ActivityLocalSettingsBinding
 import one.njk.sao.extension.local.databinding.ItemFolderBinding
 import one.njk.sao.source.ExtensionProtocol
+import one.njk.sao.source.settings.SourceIntakeSection
 
 class LocalSettingsActivity : AppCompatActivity() {
     private val model by lazy { ViewModelProvider(this)[LocalSettingsViewModel::class.java] }
@@ -48,6 +49,7 @@ class LocalSettingsActivity : AppCompatActivity() {
         }
         DynamicColors.applyToActivityIfAvailable(this); super.onCreate(savedInstanceState); enableEdgeToEdge()
         val binding=ActivityLocalSettingsBinding.inflate(layoutInflater); setContentView(binding.root); insets(binding.root)
+        val intake=SourceIntakeSection(this,binding.intake.root,binding.root)
         var populated=false; var shown: List<Folder>?=null; var renderingContext=false
         var rows=emptyList<Pair<Folder,ItemFolderBinding>>()
         binding.back.setOnClickListener { finish() }
@@ -82,6 +84,11 @@ class LocalSettingsActivity : AppCompatActivity() {
             if(shown!=state.folders) {
                 shown=state.folders; binding.folderList.removeAllViews()
                 rows=state.folders.map { folder -> folder to folderRow(folder,binding.folderList).also { binding.folderList.addView(it.root) } }
+            }
+            state.library?.let { library ->
+                val app=applicationContext
+                intake.configure(requireNotNull(caller),library.id,library.revision) { LocalImports(app,LocalStore.get(app),library).options() }
+                intake.editable(model.importsUnchanged && !state.working)
             }
             val methodLabel=getString(state.importMethod.label)
             if(binding.importMethod.text.toString()!=methodLabel) binding.importMethod.setText(methodLabel,false)

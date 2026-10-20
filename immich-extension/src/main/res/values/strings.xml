@@ -27,4 +27,7 @@
   <string name="source_delete">Remove connection</string>
   <string name="source_removed">Connection removed.</string>
   <string name="connection_status_version">%1$s (%2$s)</string>
+    <string name="section_profile">Profile</string>
+    <string name="section_connection">Connection</string>
+    <string name="section_library">Library</string>
 </resources>

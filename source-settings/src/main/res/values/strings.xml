@@ -1,0 +1,37 @@
+<resources>
+    <string name="source_intake_title">Add media</string>
+    <string name="source_intake_destination">Save to</string>
+    <string name="source_intake_summary">Save to %1$s · originals are kept</string>
+    <string name="source_intake_photos">Photos and videos</string>
+    <string name="source_intake_files">Files</string>
+    <string name="source_intake_read_only">This profile has no writable destination. Existing media remains available for browsing.</string>
+    <string name="source_intake_dirty">Save your changes before adding media or changing folder imports.</string>
+    <string name="source_intake_loading">Loading saved destination…</string>
+    <string name="source_intake_error">Could not load imports. Check the saved connection and that SAO is up to date.</string>
+    <string name="source_intake_retry">Retry</string>
+    <string name="source_intake_added">%1$d added</string>
+    <string name="source_intake_pending">%1$d pending</string>
+    <string name="source_intake_blocked">%1$d need attention</string>
+    <string name="source_intake_paused">Paused · %1$s</string>
+    <string name="source_intake_pause">Pause</string>
+    <string name="source_intake_resume">Resume</string>
+    <string name="source_intake_retry_files">Retry failed</string>
+    <string name="source_intake_clear">Clear</string>
+    <string name="source_intake_clear_title">Clear unfinished imports?</string>
+    <string name="source_intake_clear_help">Finishes the current file, clears other unfinished imports and pauses folder imports. Originals and completed imports are kept.</string>
+    <string name="source_intake_folders">Folder uploads</string>
+    <string name="source_intake_folder_help">Adds existing files and future additions on an unmetered connection. Android checks about every six hours. Originals are kept.</string>
+    <string name="source_intake_connect">Connect a folder</string>
+    <string name="source_intake_check">Check folders now</string>
+    <string name="source_intake_checked">Checked %1$s</string>
+    <string name="source_intake_waiting">Waiting for first check</string>
+    <string name="source_intake_disconnect">Disconnect folder</string>
+    <string name="source_intake_disconnect_help">Stops future imports and cancels pending items from this folder. Originals and completed uploads are kept.</string>
+    <string name="source_intake_auth">Upload access was refused. Check this profile’s credentials and destination permissions.</string>
+    <string name="source_intake_profile">The saved configuration changed. Save and reopen this profile to confirm its destination.</string>
+    <string name="source_intake_permission">Folder access is unavailable. Reselect the folder to restore access.</string>
+    <string name="source_intake_network">The transfer could not finish. Temporary failures retry with increasing delays, up to five attempts.</string>
+    <string name="source_intake_file">A file changed or is no longer available. Check folders again for its current version.</string>
+    <string name="source_intake_storage">Not enough space to prepare this media.</string>
+    <string name="source_intake_generic">An import needs attention. Completed imports are kept.</string>
+</resources>

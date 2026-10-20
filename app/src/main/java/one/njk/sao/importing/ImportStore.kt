@@ -12,6 +12,8 @@ import java.util.UUID
 
 /** Durable transfer state, not a search/media cache. Unchanged completed files produce no writes. */
 internal class ImportStore(context: Context): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"media-imports.db").path,null,1) {
+    private val resolver=context.contentResolver
+    private val notification=one.njk.sao.source.ImportSettings.changes(context.packageName)
     val changes=MutableStateFlow(0L)
     data class Route(val id: String,val source: String,val identity: String,val target: String,val label: String,val tree: String,val name: String,val checked: Long,val error: String?)
     data class Task(val id: String,val source: String,val identity: String,val target: String,val uri: String,val name: String,
@@ -26,7 +28,7 @@ internal class ImportStore(context: Context): SQLiteOpenHelper(context,File(cont
         db.execSQL("CREATE TABLE controls(source TEXT PRIMARY KEY,paused INTEGER NOT NULL DEFAULT 0)")
     }
     override fun onUpgrade(db: SQLiteDatabase,old: Int,new: Int)=Unit
-    private fun signal() { synchronized(changes) { changes.value++ } }
+    private fun signal() { synchronized(changes) { changes.value++ }; resolver.notifyChange(notification,null) }
     private fun Cursor.text(name: String)=getString(getColumnIndexOrThrow(name))
     private fun Cursor.number(name: String)=getLong(getColumnIndexOrThrow(name))
     private fun route(c: Cursor)=Route(c.text("id"),c.text("source"),c.text("identity"),c.text("target"),c.text("label"),c.text("tree"),c.text("name"),c.number("checked"),c.text("error"))

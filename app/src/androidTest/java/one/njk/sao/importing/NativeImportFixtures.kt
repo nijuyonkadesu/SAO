@@ -17,7 +17,7 @@ internal class NativeImportFixtures: AutoCloseable {
     val folder="SAO-import-test-${UUID.randomUUID()}"
     val files=mutableListOf<Uri>()
     fun image(name: String,color: Int): Pair<Uri,ByteArray> {
-        val bitmap=Bitmap.createBitmap(2,2,Bitmap.Config.ARGB_8888).apply { eraseColor(color) }
+        val bitmap=Bitmap.createBitmap(128,128,Bitmap.Config.ARGB_8888).apply { eraseColor(color) }
         val bytes=ByteArrayOutputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it); bitmap.recycle(); it.toByteArray() }
         val uri=app.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME,name); put(MediaStore.MediaColumns.MIME_TYPE,"image/png")

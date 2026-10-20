@@ -32,6 +32,7 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
         set(value) { saved["importTarget"]=value }
     private val importPreferences=Mutex()
     private val selections=mutableMapOf<String,List<String>>()
+    internal val importsUnchanged get()=state.value.library?.let { state.value.folders.map { folder -> Triple(folder.uri,folder.name,folder.kind) }==it.folders.map { folder -> Triple(folder.uri,folder.name,folder.kind) } && selections.isEmpty() }==true
     var name=app.getString(R.string.default_name)
     init { viewModelScope.launch {
         try {

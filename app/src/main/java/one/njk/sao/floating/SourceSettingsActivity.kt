@@ -39,9 +39,7 @@ class SourceSettingsActivity : AppCompatActivity() {
         binding.back.setOnClickListener { finish() }
         binding.addSource.setOnClickListener { addMediaSource() }
         val adapter = SourceListAdapter(model::select, model::enableInFloating) { id ->
-            val profile=model.state.value.catalog.profiles.firstOrNull { it.id==id }
-            if(profile?.configuration is ExtensionConfig) startActivity(Intent(this,one.njk.sao.importing.MediaImportActivity::class.java).putExtra("source",id))
-            else editMediaSource(profile)
+            editMediaSource(model.state.value.catalog.profiles.firstOrNull { it.id==id })
         }
         val header = SourceSettingsHeaderAdapter(model::enableAll)
         val extensions = InstalledExtensionsAdapter(

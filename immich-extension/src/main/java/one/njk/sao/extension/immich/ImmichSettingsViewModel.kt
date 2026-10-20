@@ -22,6 +22,8 @@ class ImmichSettingsViewModel(app: Application, saved: SavedStateHandle) : Andro
     val profileId = editingId ?: UUID.randomUUID().toString()
     var name = "Immich"; var url = ""; var key = ""; var albumId: String? = null
     private var previous: ConnectionStore.Connection? = null
+    internal val importConnection get()=previous
+    internal val importsUnchanged get()=previous?.config?.let { it.serverUrl==url.trim() && it.apiKey==key.trim() && it.albumId==albumId }==true
     init { viewModelScope.launch {
         try {
             previous = editingId?.let { store.get(it) }

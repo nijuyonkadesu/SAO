@@ -33,6 +33,7 @@ internal fun Context.imports() = EntryPointAccessors.fromApplication(application
 @Singleton
 class MediaImports @Inject constructor(@ApplicationContext private val app: Context,
     private val profiles: SourceProfiles,private val extensions: SourceExtensions) {
+    internal val application get()=app
     internal val store=ImportStore(app)
     private val transferLock=Mutex()
     private val localTransferLock=Mutex()

@@ -138,11 +138,12 @@ Local Sticker 1.5 opens Android’s Albums tab when supported and provides a Clo
 
 ## Media imports and folder mappings
 
-Each writable profile has one intake overview: destination, added/pending counts, collection summaries or connected-folder mappings, and a link to its extension settings. Originals remain intact. These Android 15 captures use synthetic media and UUID-named test folders; both themes use Material 3 components.
+Editing a profile opens its extension settings directly. Configuration, collections, importing and processing share one scroll surface, with colored Material 3 headings and divider lines. There is no intermediate settings overview. These Android 15 captures use synthetic media and test folders; originals remain intact.
 
 | Light | Dark |
 | --- | --- |
-| <img src="media-import-local.png" width="260" alt="Local collection overview with Add media and Files actions and indexed-file counts" /> | <img src="media-import-local-dark.png" width="260" alt="Local collection intake using Material dark colors" /> |
-| <img src="media-import-folder.png" width="260" alt="Immich connected-folder mapping, completed count, last check and folder controls" /> | <img src="media-import-folder-dark.png" width="260" alt="Connected-folder mapping and Material text actions in dark mode" /> |
+| <img src="source-settings-immich.png" width="260" alt="Immich profile, connection and library configuration on the native settings page" /> | <img src="source-settings-immich-dark.png" width="260" alt="Immich configuration with colored section headings in dark mode" /> |
+| <img src="source-settings-immich-imports.png" width="260" alt="Add media and connected-folder controls below the Immich configuration on the same page" /> | <img src="source-settings-immich-imports-dark.png" width="260" alt="Inline Immich importing and live queue progress in dark mode" /> |
+| <img src="source-settings-local.png" width="260" alt="Local collection progress, Add media and Automatic indexing in the same scroll surface" /> | <img src="source-settings-local-dark.png" width="260" alt="Local collection and indexing sections using Material dark colors" /> |
 
 [Setup, scheduling and retry behavior](../media-imports.md).
