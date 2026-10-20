@@ -26,8 +26,9 @@
         <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:indeterminate="true" />
         <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:accessibilityLiveRegion="polite" android:textAppearance="?attr/textAppearanceBodyLarge" />
         <com.google.android.material.button.MaterialButton android:id="@+id/test_connection" style="?attr/materialButtonOutlinedStyle" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/immich_test" />
-        <com.google.android.material.button.MaterialButton android:id="@+id/save_connection" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/immich_save" />
         <include android:id="@+id/intake" layout="@layout/source_intake_section" />
+        <com.google.android.material.divider.MaterialDivider android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/save_connection" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/immich_save" />
         <com.google.android.material.button.MaterialButton android:id="@+id/delete_source" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/source_delete" android:visibility="gone" />
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

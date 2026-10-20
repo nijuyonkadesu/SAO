@@ -24,6 +24,7 @@ import one.njk.sao.extension.local.databinding.ActivityLocalSettingsBinding
 import one.njk.sao.extension.local.databinding.ItemFolderBinding
 import one.njk.sao.source.ExtensionProtocol
 import one.njk.sao.source.settings.SourceIntakeSection
+import one.njk.sao.source.settings.SourceSettingsGuard
 
 class LocalSettingsActivity : AppCompatActivity() {
     private val model by lazy { ViewModelProvider(this)[LocalSettingsViewModel::class.java] }
@@ -50,9 +51,10 @@ class LocalSettingsActivity : AppCompatActivity() {
         DynamicColors.applyToActivityIfAvailable(this); super.onCreate(savedInstanceState); enableEdgeToEdge()
         val binding=ActivityLocalSettingsBinding.inflate(layoutInflater); setContentView(binding.root); insets(binding.root)
         val intake=SourceIntakeSection(this,binding.intake.root,binding.root)
+        val guard=SourceSettingsGuard(this,binding.saveLibrary,{ model.hasChanges },{ model.state.value.working },model::save)
         var populated=false; var shown: List<Folder>?=null; var renderingContext=false
         var rows=emptyList<Pair<Folder,ItemFolderBinding>>()
-        binding.back.setOnClickListener { finish() }
+        binding.back.setOnClickListener { guard.leave() }
         binding.sourceName.doAfterTextChanged { if(populated) model.name=it?.toString().orEmpty() }
         binding.addFolder.setOnClickListener { launchImport() }
         binding.addWholeFolder.setOnClickListener { launchImport(method=ImportMethod.FOLDER) }

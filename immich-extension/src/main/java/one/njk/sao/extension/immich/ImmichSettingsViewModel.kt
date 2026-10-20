@@ -22,15 +22,20 @@ class ImmichSettingsViewModel(app: Application, saved: SavedStateHandle) : Andro
     val profileId = editingId ?: UUID.randomUUID().toString()
     var name = "Immich"; var url = ""; var key = ""; var albumId: String? = null
     private var previous: ConnectionStore.Connection? = null
+    private data class Draft(val name: String,val url: String,val key: String,val album: String?)
+    private fun draft()=Draft(name,url,key,albumId)
+    private var initial: Draft?=null
+    val hasChanges get()=state.value.loaded && initial!=draft()
     internal val importConnection get()=previous
     internal val importsUnchanged get()=previous?.config?.let { it.serverUrl==url.trim() && it.apiKey==key.trim() && it.albumId==albumId }==true
     init { viewModelScope.launch {
         try {
             previous = editingId?.let { store.get(it) }
             previous?.let { name=it.name; url=it.config.serverUrl; key=it.config.apiKey; albumId=it.config.albumId }
+            initial=draft()
             mutable.value = State(loaded=true)
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { mutable.value = State(loaded=true,status=R.string.immich_storage_error) }
+        catch (_: Exception) { initial=draft(); mutable.value = State(loaded=true,status=R.string.immich_storage_error) }
     } }
     fun check(save: Boolean) {
         if (!state.value.loaded || state.value.working) return

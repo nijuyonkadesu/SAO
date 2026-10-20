@@ -59,10 +59,13 @@ class SourceIntakeSection(private val activity: AppCompatActivity,container: and
         if(host==null) return
         val options=state.options; val snapshot=state.snapshot
         val enabled=state.editable && !state.loading && !state.busy && snapshot!=null
+        val localCollections=options?.network==false && options.collections.isNotEmpty()
+        binding.intakeTitle.setText(if(localCollections && options!!.targets.isEmpty()) R.string.source_intake_local_title else R.string.source_intake_title)
         binding.intakeSummary.text=activity.getString(when {
             !state.editable -> R.string.source_intake_dirty
             state.loading -> R.string.source_intake_loading
-            options?.targets.isNullOrEmpty() -> R.string.source_intake_read_only
+            options?.targets.isNullOrEmpty() -> if(localCollections) R.string.source_intake_local_read_only else R.string.source_intake_read_only
+            options?.network==true -> R.string.source_intake_upload_summary
             else -> R.string.source_intake_summary
         },state.target?.name.orEmpty())
         binding.intakeProgress.visibility=if(state.loading || state.busy) android.view.View.VISIBLE else android.view.View.INVISIBLE

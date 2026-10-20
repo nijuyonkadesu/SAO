@@ -2,7 +2,7 @@
 
 Install `moeview-sao.apk`, then open **SAO → Settings → Media sources → Add source → Moeview**. Name the profile and choose Yande.re, Konachan, Gelbooru or Danbooru. Repeat for separate boards, rating scopes, accounts or base-tag collections. Profile names appear in the existing home Collection selector and floating picker. This source uses the current v1 extension contract; no SAO app update is required.
 
-The form belongs to the extension and uses Material 3 Views. Saving works offline; **Test connection** is an explicit single API request. Profiles, optional account credentials and verification are encrypted with Android Keystore in private, non-backed-up storage. SAO receives public profile metadata and opaque asset references, never credentials or API URLs.
+The form belongs to the extension and uses Material 3 Views. Version 1.1.3 shares the standard **Save source** / **Remove source** wording and unsaved-change warning with Immich and Local Sticker. Saving works offline; **Test connection** is an explicit single API request. Profiles, optional account credentials and verification are encrypted with Android Keystore in private, non-backed-up storage. SAO receives public profile metadata and opaque asset references, never credentials or API URLs.
 
 ## Search and browsing
 

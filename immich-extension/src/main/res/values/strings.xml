@@ -1,5 +1,5 @@
 <resources>
-  <string name="immich_title">Immich library</string>
+  <string name="immich_title">Immich source</string>
   <string name="immich_back">Back</string>
   <string name="immich_setup_description">Use images, GIFs and videos from your Immich server in the floating picker.</string>
   <string name="immich_server_url">Server URL (https://photos.example.com)</string>
@@ -11,7 +11,7 @@
   <string name="immich_saved_album">Saved album</string>
   <string name="immich_credentials_description">Browsing needs asset.read, asset.view, asset.download and tag.read. Add album.read to choose an album. Uploading also needs asset.upload; a selected owned album needs albumAsset.create. Credentials stay encrypted in this extension.</string>
   <string name="immich_test">Test connection</string>
-  <string name="immich_save">Save and use Immich</string>
+  <string name="immich_save">@string/source_settings_save</string>
   <string name="immich_checking">Checking connection…</string>
   <string name="immich_connected">Connection verified. Choose a collection, then save.</string>
   <string name="immich_saved">Immich is now the picker’s media source.</string>
@@ -22,12 +22,12 @@
   <string name="immich_auth_error">The server rejected the API key or its permissions.</string>
   <string name="immich_server_error">The server could not complete the request. Check its address and version.</string>
   <string name="immich_network_error">Could not reach Immich. Check the connection and server address.</string>
-  <string name="immich_storage_error">Could not read or save the connection. Enter it again, or use sample photos.</string>
+  <string name="immich_storage_error">Could not read or save this source. Check the configuration and try again.</string>
   <string name="source_name">Source name</string>
-  <string name="source_delete">Remove connection</string>
-  <string name="source_removed">Connection removed.</string>
+  <string name="source_delete">@string/source_settings_remove</string>
+  <string name="source_removed">Source removed.</string>
   <string name="connection_status_version">%1$s (%2$s)</string>
     <string name="section_profile">Profile</string>
     <string name="section_connection">Connection</string>
-    <string name="section_library">Library</string>
+    <string name="section_library">Media to browse</string>
 </resources>

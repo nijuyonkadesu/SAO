@@ -119,6 +119,8 @@ class LocalPickedSetupDeviceTest {
             results.items.forEach { assertArrayEquals(expected.getValue(it.mimeType),source.original(it).use { stream -> stream.readBytes() }) }
             ExtensionForm(created,extension).use { form ->
                 form.await("name") { it.text.toString()=="Chosen reactions" }
+                form.await("intake_title") { it.text.toString()=="Adding files to collections" }
+                form.await("intake_summary") { it.text.toString().contains("Folder collections pick up new files automatically") && it.text.toString().contains("Photo picker") }
                 form.await("add_media") { it.isEnabled }; pauseSourceVisual("local-picked-collection")
                 form.click("import_method"); click("Files picker"); form.click("add_media")
                 waitFor("Files picker did not open") { nodes().any { it.packageName?.toString()?.contains("documentsui")==true } }

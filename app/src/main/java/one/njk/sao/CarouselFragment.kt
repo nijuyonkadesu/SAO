@@ -91,7 +91,7 @@ class CarouselFragment : Fragment(), MenuProvider {
             }
         }
         binding.share.setOnClickListener { carousel.centeredItem?.let { item -> action {
-            val media = exports.prepare(item,Rendition.MEDIA)
+            val media = exports.displayed(item)
             startActivity(Intent.createChooser(MediaDelivery.intent(media,null,item.title),getString(R.string.home_share)))
         } } }
         viewLifecycleOwner.lifecycleScope.launch { viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {

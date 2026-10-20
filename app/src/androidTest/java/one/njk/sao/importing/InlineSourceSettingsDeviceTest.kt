@@ -93,6 +93,14 @@ class InlineSourceSettingsDeviceTest {
                     delay(700)
                     assertEquals("Hidden settings must not query backend permissions",2,permissionReads.get())
                 }
+                ExtensionForm(profile).use { form ->
+                    form.set("source_name","Renamed reactions")
+                    form.click("back")
+                    fixture.click("Save source")
+                    // Wait for the result callback, rather than a transient empty accessibility window.
+                    withTimeout(15_000) { while(access.sources().current().profiles.none { it.id==profile.id && it.name=="Renamed reactions" }) delay(50) }
+                    assertEquals("Renamed reactions",ExtensionClient(app,config.component).profiles().single { it.id==config.profile }.name)
+                }
             } finally {
                 app.imports().store.routes(profile.id).forEach { app.imports().remove(it) }
                 app.imports().store.writableDatabase.delete("tasks","source=?",arrayOf(profile.id))

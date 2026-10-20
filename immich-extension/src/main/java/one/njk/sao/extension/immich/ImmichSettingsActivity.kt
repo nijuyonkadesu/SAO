@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import one.njk.sao.extension.immich.databinding.ActivityImmichSettingsBinding
 import one.njk.sao.source.ExtensionProtocol
 import one.njk.sao.source.settings.SourceIntakeSection
+import one.njk.sao.source.settings.SourceSettingsGuard
 
 class ImmichSettingsActivity : AppCompatActivity() {
     private val model by lazy { ViewModelProvider(this)[ImmichSettingsViewModel::class.java] }
@@ -35,8 +36,9 @@ class ImmichSettingsActivity : AppCompatActivity() {
             val bars=insets.getInsets(WindowInsetsCompat.Type.systemBars()); view.setPadding(bars.left,bars.top,bars.right,bars.bottom); insets
         }
         val intake=SourceIntakeSection(this,binding.intake.root,binding.root)
+        val guard=SourceSettingsGuard(this,binding.saveConnection,{ model.hasChanges },{ model.state.value.working }) { model.check(true) }
         var populated=false
-        binding.back.setOnClickListener { finish() }
+        binding.back.setOnClickListener { guard.leave() }
         binding.sourceName.doAfterTextChanged { if(populated) model.name=it?.toString().orEmpty() }
         binding.serverUrl.doAfterTextChanged { if(populated) { model.url=it?.toString().orEmpty(); intake.editable(model.importsUnchanged) } }
         binding.apiKey.doAfterTextChanged { if(populated) { model.key=it?.toString().orEmpty(); intake.editable(model.importsUnchanged) } }

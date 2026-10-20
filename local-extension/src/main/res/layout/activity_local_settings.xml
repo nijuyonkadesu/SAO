@@ -23,6 +23,7 @@
         <TextView style="@style/SaoSourceSectionHeading" android:text="@string/indexing" />
         <include android:id="@+id/index_status" layout="@layout/index_progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/index_help" android:textAppearance="?attr/textAppearanceBodyMedium" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/constraints" android:textAppearance="?attr/textAppearanceBodyMedium" />
         <com.google.android.material.button.MaterialButton android:id="@+id/browse_metadata" style="?attr/materialButtonOutlinedStyle" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/edit_metadata" />
         <com.google.android.material.button.MaterialButton android:id="@+id/rescan" style="?attr/materialButtonOutlinedStyle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/rescan" />
         <com.google.android.material.button.MaterialButton android:id="@+id/pause_indexing" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/pause" />
@@ -43,7 +44,6 @@
             <com.google.android.material.button.MaterialButton android:id="@+id/pause_download" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/pause_album" />
         </LinearLayout>
         <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/context_search" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/use_context" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/constraints" android:textAppearance="?attr/textAppearanceBodyMedium" />
         <TextView android:id="@+id/error" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:visibility="gone" android:accessibilityLiveRegion="polite" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorError" />
         <com.google.android.material.button.MaterialButton android:id="@+id/save_library" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="@string/save" />
         <com.google.android.material.button.MaterialButton android:id="@+id/delete_library" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/delete" android:visibility="gone" />

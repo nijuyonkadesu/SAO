@@ -34,6 +34,44 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
     private val exportLock: MediaExportLock = MediaExportLock()) {
     private val mutex get() = exportLock.mutex
 
+    /** Home Share uses the displayed rendition, including animation/video; never fetch its original. */
+    suspend fun displayed(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
+        require(item.id.matches(Regex("[a-z0-9_-]+")))
+        val data=if(item.isVideo) requireNotNull(source.video(item)) else source.preview(item)
+        fun input(): java.io.InputStream = when(data) {
+            is File -> data.inputStream()
+            is Uri -> requireNotNull(context.contentResolver.openInputStream(data))
+            is String -> {
+                require(data.startsWith("file:///android_asset/"))
+                context.assets.open(data.removePrefix("file:///android_asset/"))
+            }
+            else -> error("Unsupported display media")
+        }
+        // A JPEG preview may represent a PNG/HEIC original. Advertise the actual displayed format.
+        val mime=if(item.isVideo) item.mimeType else {
+            val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true }
+            input().use { BitmapFactory.decodeStream(it,null,bounds) }
+            bounds.outMimeType ?: item.mimeType
+        }
+        val extension=android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime) ?: "bin"
+        val dir=File(context.cacheDir,"share_cache/home").apply { mkdirs() }
+        val file=File(dir,"${item.id}-display.$extension")
+        mutex.withLock {
+            if(!file.isFile) {
+                val staging=File(dir,file.name+".pending")
+                try {
+                    input().use { from -> staging.outputStream().use { from.copyTo(it) } }
+                    check(staging.length()>0 && staging.renameTo(file))
+                } finally { staging.delete() }
+            }
+            val now=System.currentTimeMillis()
+            file.setLastModified(now)
+            // Share grants need a stable snapshot; reclaim old snapshots only on another explicit share.
+            dir.listFiles()?.filter { it!=file && now-it.lastModified()>24L*60*60*1000 }?.forEach { it.delete() }
+        }
+        ExportedMedia(FileProvider.getUriForFile(context,"${context.packageName}.fileprovider",file),mime,file)
+    }
+
     suspend fun prepare(item: MediaItem, rendition: Rendition): ExportedMedia = withContext(dispatchers.io) {
         require(!item.hasMotion || rendition == Rendition.MEDIA) { "Animated sticker conversion is unavailable" }
         require(item.id.matches(Regex("[a-z0-9_-]+")))

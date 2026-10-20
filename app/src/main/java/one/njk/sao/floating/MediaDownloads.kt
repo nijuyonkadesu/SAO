@@ -10,7 +10,7 @@ import one.njk.sao.source.FloatingDispatchers
 import one.njk.sao.source.MediaItem
 import javax.inject.Inject
 
-/** Save the same original bytes used by clipboard/share, with a pending row until complete. */
+/** Save original bytes independently of the home Share rendition, with a pending row until complete. */
 class MediaDownloads @Inject constructor(@ApplicationContext private val context: Context,
     private val dispatchers: FloatingDispatchers) {
     suspend fun save(item: MediaItem, media: ExportedMedia) = withContext(dispatchers.io) {

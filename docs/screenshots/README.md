@@ -138,12 +138,13 @@ Local Sticker 1.5 opens Android’s Albums tab when supported and provides a Clo
 
 ## Media imports and folder mappings
 
-Editing a profile opens its extension settings directly. Configuration, collections, importing and processing share one scroll surface, with colored Material 3 headings and divider lines. There is no intermediate settings overview. These Android 15 captures use synthetic media and test folders; originals remain intact.
+Editing a profile opens its extension settings directly. Configuration, collections, importing and processing share one scroll surface, with colored Material 3 headings and divider lines. There is no intermediate settings overview. One-time selected-file imports and automatic device-folder uploads have distinct descriptions; Save source and Remove source sit together at the end. Local collections explain in-place discovery versus selected items. All three extension forms share a save/keep/discard warning for modified drafts. These Android 15 captures use synthetic media and test folders; originals remain intact.
 
 | Light | Dark |
 | --- | --- |
 | <img src="source-settings-immich.png" width="260" alt="Immich profile, connection and library configuration on the native settings page" /> | <img src="source-settings-immich-dark.png" width="260" alt="Immich configuration with colored section headings in dark mode" /> |
 | <img src="source-settings-immich-imports.png" width="260" alt="Add media and connected-folder controls below the Immich configuration on the same page" /> | <img src="source-settings-immich-imports-dark.png" width="260" alt="Inline Immich importing and live queue progress in dark mode" /> |
-| <img src="source-settings-local.png" width="260" alt="Local collection progress, Add media and Automatic indexing in the same scroll surface" /> | <img src="source-settings-local-dark.png" width="260" alt="Local collection and indexing sections using Material dark colors" /> |
+| <img src="source-settings-local.png" width="260" alt="Local selected collection progress and an explanation of automatic folder discovery versus adding selections" /> | <img src="source-settings-local-dark.png" width="260" alt="Local collection controls and selected-media guidance using Material dark colors" /> |
+| <img src="source-settings-unsaved.png" width="260" alt="Shared save, keep editing and discard changes dialog" /> | <img src="source-settings-unsaved-dark.png" width="260" alt="Unsaved source warning restored across a dark theme change" /> |
 
 [Setup, scheduling and retry behavior](../media-imports.md).

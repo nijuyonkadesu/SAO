@@ -17,6 +17,7 @@ import one.njk.sao.extension.moeview.databinding.ActivityMoeviewSettingsBinding
 import one.njk.sao.moeview.data.Board
 import one.njk.sao.moeview.data.SfwMode
 import one.njk.sao.source.ExtensionProtocol
+import one.njk.sao.source.settings.SourceSettingsGuard
 
 class MoeviewSettingsActivity : AppCompatActivity() {
     private val model by lazy { ViewModelProvider(this)[MoeviewSettingsViewModel::class.java] }
@@ -37,7 +38,8 @@ class MoeviewSettingsActivity : AppCompatActivity() {
             val bars=insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime()); view.setPadding(bars.left,bars.top,bars.right,bars.bottom); insets
         }
         var rendering=false
-        binding.back.setOnClickListener { finish() }
+        val guard=SourceSettingsGuard(this,binding.saveConnection,{ model.hasChanges },{ model.state.value.working },model::save)
+        binding.back.setOnClickListener { guard.leave() }
         binding.sourceName.doAfterTextChanged { if(!rendering) model.name(it.toString()) }
         binding.baseTags.doAfterTextChanged { if(!rendering) model.configure { c -> c.copy(tags=it.toString()) } }
         binding.account.doAfterTextChanged { if(!rendering) model.configure { c -> c.copy(login=it.toString()) } }

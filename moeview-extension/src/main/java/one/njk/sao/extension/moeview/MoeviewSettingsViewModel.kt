@@ -18,6 +18,7 @@ class MoeviewSettingsViewModel(app: Application,saved: SavedStateHandle) : Andro
     val editing: String?=saved[ExtensionProtocol.PROFILE]
     val profile=editing ?: saved.get<String>("draft") ?: UUID.randomUUID().toString().also { saved["draft"]=it }
     private var previous: MoeviewProfile?=null
+    val hasChanges get()=state.value.loaded && (state.value.name!=(previous?.name ?: "Moeview") || state.value.config!=(previous?.config ?: MoeviewConfig()))
     init { viewModelScope.launch {
         try {
             previous=editing?.let { runtime.profiles.get(it) }

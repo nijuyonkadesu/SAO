@@ -42,6 +42,43 @@ class SourceHomeDeviceTest {
     private fun profile(name: String) = SourceProfile(UUID.randomUUID().toString(), name,
         ExtensionConfig("fixture.source","fixture.source.Service",name,"1","Fixture"))
 
+    @Test fun homeSharingPreservesDisplayedBytesAndMimeWithoutRequestingOriginals(): Unit=runBlocking {
+        val bitmap=Bitmap.createBitmap(120,80,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
+        val jpeg=ByteArrayOutputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG,90,it); bitmap.recycle(); it.toByteArray() }
+        val gif=instrumentation.context.assets.open("floating/hello.gif").use { it.readBytes() }
+        val video=instrumentation.context.assets.open("preview-video.mp4").use { it.readBytes() }
+        val preview=java.io.File.createTempFile("display-fixture",null,app.cacheDir)
+        var originalReads=0
+        var videoReads=0
+        val source=object: MediaSource {
+            override suspend fun page(query: MediaQuery,cursor: String?)=MediaPage(emptyList())
+            override suspend fun filters()=emptyList<String>()
+            override suspend fun preview(item: MediaItem): Any=preview
+            override suspend fun video(item: MediaItem)=preview.also { videoReads++ }
+            override suspend fun original(item: MediaItem)=jpeg.inputStream().also { originalReads++ }
+            override suspend fun raster(item: MediaItem)=error("Share must not flatten the displayed rendition")
+        }
+        val exports=MediaExports(app,source)
+        try {
+            for((mime,bytes) in listOf("image/png" to jpeg,"image/gif" to gif,"video/mp4" to video)) {
+                preview.writeBytes(bytes)
+                val item=MediaItem("display_${UUID.randomUUID().toString().replace("-","")}","Display fixture","",mime,emptyList(),emptyList(),animated=mime=="image/gif")
+                val shared=exports.displayed(item)
+                try {
+                    assertEquals(if(mime=="image/png") "image/jpeg" else mime,shared.mimeType)
+                    assertEquals(shared.mimeType,app.contentResolver.getType(shared.uri))
+                    assertArrayEquals(bytes,app.contentResolver.openInputStream(shared.uri)!!.use { it.readBytes() })
+                    assertEquals("Share must never request the original",0,originalReads)
+                    if(!item.isVideo) assertEquals(0,videoReads)
+                    val download=exports.prepare(item,Rendition.MEDIA)
+                    try { assertEquals(1,originalReads); assertArrayEquals(jpeg,download.file.readBytes()) }
+                    finally { download.file.delete(); originalReads=0 }
+                } finally { shared.file.delete() }
+            }
+            assertEquals(1,videoReads)
+        } finally { preview.delete() }
+    }
+
     @Test fun ordinaryPhotosKeepOriginalPixelsAlphaMimeAndBytesWhileStickersRemain512(): Unit = runBlocking {
         for(mime in listOf("image/jpeg","image/png")) {
             val bitmap = Bitmap.createBitmap(3000,1800,Bitmap.Config.ARGB_8888)
@@ -286,6 +323,8 @@ class SourceHomeDeviceTest {
     @Test fun homeUsesExtensionPresetsOriginalLayoutFocalSelectionAndRetainsFocusOnRecreation(): Unit = runBlocking {
         val profiles=access.sources(); val previous=profiles.current()
         val searches=AtomicInteger()
+        val originalRequests=AtomicInteger()
+        val thumbnailRequests=AtomicInteger()
         val png=instrumentation.context.assets.open("floating/happy.png").use { it.readBytes() }
         val gif=instrumentation.context.assets.open("floating/hello.gif").use { it.readBytes() }
         val video=instrumentation.context.assets.open("preview-video.mp4").use { it.readBytes() }
@@ -297,9 +336,10 @@ class SourceHomeDeviceTest {
                 override fun dispatch(request: RecordedRequest): MockResponse = when {
                     request.path=="/api/server/features" -> MockResponse().setBody("""{"smartSearch":true,"ocr":true}""")
                     request.path=="/api/tags" -> MockResponse().setBody("[]")
-                    request.path?.contains("/thumbnail")==true -> MockResponse().setBody(Buffer().write(png))
+                    request.path?.contains("/thumbnail")==true -> { if(request.path!!.contains("000000000000")) thumbnailRequests.incrementAndGet(); MockResponse().setBody(Buffer().write(png)) }
                     request.path?.contains("/original")==true -> MockResponse().setBody(Buffer().write(
                         if(request.path!!.contains("000000000001")) gif else if(request.path!!.contains("000000000002")) video else png)).also { response ->
+                        if(request.path!!.contains("000000000000")) originalRequests.incrementAndGet()
                         if(delayOriginal.get() && request.path!!.contains("000000000003")) {
                             originalStarted.set(true); response.setBodyDelay(1,java.util.concurrent.TimeUnit.SECONDS)
                         }
@@ -339,6 +379,26 @@ class SourceHomeDeviceTest {
                 }
                 await(scenario,"Home filename copied") { it.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.text?.toString()=="fixture-0.png" }
                 pauseSourceVisual("source-home")
+                val shared=java.util.concurrent.atomic.AtomicReference<android.content.Intent?>()
+                val monitor=object: android.app.Instrumentation.ActivityMonitor() {
+                    override fun onStartActivity(intent: android.content.Intent): android.app.Instrumentation.ActivityResult? {
+                        if(intent.action!=android.content.Intent.ACTION_CHOOSER) return null
+                        shared.set(intent.getParcelableExtra(android.content.Intent.EXTRA_INTENT,android.content.Intent::class.java))
+                        return android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED,null)
+                    }
+                }
+                instrumentation.addMonitor(monitor)
+                try {
+                    await(scenario,"The focal preview has been requested") { thumbnailRequests.get()>0 }
+                    val previewsBefore=thumbnailRequests.get()
+                    scenario.onActivity { it.findViewById<View>(R.id.share).performClick() }
+                    await(scenario,"Home Share opens the chooser") { shared.get()!=null }
+                    val intent=shared.get()!!
+                    assertEquals("image/png",intent.type)
+                    assertArrayEquals(png,app.contentResolver.openInputStream(intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM,android.net.Uri::class.java)!!)!!.use { it.readBytes() })
+                    assertEquals("Share must reuse the cached preview",previewsBefore,thumbnailRequests.get())
+                    assertEquals("Share must not request the original",0,originalRequests.get())
+                } finally { instrumentation.removeMonitor(monitor) }
                 scenario.onActivity { activity ->
                     // Follow the real side-card tap route, including its smooth scroll callbacks.
                     activity.findViewById<RecyclerView>(R.id.carousel_recycler_view).findViewHolderForAdapterPosition(1)!!.itemView.performClick()

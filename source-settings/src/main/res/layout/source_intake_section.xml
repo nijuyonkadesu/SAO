@@ -1,6 +1,6 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
     <com.google.android.material.divider.MaterialDivider android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" />
-    <TextView style="@style/SaoSourceSectionHeading" android:text="@string/source_intake_title" />
+    <TextView android:id="@+id/intake_title" style="@style/SaoSourceSectionHeading" android:text="@string/source_intake_title" />
     <TextView android:id="@+id/intake_summary" android:layout_width="match_parent" android:layout_height="wrap_content" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
     <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/intake_progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:indeterminate="true" />
     <TextView android:id="@+id/intake_error" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorError" android:accessibilityLiveRegion="polite" android:visibility="gone" />
@@ -20,9 +20,9 @@
     </LinearLayout>
     <LinearLayout android:id="@+id/intake_folder_section" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
         <TextView style="@style/SaoSourceSectionHeading" android:text="@string/source_intake_folders" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/source_intake_folder_help" android:textAppearance="?attr/textAppearanceBodySmall" android:textColor="?attr/colorOnSurfaceVariant" />
         <LinearLayout android:id="@+id/intake_folders" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
         <com.google.android.material.button.MaterialButton android:id="@+id/intake_connect_folder" style="?attr/materialButtonOutlinedStyle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/source_intake_connect" />
         <com.google.android.material.button.MaterialButton android:id="@+id/intake_check_folders" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/source_intake_check" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/source_intake_folder_help" android:textAppearance="?attr/textAppearanceBodySmall" android:textColor="?attr/colorOnSurfaceVariant" />
     </LinearLayout>
 </LinearLayout>

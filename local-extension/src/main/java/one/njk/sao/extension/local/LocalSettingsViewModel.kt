@@ -34,6 +34,10 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
     private val selections=mutableMapOf<String,List<String>>()
     internal val importsUnchanged get()=state.value.library?.let { state.value.folders.map { folder -> Triple(folder.uri,folder.name,folder.kind) }==it.folders.map { folder -> Triple(folder.uri,folder.name,folder.kind) } && selections.isEmpty() }==true
     var name=app.getString(R.string.default_name)
+    private data class Draft(val name: String,val folders: List<Triple<String,String,CollectionKind>>,val context: Boolean,val model: String)
+    private fun draft()=state.value.let { Draft(name,it.folders.map { folder -> Triple(folder.uri,folder.name,folder.kind) },it.useContext,it.selectedModel.id) }
+    private var initial: Draft?=null
+    val hasChanges get()=state.value.loaded && (initial!=draft() || selections.isNotEmpty())
     init { viewModelScope.launch {
         try {
             val overview=withContext(Dispatchers.IO) {
@@ -49,6 +53,7 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
             if(library!=null) name=library.name
             mutable.value=State(loaded=true,folders=library?.folders.orEmpty(),library=library,
                 index=overview?.total,folderIndexes=overview?.folders.orEmpty(),model=ClipModels.Status(ready=ready),useContext=library?.contextSearch ?: ready,selectedModel=selected,importMethod=method)
+            initial=draft()
             mutable.subscriptionCount.map { it>0 }.distinctUntilChanged().flatMapLatest { subscribed ->
                 if(!subscribed) emptyFlow() else {
                     // Timing events reuse the latest durable snapshot instead of querying the
@@ -67,7 +72,7 @@ class LocalSettingsViewModel(app: Application, private val saved: SavedStateHand
                     model=model,selectedModel=progress.model,useContext=before.useContext || !before.model.ready && model.ready) }
             }
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { mutable.update { it.copy(loaded=true,error=R.string.storage_error) } }
+        catch (_: Exception) { initial=draft(); mutable.update { it.copy(loaded=true,error=R.string.storage_error) } }
     } }
     fun folder(uri: Uri) { viewModelScope.launch {
         try {

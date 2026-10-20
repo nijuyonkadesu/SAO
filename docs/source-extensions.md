@@ -80,6 +80,17 @@ Profile discovery cursors include a public-list fingerprint; changes between pag
 
 The legacy migration is the sole credential handoff: an old SAO installation passes its existing opaque configuration once to the trusted Immich extension. SAO replaces and erases its old credential record **only after acknowledgement**. If the extension is absent or migration fails, that encrypted legacy record remains intact and inactive. Fresh configurations are entered exclusively in the extension.
 
+## Shared settings template
+
+First-party extensions depend on `:source-settings`, a Views library that supplies common **Save source** / **Remove source** labels, inline importing and `SourceSettingsGuard`. The host cannot inspect private configuration drafts. Each extension supplies its own dirty comparison and save operation; no credentials cross IPC:
+
+```kotlin
+val guard = SourceSettingsGuard(this, binding.saveSource, { model.hasChanges }, { model.state.value.working }, model::save)
+binding.back.setOnClickListener { guard.leave() }
+```
+
+The guard also handles system Back. Its Material dialog offers Save source, Keep editing and Discard changes, survives Activity recreation, and keeps the draft open if saving fails. Compare editable configuration to the initially loaded draft; ignore progress, last-scan timestamps and immediately saved picker preferences. Do not persist credentials in a host store or track edits through per-keystroke preference writes. Group Save and Remove after the configuration sections. Future extension forms should use this same template.
+
 ## Errors and retry policy
 
 The table below describes reads. [Imports](media-imports.md) use their own durable queue, duplicate checks and bounded write retry policy. They never reuse browsing retries.
