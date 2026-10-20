@@ -8,7 +8,7 @@ Source extensions update independently of SAO. Version 1 automatically accepts e
 
 [Moeview](moeview-source.md) is another independent APK, serving named Yande.re/Konachan/Gelbooru/Danbooru profiles through the unchanged v1 contract. Its tag queries, board-specific routes, optional credentials and browser verification remain in that extension; SAO needs no provider-specific code or APK update.
 
-[Public meme source research](public-meme-source-research.md) compares live HTTP search, media retrieval and integration constraints for a possible public catalog extension. It documents candidates only; no public meme source APK is included yet.
+[FindThatMeme](findthatmeme-source.md) adds an experimental public, keyless meme/GIF/video catalog as another independent APK. It supplies keyword search, image/video filters, pagination and home presets through the unchanged v1 contract; SAO needs no update. [Public meme source research](public-meme-source-research.md) records the provider comparison and tested limitations.
 
 In **Settings → Media sources → Show in floating picker**, each profile has a switch. Turning it off removes that profile from the floating picker and its All results, while keeping it available on the main screen. Credentials, settings and cached media are retained. The preference survives restarts and extension-profile refreshes. Disabling the active floating source cancels that session and chooses another enabled source; with none enabled, the picker offers **Manage sources**. Main-screen browsing and its All membership are unchanged. Only an actual switch change writes this host preference.
 
