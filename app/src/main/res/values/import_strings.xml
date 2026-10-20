@@ -1,4 +1,8 @@
 <resources>
+    <string name="upload_settings_heading">Uploads</string>
+    <string name="upload_wifi_only">Upload only on Wi-Fi</string>
+    <string name="upload_wifi_only_help">Wait for Wi-Fi before uploading selected files or connected folders to any source. Local file copies work offline. Automatic folder uploads also require an unmetered connection.</string>
+    <string name="upload_settings_failed">Could not update upload settings. Try again.</string>
     <string name="import_title">Add media to a source</string>
     <string name="import_choose_source">Choose where to save these photos and videos. Originals stay where they are.</string>
     <string name="import_no_sources">No writable sources are available. Configure an Immich key with upload access or a writable Local Sticker folder.</string>

@@ -15,15 +15,19 @@ import androidx.core.app.NotificationCompat
 import androidx.work.*
 import kotlinx.coroutines.*
 import one.njk.sao.R
+import one.njk.sao.database.SettingsDataStore
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 /** Jobs exist only for queued work or user-configured folders. Nothing is scheduled by the floating service. */
 internal object ImportJobs {
     private const val SCAN="media-import-scan"
     private const val PERIODIC="media-import-folder-check"
-    private fun constraints(network: Boolean=false,automatic: Boolean=false)=Constraints.Builder()
+    private const val USER_JOB=6211
+    internal fun constraints(network: Boolean=false,automatic: Boolean=false,wifiOnly: Boolean=false)=Constraints.Builder()
         .setRequiresBatteryNotLow(true).setRequiresStorageNotLow(true).apply {
-            if(network) setRequiredNetworkType(if(automatic) NetworkType.UNMETERED else NetworkType.CONNECTED)
+            if(network) setRequiredNetworkRequest(UploadNetworkPolicy.request(wifiOnly,automatic),
+                if(automatic || wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
         }.build()
     fun configure(context: Context,folders: Boolean) {
         val work=WorkManager.getInstance(context)
@@ -36,22 +40,36 @@ internal object ImportJobs {
         WorkManager.getInstance(context).enqueueUniqueWork(SCAN,if(continuation) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<ImportScanWorker>().setConstraints(constraints()).build())
     }
-    fun enqueue(context: Context,automatic: Boolean,delay: Long=0,continuation: Boolean=false,network: Boolean=true) {
+    suspend fun enqueue(context: Context,automatic: Boolean,delay: Long=0,continuation: Boolean=false,network: Boolean=true) {
+        val wifiOnly=network && SettingsDataStore(context).uploadsWifiOnlyFlow().first()
         WorkManager.getInstance(context).enqueueUniqueWork("media-import-transfer-$automatic-$network",
             ExistingWorkPolicy.APPEND_OR_REPLACE,
             OneTimeWorkRequestBuilder<ImportWorker>().setInputData(workDataOf("automatic" to automatic,"network" to network))
-                .setConstraints(constraints(network=network,automatic=automatic)).setInitialDelay(delay,TimeUnit.MILLISECONDS).build())
+                .setConstraints(constraints(network=network,automatic=automatic,wifiOnly=wifiOnly))
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL,15,TimeUnit.MINUTES)
+                .setInitialDelay(delay,TimeUnit.MILLISECONDS).build())
     }
-    fun userInitiated(context: Context): Boolean {
+    suspend fun userInitiated(context: Context): Boolean {
         if(Build.VERSION.SDK_INT<34) return false
-        return try { context.getSystemService(JobScheduler::class.java).schedule(JobInfo.Builder(6211,ComponentName(context,ImportTransferService::class.java))
-            .setUserInitiated(true).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).build())==JobScheduler.RESULT_SUCCESS }
+        val wifiOnly=SettingsDataStore(context).uploadsWifiOnlyFlow().first()
+        return try { context.getSystemService(JobScheduler::class.java).schedule(JobInfo.Builder(USER_JOB,ComponentName(context,ImportTransferService::class.java))
+            .setUserInitiated(true).setRequiredNetwork(UploadNetworkPolicy.request(wifiOnly,false)).build())==JobScheduler.RESULT_SUCCESS }
         catch(_: SecurityException) { false }
     }
-    fun recovery(context: Context) {
+    suspend fun recovery(context: Context) {
+        val wifiOnly=SettingsDataStore(context).uploadsWifiOnlyFlow().first()
         WorkManager.getInstance(context).enqueueUniqueWork("media-import-user-recovery",ExistingWorkPolicy.REPLACE,
             OneTimeWorkRequestBuilder<ImportWorker>().setInputData(workDataOf("automatic" to false,"network" to true))
-                .setConstraints(constraints(network=true)).setInitialDelay(15,TimeUnit.MINUTES).build())
+                .setConstraints(constraints(network=true,wifiOnly=wifiOnly))
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL,15,TimeUnit.MINUTES).setInitialDelay(15,TimeUnit.MINUTES).build())
+    }
+    suspend fun updateNetworks(context: Context,store: ImportStore) {
+        // Replace only upload jobs. Local copies and configured-folder discovery remain independent.
+        context.getSystemService(JobScheduler::class.java).cancel(USER_JOB)
+        val work=WorkManager.getInstance(context)
+        for(name in listOf("media-import-transfer-true-true","media-import-transfer-false-true","media-import-user-recovery"))
+            work.cancelUniqueWork(name).await()
+        for(automatic in listOf(false,true)) store.nextDelay(automatic)?.let { delay -> enqueue(context,automatic,delay) }
     }
     fun recovered(context: Context) { WorkManager.getInstance(context).cancelUniqueWork("media-import-user-recovery") }
     fun notification(context: Context): android.app.Notification {
@@ -75,7 +93,9 @@ class ImportScanWorker(app: Context,parameters: WorkerParameters): CoroutineWork
 class ImportWorker(app: Context,parameters: WorkerParameters): CoroutineWorker(app,parameters) {
     override suspend fun doWork(): Result {
         val repository=applicationContext.imports(); val automatic=inputData.getBoolean("automatic",false); val network=inputData.getBoolean("network",true)
-        repository.transfer(automatic,network=network)
+        // A default-route change can briefly precede Android's constraint cancellation. Leave the
+        // receipt/attempt count intact and use WorkManager backoff instead of making a hot chain.
+        if(repository.transfer(automatic,network=network)) return Result.retry()
         val delay=repository.store.nextDelay(automatic,network)
         if(delay!=null) ImportJobs.enqueue(applicationContext,automatic,delay,continuation=true,network=network)
         else if(!automatic && network) ImportJobs.recovered(applicationContext)
@@ -91,12 +111,15 @@ class ImportTransferService: JobService() {
         if(Build.VERSION.SDK_INT<34) return false
         setNotification(params,6211,ImportJobs.notification(this),JOB_END_NOTIFICATION_POLICY_REMOVE)
         running[params.jobId]=scope.launch {
+            val owner=currentCoroutineContext()[Job]
             try { imports().transfer(automatic=false,unlimited=true) }
             finally {
-                val delay=imports().store.nextDelay(false)
-                if(delay!=null) ImportJobs.enqueue(this@ImportTransferService,false,delay)
-                else ImportJobs.recovered(this@ImportTransferService)
-                withContext(NonCancellable+Dispatchers.Main) { running.remove(params.jobId); jobFinished(params,false) }
+                withContext(NonCancellable) {
+                    val delay=imports().store.nextDelay(false)
+                    if(delay!=null) ImportJobs.enqueue(this@ImportTransferService,false,delay)
+                    else ImportJobs.recovered(this@ImportTransferService)
+                    withContext(Dispatchers.Main) { running.remove(params.jobId,owner); jobFinished(params,false) }
+                }
             }
         }
         return true

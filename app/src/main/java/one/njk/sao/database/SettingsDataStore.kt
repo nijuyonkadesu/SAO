@@ -12,6 +12,7 @@ class SettingsDataStore(private val context: Context) {
     companion object {
         private val Context.rolesDataStore by preferencesDataStore(name = "settings")
         private val NSFW_MODE = booleanPreferencesKey("MODE")
+        private val UPLOADS_WIFI_ONLY = booleanPreferencesKey("uploads_wifi_only")
     }
 
     suspend fun toggleMode(){
@@ -27,4 +28,6 @@ class SettingsDataStore(private val context: Context) {
             it[NSFW_MODE] ?: true
         }
     }
+    fun uploadsWifiOnlyFlow(): Flow<Boolean> = context.rolesDataStore.data.map { it[UPLOADS_WIFI_ONLY] ?: false }
+    suspend fun uploadsWifiOnly(value: Boolean) { context.rolesDataStore.edit { it[UPLOADS_WIFI_ONLY]=value } }
 }

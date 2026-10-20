@@ -67,4 +67,12 @@ class ImportStoreDeviceTest {
         assertNull(store.nextDelay(false))
         assertNotNull(store.nextDelay(true))
     }
+    @Test fun offlineBatchCompletionDoesNotFinalizeNetworkUploads()=database { store ->
+        store.add("cloud","rev","album",entry("online.png",1),network=true)
+        store.add("local","rev","folder",entry("offline.png",1),network=false)
+        store.done(store.next(false,network=true)!!.id,"cloud-asset")
+        store.done(store.next(false,network=false)!!.id,"local-asset")
+        assertEquals(listOf("local" to "rev"),store.unfinalized(network=false))
+        assertEquals(listOf("cloud" to "rev"),store.unfinalized(network=true))
+    }
 }

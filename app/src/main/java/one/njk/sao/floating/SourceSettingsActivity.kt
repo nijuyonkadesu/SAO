@@ -22,10 +22,12 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import one.njk.sao.R
 import one.njk.sao.databinding.ActivitySourceSettingsBinding
+import one.njk.sao.importing.UploadSettingsViewModel
 
 @AndroidEntryPoint
 class SourceSettingsActivity : AppCompatActivity() {
     private val model: SourceProfilesViewModel by viewModels()
+    private val uploads: UploadSettingsViewModel by viewModels()
     override fun onResume() { super.onResume(); model.refreshExtensions() }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,7 +43,7 @@ class SourceSettingsActivity : AppCompatActivity() {
         val adapter = SourceListAdapter(model::select, model::enableInFloating) { id ->
             editMediaSource(model.state.value.catalog.profiles.firstOrNull { it.id==id })
         }
-        val header = SourceSettingsHeaderAdapter(model::enableAll)
+        val header = SourceSettingsHeaderAdapter(model::enableAll,uploads::wifiOnly)
         val extensions = InstalledExtensionsAdapter(
             { openPackage(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package",it,null))) },
             { openPackage(Intent(Intent.ACTION_DELETE, Uri.fromParts("package",it,null))) })
@@ -68,6 +70,12 @@ class SourceSettingsActivity : AppCompatActivity() {
             binding.status.isVisible = state.error
             binding.sourceList.isEnabled = state.loaded && !state.saving
             binding.addSource.isEnabled = state.loaded && !state.saving
+        } } }
+        var uploadErrorShown=false
+        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { uploads.state.collect { state ->
+            header.updateUploads(state.wifiOnly,state.loaded && !state.saving)
+            if(state.error && !uploadErrorShown) com.google.android.material.snackbar.Snackbar.make(binding.root,R.string.upload_settings_failed,com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show()
+            uploadErrorShown=state.error
         } } }
     }
     private fun openPackage(intent: Intent) {

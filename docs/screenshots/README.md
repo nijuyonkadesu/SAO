@@ -148,3 +148,11 @@ Editing a profile opens its extension settings directly. Configuration, collecti
 | <img src="source-settings-unsaved.png" width="260" alt="Shared save, keep editing and discard changes dialog" /> | <img src="source-settings-unsaved-dark.png" width="260" alt="Unsaved source warning restored across a dark theme change" /> |
 
 [Setup, scheduling and retry behavior](../media-imports.md).
+
+## Wi-Fi upload policy
+
+**Settings → Media sources → Uploads** offers **Upload only on Wi-Fi** for every source. Selected and automatic uploads wait for Wi-Fi; automatic uploads also require an unmetered connection. Local copies stay offline-capable. These captures use a synthetic profile and deferred queue; both themes show the enabled setting.
+
+| Light | Dark |
+| --- | --- |
+| <img src="source-upload-wifi.png" width="260" alt="Global Upload only on Wi-Fi setting in SAO Media sources" /> | <img src="source-upload-wifi-dark.png" width="260" alt="Enabled Wi-Fi upload switch and upload guidance in Material dark colors" /> |

@@ -18,6 +18,8 @@ import kotlinx.coroutines.sync.withLock
 import one.njk.sao.floating.ExtensionConfig
 import one.njk.sao.floating.SourceExtensions
 import one.njk.sao.floating.SourceProfiles
+import one.njk.sao.database.SettingsDataStore
+import kotlinx.coroutines.flow.first
 import one.njk.sao.source.*
 import org.json.JSONObject
 import java.io.File
@@ -32,9 +34,13 @@ internal fun Context.imports() = EntryPointAccessors.fromApplication(application
 
 @Singleton
 class MediaImports @Inject constructor(@ApplicationContext private val app: Context,
-    private val profiles: SourceProfiles,private val extensions: SourceExtensions) {
+    private val profiles: SourceProfiles,private val extensions: SourceExtensions,private val settings: SettingsDataStore) {
     internal val application get()=app
     internal val store=ImportStore(app)
+    suspend fun uploadsWifiOnly(value: Boolean)=withContext(Dispatchers.IO) {
+        settings.uploadsWifiOnly(value)
+        ImportJobs.updateNetworks(app,store)
+    }
     private val transferLock=Mutex()
     private val localTransferLock=Mutex()
     private val scanLock=Mutex()
@@ -147,11 +153,16 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
         true
     } }
     internal suspend fun transfer(automatic: Boolean,unlimited: Boolean=false,network: Boolean=true) = withContext(Dispatchers.IO) { (if(network) transferLock else localTransferLock).withLock {
+        val wifiOnly=network && settings.uploadsWifiOnlyFlow().first()
+        UploadNetworkPolicy.run(app,network,wifiOnly,automatic) {
+        fun allowed()=!network || UploadNetworkPolicy.allows(app,wifiOnly,automatic)
+        if(!allowed()) return@run true
         cleanupSnapshots()
         val deadline=if(unlimited) Long.MAX_VALUE else SystemClock.elapsedRealtime()+8*60_000
         try {
             while(SystemClock.elapsedRealtime()<deadline-10_000) {
                 currentCoroutineContext().ensureActive()
+                if(!allowed()) break
                 val task=store.next(automatic,network) ?: break
                 active[task.source]=task.id
                 try {
@@ -165,6 +176,7 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
                             snapshot(entry,task.id).also { store.snapshot(task.id,it.file,it.checksum,it.size) }
                         }
                     if(store.task(task.id)==null) { ready.file.delete(); continue }
+                    if(!allowed()) break
                     val config=profile.configuration as ExtensionConfig
                     val uri=Uri.Builder().scheme("content").authority("${app.packageName}.imports").appendPath(task.id).build()
                     app.grantUriPermission(config.packageName,uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -176,16 +188,19 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
                         store.done(task.id,receipt.asset); ready.file.delete(); releaseInput(entry.uri)
                     } finally { app.revokeUriPermission(config.packageName,uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 } catch(timeout: TimeoutCancellationException) {
-                    currentCoroutineContext().ensureActive(); store.failed(task,"TIMEOUT",retryAt(task,"TIMEOUT",null))
+                    currentCoroutineContext().ensureActive()
+                    if(!allowed()) break
+                    store.failed(task,"TIMEOUT",retryAt(task,"TIMEOUT",null))
                 } catch(cancelled: CancellationException) { throw cancelled }
                 catch(error: Exception) {
+                    if(!allowed()) break
                     val code=code(error)
                     store.failed(task,code,retryAt(task,code,(error as? ExtensionFailure)?.retryAfter))
                 } finally { active.remove(task.source,task.id) }
             }
         } finally {
             withContext(NonCancellable) {
-                for((owner,identity) in store.unfinalized()) {
+                for((owner,identity) in if(allowed()) store.unfinalized(network) else emptyList()) {
                     try {
                         val profile=source(owner)
                         if(profile.identity==identity) withTimeout(10_000) { call(profile,ExtensionProtocol.IMPORT_COMPLETE) }
@@ -195,6 +210,8 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
                     }
                 }
             }
+        }
+        !allowed()
         }
     } }
     private data class Snapshot(val file: File,val checksum: String,val size: Long)
@@ -257,7 +274,7 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
         val used=store.stagedPaths(); val old=System.currentTimeMillis()-24*3600_000L
         File(app.noBackupFilesDir,"media-imports").listFiles()?.filter { it.lastModified()<old && it.absolutePath !in used }?.forEach { it.delete() }
     }
-    private fun resumeJobs() {
+    private suspend fun resumeJobs() {
         ImportJobs.enqueue(app,true); ImportJobs.enqueue(app,false); ImportJobs.enqueue(app,false,network=false); ImportJobs.scan(app)
     }
     companion object {

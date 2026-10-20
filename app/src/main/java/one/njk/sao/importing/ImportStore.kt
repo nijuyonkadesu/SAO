@@ -63,7 +63,7 @@ internal class ImportStore(context: Context): SQLiteOpenHelper(context,File(cont
     fun nextDelay(automatic: Boolean,network: Boolean=true): Long?=readableDatabase.rawQuery("SELECT MIN(next) FROM tasks t WHERE status IN ('pending','retry') AND network=? AND (automatic=0 OR CAST(? AS INTEGER)=1) AND NOT EXISTS (SELECT 1 FROM controls c WHERE c.source=t.source AND c.paused=1)",arrayOf(if(network) "1" else "0",if(automatic) "1" else "0")).use {
         if(it.moveToFirst() && !it.isNull(0)) (it.getLong(0)-System.currentTimeMillis()).coerceAtLeast(0) else null
     }
-    fun unfinalized(): List<Pair<String,String>> = readableDatabase.rawQuery("SELECT DISTINCT source,identity FROM tasks WHERE status='done' AND finalized=0",null).use { c -> buildList { while(c.moveToNext()) add(c.getString(0) to c.getString(1)) } }
+    fun unfinalized(network: Boolean): List<Pair<String,String>> = readableDatabase.rawQuery("SELECT DISTINCT source,identity FROM tasks WHERE status='done' AND finalized=0 AND network=?",arrayOf(if(network) "1" else "0")).use { c -> buildList { while(c.moveToNext()) add(c.getString(0) to c.getString(1)) } }
     fun finalized(source: String,identity: String) { writableDatabase.execSQL("UPDATE tasks SET finalized=1 WHERE source=? AND identity=? AND status='done'",arrayOf(source,identity)) }
     fun stats(source: String): Stats {
         var done=0; var pending=0; var blocked=0; var error: String?=null
