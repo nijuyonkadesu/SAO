@@ -1,5 +1,8 @@
 # Immich backend
 
+> [!NOTE]
+> Source implementation and extension build commands now belong to [SAO-extensions](https://github.com/nijuyonkadesu/SAO-extensions). Install and update the APK from SAO’s Media sources page. [Distribution and build instructions](extension-catalog.md).
+
 Research date: 2026-10-09. Latest stable at that date: **v3.3.1**, released 2026-10-08.
 
 The Immich Retrofit/Moshi client now lives in the separately installed `:immich-extension` APK.

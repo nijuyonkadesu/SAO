@@ -10,7 +10,9 @@ Choose an installed source, pick a category, scroll to your favourite image or v
 
 ## Media sources
 
-Home and the floating picker use the same separately installed source extensions. Install SAO and the Immich extension APK, then add named profiles under **Settings → Media sources**. Each extension owns its credentials; SAO handles browsing, media caching and chat insertion. [Setup and extension contract](docs/source-extensions.md).
+Home and the floating picker use the same separately installed source extensions. **Settings → Media sources → Get extensions** installs supported APKs; newer versions have an **Update** action beside the installed extension. Android asks for installation permission and confirmation. Add named profiles with **Add source**. Each extension owns its credentials; SAO handles browsing, media caching and chat insertion. [Setup and extension contract](docs/source-extensions.md).
+
+All four extensions now build and release independently in [SAO-extensions](https://github.com/nijuyonkadesu/SAO-extensions). [Catalog, installation and manual publishing](docs/extension-catalog.md).
 
 The [Local Sticker extension](docs/local-sticker-source.md) supports named folders with per-album progress/pause/restart, offline labels/OCR, optional FP32/8-bit CLIP Context search with reusable external model folders, and metadata corrections.
 

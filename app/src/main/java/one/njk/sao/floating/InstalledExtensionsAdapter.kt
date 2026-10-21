@@ -9,16 +9,18 @@ import androidx.recyclerview.widget.RecyclerView
 import one.njk.sao.R
 import one.njk.sao.databinding.ItemInstalledExtensionBinding
 import one.njk.sao.databinding.ItemInstalledExtensionsHeadingBinding
+import one.njk.sao.extensions.*
 
 /** A package appears once, even when it has several services or no configured profiles. */
-internal class InstalledExtensionsAdapter(private val info: (String) -> Unit, private val uninstall: (String) -> Unit, private val review: (InstalledExtensionApp) -> Unit) :
+internal class InstalledExtensionsAdapter(private val info: (String) -> Unit, private val uninstall: (String) -> Unit, private val review: (InstalledExtensionApp) -> Unit,
+    private val install: (CatalogExtension)->Unit = {},private val cancel: ()->Unit = {}) :
     ListAdapter<InstalledExtensionsAdapter.Row, RecyclerView.ViewHolder>(object : DiffUtil.ItemCallback<Row>() {
         override fun areItemsTheSame(old: Row, new: Row) = old.app?.packageName == new.app?.packageName
         override fun areContentsTheSame(old: Row, new: Row) = old == new
     }) {
-    data class Row(val app: InstalledExtensionApp? = null, val empty: Boolean = false, val interactive: Boolean = true)
-    fun submitApps(apps: List<InstalledExtensionApp>, loaded: Boolean, saving: Boolean = false) {
-        submitList(listOf(Row(empty = loaded && apps.isEmpty())) + apps.map { Row(it,interactive=loaded && !saving) })
+    data class Row(val app: InstalledExtensionApp? = null, val empty: Boolean = false, val interactive: Boolean = true,val catalog: CatalogState=CatalogState())
+    fun submitApps(apps: List<InstalledExtensionApp>, loaded: Boolean, saving: Boolean = false,catalog: CatalogState=CatalogState()) {
+        submitList(listOf(Row(empty = loaded && apps.isEmpty())) + apps.map { Row(it,interactive=loaded && !saving,catalog=catalog) })
     }
     override fun getItemViewType(position: Int) = if (getItem(position).app == null) 0 else 1
     override fun onCreateViewHolder(parent: ViewGroup, type: Int): RecyclerView.ViewHolder {
@@ -48,6 +50,7 @@ internal class InstalledExtensionsAdapter(private val info: (String) -> Unit, pr
                 holder.binding.uninstall.contentDescription = context.getString(R.string.source_extension_uninstall_name,app.name)
                 holder.binding.appInfo.setOnClickListener { info(app.packageName) }
                 holder.binding.uninstall.setOnClickListener { uninstall(app.packageName) }
+                bindInstall(holder.binding,row.catalog.entries.firstOrNull { it.packageName==app.packageName },app,row.catalog,row.interactive,install,cancel)
             }
         }
     }

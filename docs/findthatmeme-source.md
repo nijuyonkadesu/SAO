@@ -1,5 +1,8 @@
 # FindThatMeme source APK
 
+> [!NOTE]
+> Source implementation and extension build commands now belong to [SAO-extensions](https://github.com/nijuyonkadesu/SAO-extensions). Install and update the APK from SAO’s Media sources page. [Distribution and build instructions](extension-catalog.md).
+
 Install **`findthatmeme-sao.apk`**, then open **SAO → Settings → Media sources → Add source → FindThatMeme**. Name the source and choose **Save and use source**. No account, API key or SAO APK update is required on the existing source-extension host. Repeat to create additional named profiles; optional included words scope each profile's searches.
 
 The extension uses the existing v1 discovery, Binder and read-granted content-provider contract. No host, source API or shared settings implementation was changed. Existing signing-certificate approval applies normally to independently signed builds.

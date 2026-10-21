@@ -1,5 +1,8 @@
 # Moeview source APK
 
+> [!NOTE]
+> Source implementation and extension build commands now belong to [SAO-extensions](https://github.com/nijuyonkadesu/SAO-extensions). Install and update the APK from SAO’s Media sources page. [Distribution and build instructions](extension-catalog.md).
+
 Install `moeview-sao.apk`, then open **SAO → Settings → Media sources → Add source → Moeview**. Name the profile and choose Yande.re, Konachan, Gelbooru or Danbooru. Repeat for separate boards, rating scopes, accounts or base-tag collections. Profile names appear in the existing home Collection selector and floating picker. This source uses the current v1 extension contract; no SAO app update is required.
 
 Moeview 1.1.4 marks **Non-safe only** and **All ratings** profiles as NSFW automatically. With **NSFW Mode** off in SAO, these sources stay editable in Media sources but are unavailable in either browser or All. Safe-only profiles remain usable. This classification is shared as public metadata; SAO does not inspect board names or image contents.

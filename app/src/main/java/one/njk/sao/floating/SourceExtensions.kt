@@ -37,7 +37,8 @@ data class InstalledSourceExtension(val component: ComponentName, val name: Stri
 
 /** Package inventory is separate from providers that pass the binding trust/protocol checks. */
 data class InstalledExtensionApp(val packageName: String, val name: String, val version: String,
-    val approval: ExtensionApproval = ExtensionApproval.PUBLISHER, val signer: String = "", val compatible: Boolean = true)
+    val approval: ExtensionApproval = ExtensionApproval.PUBLISHER, val signer: String = "", val compatible: Boolean = true,
+    val versionCode: Long = 0)
 
 @Singleton
 class SourceExtensions @Inject constructor(@ApplicationContext private val context: Context,
@@ -53,7 +54,7 @@ class SourceExtensions @Inject constructor(@ApplicationContext private val conte
                     val info = manager.getPackageInfo(app.packageName, 0)
                     val signer=SourceSignatures.identity(context,app.packageName)
                     val compatible=app.packageName in compatiblePackages
-                    InstalledExtensionApp(app.packageName, manager.getApplicationLabel(app).toString(), info.versionName.orEmpty(),trust.status(app.packageName,signer),signer,compatible)
+                    InstalledExtensionApp(app.packageName, manager.getApplicationLabel(app).toString(), info.versionName.orEmpty(),trust.status(app.packageName,signer),signer,compatible,info.longVersionCode)
                 } catch (_: PackageManager.NameNotFoundException) { null }
             }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }

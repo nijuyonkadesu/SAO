@@ -190,3 +190,13 @@ Only explicit Discord Paste / Attach over the free-tier threshold asks whether t
 | Light | Dark |
 | --- | --- |
 | <img src="discord-attachment-size-light.png" width="260" alt="Discord oversized attachment choice in light theme" /> | <img src="discord-attachment-size-dark.png" width="260" alt="Discord oversized attachment choice in dark theme" /> |
+
+## Extension catalog and updates
+
+Supported APKs build independently in [SAO-extensions](https://github.com/nijuyonkadesu/SAO-extensions). Media sources offers Install, Update, App info and Uninstall on the same page. These captures show public development releases, including a real FindThatMeme 1.0.0 → 1.0.1 update with a saved synthetic profile retained. Android owns permission and confirmation; cancelling leaves Update available. No personal credentials or media were used.
+
+<img src="extension-catalog-light.png" width="220" alt="Get extensions with the published Moeview release and Install action" /> <img src="extension-catalog-dark.png" width="220" alt="The same extension catalog in Material dark colors" />
+
+<img src="extension-update-light.png" width="220" alt="A newer FindThatMeme release offers Update beside App info and Uninstall" /> <img src="extension-update-dark.png" width="220" alt="Installed extension updates in Material dark colors" /> <img src="extension-update-confirmation.png" width="220" alt="Android confirms the FindThatMeme update before changing the installed APK" />
+
+[200% text: extension actions wrap without clipping](extension-actions-large-text.png). [Catalog and validation details](../extension-catalog.md).

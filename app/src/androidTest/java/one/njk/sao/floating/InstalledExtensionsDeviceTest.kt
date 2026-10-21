@@ -58,8 +58,8 @@ class InstalledExtensionsDeviceTest {
                     val state=ViewModelProvider(activity)[SourceProfilesViewModel::class.java].state.value
                     val list=activity.findViewById<RecyclerView>(R.id.source_list)
                     val adapters=(list.adapter as ConcatAdapter).adapters
-                    val profileCount=adapters.dropLast(1).sumOf { it.itemCount }
-                    val inventory=adapters.last() as InstalledExtensionsAdapter
+                    val inventory=adapters.filterIsInstance<InstalledExtensionsAdapter>().single()
+                    val profileCount=adapters.takeWhile { it!==inventory }.sumOf { it.itemCount }
                     val index=inventory.currentList.indexOfFirst { it.app?.packageName==target }
                     if(!state.loaded || index<0) false else {
                         list.scrollToPosition(profileCount+index)

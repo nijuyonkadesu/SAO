@@ -8,6 +8,7 @@ import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.viewModels
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -20,15 +21,21 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ConcatAdapter
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
 import one.njk.sao.R
 import one.njk.sao.databinding.ActivitySourceSettingsBinding
 import one.njk.sao.importing.UploadSettingsViewModel
+import one.njk.sao.extensions.*
 
 @AndroidEntryPoint
 class SourceSettingsActivity : AppCompatActivity() {
     private val model: SourceProfilesViewModel by viewModels()
     private val uploads: UploadSettingsViewModel by viewModels()
-    override fun onResume() { super.onResume(); model.refreshExtensions() }
+    private val catalog: ExtensionCatalogViewModel by viewModels()
+    private val installPermission=registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        catalog.permissionResult(packageManager.canRequestPackageInstalls())
+    }
+    override fun onResume() { super.onResume(); model.refreshExtensions(); catalog.installReady() }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -54,9 +61,10 @@ class SourceSettingsActivity : AppCompatActivity() {
                 if(app.approval==ExtensionApproval.USER) model.extensionApproval(app.packageName,app.signer,false)
                 else if(supportFragmentManager.findFragmentByTag(ExtensionTrustDialog.RESULT)==null)
                     ExtensionTrustDialog.create(app.name,app.packageName,app.signer).show(supportFragmentManager,ExtensionTrustDialog.RESULT)
-            })
+            },::requestExtensionInstall,catalog::cancel)
+        val available=AvailableExtensionsAdapter(catalog::refresh,::requestExtensionInstall,catalog::cancel)
         binding.sourceList.layoutManager = LinearLayoutManager(this)
-        binding.sourceList.adapter = ConcatAdapter(header,adapter,extensions)
+        binding.sourceList.adapter = ConcatAdapter(header,adapter,extensions,available)
         var initialProfilesShown = savedInstanceState != null
         var userScrolled = false
         binding.sourceList.addOnScrollListener(object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
@@ -64,7 +72,8 @@ class SourceSettingsActivity : AppCompatActivity() {
                 if (state == androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_DRAGGING) userScrolled = true
             }
         })
-        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.state.collect { state ->
+        var inventoryRevision=0
+        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { combine(model.state,catalog.state) { state,distribution -> state to distribution }.collect { (state,distribution) ->
             header.update(state.allEnabled,state.loaded && !state.saving)
             adapter.submitList(sourceRows(state.catalog, state.floatingDisabled, state.saving, state.nsfwAllowed)) {
                 // Profiles can arrive after the inventory; keep the initial top instead of
@@ -74,10 +83,20 @@ class SourceSettingsActivity : AppCompatActivity() {
                     if (!userScrolled) binding.sourceList.scrollToPosition(0)
                 }
             }
-            extensions.submitApps(state.installedExtensions,state.loaded,state.saving)
+            extensions.submitApps(state.installedExtensions,state.loaded,state.saving,distribution)
+            available.update(distribution,state.installedExtensions,state.loaded && !state.saving)
+            if(inventoryRevision!=distribution.inventoryRevision) { inventoryRevision=distribution.inventoryRevision; model.refreshExtensions() }
+            if(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) catalog.installReady()
             binding.status.isVisible = state.error
             binding.sourceList.isEnabled = state.loaded && !state.saving
             binding.addSource.isEnabled = state.loaded && !state.saving
+        } } }
+        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.RESUMED) { catalog.installEvents.collect { event ->
+            if(event?.confirmation!=null) {
+                try { if(catalog.ownsConfirmation(event)) startActivity(event.confirmation) }
+                catch(_: ActivityNotFoundException) { unavailablePackageAction() }
+                finally { catalog.confirmationStarted(event) }
+            }
         } } }
         var uploadErrorShown=false
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { uploads.state.collect { state ->
@@ -85,6 +104,14 @@ class SourceSettingsActivity : AppCompatActivity() {
             if(state.error && !uploadErrorShown) com.google.android.material.snackbar.Snackbar.make(binding.root,R.string.upload_settings_failed,com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show()
             uploadErrorShown=state.error
         } } }
+    }
+    private fun requestExtensionInstall(entry: CatalogExtension) {
+        if(packageManager.canRequestPackageInstalls()) catalog.start(entry)
+        else {
+            catalog.permissionNeeded(entry)
+            try { installPermission.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.fromParts("package",packageName,null))) }
+            catch(_: ActivityNotFoundException) { catalog.permissionResult(false); unavailablePackageAction() }
+        }
     }
     private fun openPackage(intent: Intent) {
         try { startActivity(intent) }

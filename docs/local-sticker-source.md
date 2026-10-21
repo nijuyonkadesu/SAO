@@ -1,5 +1,8 @@
 # Local Sticker extension
 
+> [!NOTE]
+> Source implementation and extension build commands now belong to [SAO-extensions](https://github.com/nijuyonkadesu/SAO-extensions). Install and update the APK from SAO’s Media sources page. [Distribution and build instructions](extension-catalog.md).
+
 Install SAO and the matching `local-sticker.apk`, then choose **Settings → Media sources → Add source → Local Sticker**. Give the profile a name, choose an **Import using** method, add and name your collections, then save. **Folder picker** remains the default; **Photo picker** and **Files picker** select individual images and videos. Repeat to create independent profiles. Their names appear in SAO's existing source switcher.
 
 The extension recursively indexes supported JPEG/PNG/WebP/GIF/HEIF/AVIF images and MP4/WebM/MKV videos. Originals remain with their chosen storage provider. Folder grants, indexed metadata, corrections and models belong exclusively to the extension; SAO receives public profile references, pages and read-only media streams. There is no all-files permission. Internet access is used for the explicit Context-model download, never to upload images or search text; ML Kit's CCT telemetry backend and upload components are removed from the manifest.

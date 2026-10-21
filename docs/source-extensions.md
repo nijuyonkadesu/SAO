@@ -1,6 +1,6 @@
 # Source extension APKs
 
-Install SAO and `immich-sao.apk`, then open **Settings → Media sources → Add source → Immich**. Give each connection a name. Repeat for more servers, accounts or album scopes; those **profile names** appear in both the home Collection selector and the floating picker. The source edit action opens the extension settings directly. Immich and Local Sticker include importing in that same page, with Material section headings and dividers. Context remains the default when supported.
+Install SAO, get Immich from **Settings → Media sources → Get extensions**, then open **Settings → Media sources → Add source → Immich**. Give each connection a name. Repeat for more servers, accounts or album scopes; those **profile names** appear in both the home Collection selector and the floating picker. The source edit action opens the extension settings directly. Immich and Local Sticker include importing in that same page, with Material section headings and dividers. Context remains the default when supported.
 
 Source extensions update independently of SAO. Version 1 automatically accepts extensions signed by SAO’s publisher. Other publishers require explicit approval of their package and current signing certificate; the APK remains labelled unverified. It does not load arbitrary third-party code into SAO. SAO includes no sample source; installing and configuring a provider supplies its media. Profiles from uninstalled providers are hidden without deleting their saved configuration. The existing Rays integration remains supported during this transition. [Local Sticker](local-sticker-source.md) provides named folders and selected-media collections, configurable folder/photo/file pickers, per-album processing controls, offline labeling/OCR, optional FP32/8-bit CLIP Context search, user-owned model folders and metadata corrections in a separate APK.
 
@@ -86,7 +86,7 @@ User approval never enables automatic legacy credential migration into another p
 
 ## Shared settings template
 
-First-party extensions depend on `:source-settings`, a Views library that supplies common **Save source** / **Remove source** labels, inline importing and `SourceSettingsGuard`. The host cannot inspect private configuration drafts. Each extension supplies its own dirty comparison and save operation; no credentials cross IPC:
+First-party extensions consume the published `one.njk.sao:source-settings` AAR, a Views library that supplies common **Save source** / **Remove source** labels, inline importing and `SourceSettingsGuard`. The host cannot inspect private configuration drafts. Each extension supplies its own dirty comparison and save operation; no credentials cross IPC:
 
 ```kotlin
 val guard = SourceSettingsGuard(this, binding.saveSource, { model.hasChanges }, { model.state.value.working }, model::save)
@@ -132,12 +132,16 @@ Completed media have a shared **192 MiB** LRU budget. Transfers are limited to t
 
 ## Build and validation
 
+Source implementations live in [SAO-extensions](https://github.com/nijuyonkadesu/SAO-extensions), with 46 relevant commits preserved from this repository. SAO retains only the host and the `source-api` / `source-settings` SDK modules. The extension repository consumes versioned SDK AARs from public GitHub Releases through standard Gradle Ivy resolution; it builds without a SAO checkout or GitHub credentials. [Catalog, installation and publication](extension-catalog.md).
+
+In the SAO checkout:
+
 ```sh
-./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :immich-extension:assembleRelease
-./gradlew :source-api:testDebugUnitTest :app:testDebugUnitTest :immich:testDebugUnitTest
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+./gradlew :source-api:testDebugUnitTest :app:testDebugUnitTest
 ```
 
-Sign the extension's optimized release APK with the same certificate as SAO before installing **both APKs** using Android CLI. The extension is approximately 3.1 MiB; development builds without shrinking are larger. Cross-process instrumentation uses localhost synthetic fixtures for profile isolation, capability recovery, API headers, streams/cache, cancellation and extension settings; it never accesses a configured personal library. Live-server tests remain explicit opt-in.
+Build source APKs in the extension checkout, following its [manual development release instructions](https://github.com/nijuyonkadesu/SAO-extensions#manual-development-releases). The catalog installer accepts only supported same-publisher APKs; separately installed third-party extensions retain the approval flow above. The extension is approximately 3.1 MiB; development builds without shrinking are larger. Cross-process instrumentation uses localhost synthetic fixtures for profile isolation, capability recovery, API headers, streams/cache, cancellation and extension settings; it never accesses a configured personal library. Live-server tests remain explicit opt-in.
 
 Validation passed: 51 JVM tests and 91 distinct Android 15 emulator checks across the source-extension changes, covering lifecycle, search, pagination, sequence restoration, media, local indexing and visible-only index notifications. Local checks include official CLIP reference outputs, download recovery, 120,000-vector ranking, per-album pause/resume/restart and constrained-job checkpoints, external model grants/reuse, deterministic native unmapping, idle unloading and cross-model isolation. The real folder-picker flow passed against the optimized Local Sticker APK with PNG/GIF/MP4/WebM indexing, Context search and original-byte exports. Host, source SDK and Local Sticker lint passed with zero errors; settings were visually checked in light/dark themes. Host DEX inspection confirms that Immich and Local Sticker implementation classes and local ML models are absent from SAO. The earlier model/storage update required only the extension APK. The optional emoji row and removal of built-in samples update SAO itself; configurable media import belongs to Local Sticker 1.3.0. No source protocol change is required.
 
