@@ -13,3 +13,4 @@ dependencies {
     implementation libs.lifecycle.runtime
     implementation libs.android.material
 }
+apply from: rootProject.file('gradle/publish-source-sdk.gradle')

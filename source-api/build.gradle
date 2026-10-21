@@ -7,3 +7,4 @@ android {
     buildFeatures { aidl true }
 }
 dependencies { api libs.coroutines; api libs.javax.inject; testImplementation libs.junit }
+apply from: rootProject.file('gradle/publish-source-sdk.gradle')
