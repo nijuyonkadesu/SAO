@@ -1,1 +1,0 @@
-<resources><style name="Theme.ImmichExtension" parent="Theme.Material3.DayNight.NoActionBar"><item name="android:windowLightStatusBar">true</item></style></resources>

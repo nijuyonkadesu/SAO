@@ -83,7 +83,10 @@ androidComponents {
 dependencies {
     implementation project(':source-api')
     implementation libs.work.runtime
-    androidTestImplementation project(':immich-provider')
+    // Independent reference client used only by cross-process tests, never the host APK.
+    androidTestImplementation('one.njk.sao.extensions:immich-provider:1.0.0') {
+        exclude group: 'one.njk.sao', module: 'source-api'
+    }
     implementation "com.caverock:androidsvg-aar:1.4"
     // Supplied by LSPosed in the scoped process; never bundled into ordinary SAO.
     compileOnly libs.libxposed.api
