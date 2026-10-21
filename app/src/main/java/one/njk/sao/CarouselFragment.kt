@@ -78,6 +78,17 @@ class CarouselFragment : Fragment(), MenuProvider {
             if(sources.state.value.browsingCatalog.selected == null) startActivity(Intent(requireContext(),SourceSettingsActivity::class.java))
             else model.retry()
         }
+        binding.homeRetry.setOnClickListener { model.retry() }
+        binding.homeSourceSettings.setOnClickListener {
+            val catalog=sources.state.value.browsingCatalog
+            val state=model.state.value.browse
+            // A source switch may arrive between rendering the error and handling its click.
+            if(!state.error || state.loading || state.sourceId!=catalog.identity) return@setOnClickListener
+            val profile=catalog.selected ?: return@setOnClickListener
+            if(profile.configuration is AllSourceConfiguration)
+                startActivity(Intent(requireContext(),SourceSettingsActivity::class.java))
+            else requireActivity().editMediaSource(profile)
+        }
         titleHold = ResultHoldAction(binding.mediaTitle,{ !carousel.centeredItem?.filename.isNullOrBlank() },
             { holdMs }, {}, { carousel.centeredItem?.let { item -> action {
                 if(source.owns(item)) clipboard.publishFilename(item,filenameRequest,filenameRequest.next())
@@ -138,7 +149,13 @@ class CarouselFragment : Fragment(), MenuProvider {
         val sourceState=sources.state.value
         val emptySource=sourceState.loaded && sourceState.browsingCatalog.selected==null
         val ready=sourceState.loaded && state.sourceId==sourceState.browsingCatalog.identity && !state.loading
-        binding.homeStatus.isVisible = emptySource || ready && (state.error || state.items.isEmpty())
+        val shown=emptySource || ready && (state.error || state.items.isEmpty())
+        binding.homeStatusPanel.isVisible=shown
+        binding.homeStatus.isVisible=shown
+        binding.homeErrorActions.isVisible=ready && state.error && !emptySource
+        binding.homeRetry.isEnabled=!state.loadingMore
+        binding.homeSourceSettings.setText(if(sourceState.browsingCatalog.selected?.configuration is AllSourceConfiguration)
+            R.string.sources_title else R.string.home_source_settings)
         binding.homeStatus.text = when {
             emptySource -> getString(R.string.home_add_source)
             state.error -> getString(state.errorMessage ?: R.string.home_retry)

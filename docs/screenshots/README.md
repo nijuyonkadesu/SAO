@@ -92,6 +92,10 @@ Hold **Collection**, drag vertically through looping source choices and release 
 
 <img src="home-source-collection-hold.png" width="260" alt="Home Collection heading expanded into the shared Material hold-and-drag source selector" />
 
+Loading errors now offer **Retry** and **Source settings**, which opens the affected profile directly. **All** opens source management. Light/dark captures use a synthetic authentication failure; the extension form and independent main/floating selections were checked on Android 15.
+
+<img src="home-source-error-light.png" width="220" alt="Light home carousel authentication error with Retry and Source settings actions" /> <img src="home-source-error-dark.png" width="220" alt="Dark home carousel with the same direct recovery actions" />
+
 ## Moeview extension
 
 The separate [Moeview APK](../moeview-source.md) supplies named booru profiles and category presets to the existing SAO layout. These home captures use synthetic images and a test-pattern MP4; no personal library is accessed.

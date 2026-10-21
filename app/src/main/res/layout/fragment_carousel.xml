@@ -56,12 +56,23 @@
                     android:gravity="center_vertical" android:maxLines="1" android:ellipsize="end"
                     android:textAppearance="?attr/textAppearanceLabelMedium" android:textColor="?attr/colorOnSurfaceVariant"
                     app:layout_constraintTop_toBottomOf="@id/carousel_recycler_view" />
-                <TextView android:id="@+id/home_status" android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:minHeight="48dp" android:gravity="center" android:padding="16dp"
-                    android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurface"
-                    android:clickable="true" android:focusable="true" android:visibility="gone"
+                <LinearLayout android:id="@+id/home_status_panel" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:gravity="center" android:visibility="gone"
                     app:layout_constraintStart_toStartOf="@id/carousel_recycler_view" app:layout_constraintEnd_toEndOf="@id/carousel_recycler_view"
-                    app:layout_constraintTop_toTopOf="@id/carousel_recycler_view" app:layout_constraintBottom_toBottomOf="@id/carousel_recycler_view" />
+                    app:layout_constraintTop_toTopOf="@id/carousel_recycler_view" app:layout_constraintBottom_toBottomOf="@id/carousel_recycler_view">
+                    <TextView android:id="@+id/home_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:minHeight="48dp" android:gravity="center" android:padding="16dp"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurface"
+                        android:clickable="true" android:focusable="true" android:visibility="gone" />
+                    <LinearLayout android:id="@+id/home_error_actions" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:gravity="center" android:visibility="gone">
+                        <com.google.android.material.button.MaterialButton android:id="@+id/home_retry" style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/home_retry_action" />
+                        <com.google.android.material.button.MaterialButton android:id="@+id/home_source_settings" style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp"
+                            android:text="@string/home_source_settings" />
+                    </LinearLayout>
+                </LinearLayout>
                 <com.google.android.material.chip.ChipGroup
                     android:id="@+id/categories"
                     android:layout_width="match_parent"

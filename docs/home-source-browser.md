@@ -8,6 +8,8 @@ The carousel mounts immediately, with the original `eager.webp` sticker inside e
 
 [Light/dark home previews](screenshots/README.md#home-source-collections). The original README images remain the layout reference.
 
+Source-loading errors offer **Retry** and **Source settings** directly in the carousel. Settings opens the failing profile's extension-owned form without changing the main or floating selection. **All** instead offers **Media sources**, since it combines multiple profiles. Returning without edits preserves the failed browse; Retry reloads the same collection only when pressed.
+
 ## Custom home categories
 
 Open **Settings → Home categories → Edit**, choose a source profile, then add, edit or remove its chips. The inline editor accepts an optional label, a supported search mode and a query. When the extension advertises suggestions, typing two characters offers its own completions; Moeview supplies board-specific tags. Picking a suggestion preserves the other query terms. Blank labels use the query text. **Reset to source defaults** restores the extension's presets; removing every category intentionally leaves no chips.
