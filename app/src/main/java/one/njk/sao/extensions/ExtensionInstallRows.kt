@@ -1,6 +1,12 @@
 package one.njk.sao.extensions
 
 import android.os.Build
+import coil3.ImageLoader
+import coil3.request.Disposable
+import coil3.request.ImageRequest
+import coil3.request.target
+import coil3.request.placeholder
+import coil3.request.error
 import android.text.format.Formatter
 import android.view.LayoutInflater
 import android.view.ViewGroup
@@ -13,6 +19,11 @@ import one.njk.sao.databinding.ItemExtensionCatalogHeadingBinding
 import one.njk.sao.databinding.ItemInstalledExtensionBinding
 import one.njk.sao.floating.InstalledExtensionApp
 import one.njk.sao.source.ExtensionProtocol
+
+internal fun extensionIconPlaceholder(view: android.view.View): android.graphics.drawable.Drawable =
+    requireNotNull(androidx.appcompat.content.res.AppCompatResources.getDrawable(view.context,R.drawable.ic_picker_source)).mutate().apply {
+        setTint(com.google.android.material.color.MaterialColors.getColor(view,com.google.android.material.R.attr.colorOnSurfaceVariant))
+    }
 
 internal enum class CatalogAction { INSTALL, UPDATE, CURRENT, NEWER, INCOMPATIBLE, DIFFERENT_PUBLISHER }
 internal fun CatalogExtension.action(installedVersion: Long?,installedSigner: String?,sdk: Int,abis: List<String>): CatalogAction = when {
@@ -58,7 +69,7 @@ internal fun bindInstall(binding: ItemInstalledExtensionBinding,entry: CatalogEx
     binding.installExtension.setOnClickListener { if(cancellable) cancel() else entry?.let(install) }
 }
 
-internal class AvailableExtensionsAdapter(private val refresh: ()->Unit,private val install: (CatalogExtension)->Unit,private val cancel: ()->Unit):
+internal class AvailableExtensionsAdapter(private val refresh: ()->Unit,private val install: (CatalogExtension)->Unit,private val cancel: ()->Unit,private val loader: ImageLoader):
     ListAdapter<AvailableExtensionsAdapter.Row,RecyclerView.ViewHolder>(object: DiffUtil.ItemCallback<Row>() {
         override fun areItemsTheSame(a: Row,b: Row)=a.entry?.packageName==b.entry?.packageName
         override fun areContentsTheSame(a: Row,b: Row)=a==b
@@ -71,7 +82,7 @@ internal class AvailableExtensionsAdapter(private val refresh: ()->Unit,private 
     override fun getItemViewType(position: Int)=if(getItem(position).entry==null) 0 else 1
     override fun onCreateViewHolder(parent: ViewGroup,viewType: Int): RecyclerView.ViewHolder {
         val inflater=LayoutInflater.from(parent.context)
-        return if(viewType==0) Header(ItemExtensionCatalogHeadingBinding.inflate(inflater,parent,false)) else Card(ItemInstalledExtensionBinding.inflate(inflater,parent,false))
+        return if(viewType==0) Header(ItemExtensionCatalogHeadingBinding.inflate(inflater,parent,false)) else Card(ItemInstalledExtensionBinding.inflate(inflater,parent,false),loader)
     }
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder,position: Int) {
         val row=getItem(position)
@@ -84,6 +95,7 @@ internal class AvailableExtensionsAdapter(private val refresh: ()->Unit,private 
             }
             is Card -> {
                 val entry=requireNotNull(row.entry)
+                holder.bindIcon(entry.iconUrl)
                 holder.binding.name.text=entry.name
                 holder.binding.details.text=entry.packageName
                 holder.binding.trustStatus.setText(R.string.source_trust_publisher)
@@ -94,5 +106,28 @@ internal class AvailableExtensionsAdapter(private val refresh: ()->Unit,private 
         }
     }
     private class Header(val binding: ItemExtensionCatalogHeadingBinding): RecyclerView.ViewHolder(binding.root)
-    private class Card(val binding: ItemInstalledExtensionBinding): RecyclerView.ViewHolder(binding.root)
+    override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+        if(holder is Card) holder.clearIcon()
+        super.onViewRecycled(holder)
+    }
+    private class Card(val binding: ItemInstalledExtensionBinding,private val loader: ImageLoader): RecyclerView.ViewHolder(binding.root) {
+        private var iconUrl: String?=null
+        private var request: Disposable?=null
+        init { binding.icon.setImageDrawable(extensionIconPlaceholder(binding.icon)) }
+        fun bindIcon(url: String?) {
+            // Progress/state updates must not restart the same icon request.
+            if(iconUrl==url) return
+            clearIcon()
+            iconUrl=url
+            if(url==null) return
+            val pixels=(40*binding.root.resources.displayMetrics.density).toInt().coerceIn(1,256)
+            request=loader.enqueue(ImageRequest.Builder(binding.root.context).data(url).size(pixels,pixels)
+                .decoderFactory(CatalogIconDecoder.factory(pixels))
+                .placeholder(binding.icon.drawable).error(binding.icon.drawable).target(binding.icon).build())
+        }
+        fun clearIcon() {
+            request?.dispose(); request=null; iconUrl=null
+            binding.icon.setImageDrawable(extensionIconPlaceholder(binding.icon))
+        }
+    }
 }

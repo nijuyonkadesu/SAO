@@ -35,6 +35,7 @@ internal class InstalledExtensionsAdapter(private val info: (String) -> Unit, pr
             is App -> {
                 val app = checkNotNull(row.app)
                 val context = holder.itemView.context
+                holder.binding.icon.setImageDrawable(app.icon ?: extensionIconPlaceholder(holder.binding.icon))
                 holder.binding.name.text = app.name
                 holder.binding.details.text = listOf(app.version, app.packageName).filter(String::isNotBlank).joinToString(" · ")
                 holder.binding.trustStatus.setText(when(app.approval) {

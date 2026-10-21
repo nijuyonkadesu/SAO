@@ -29,6 +29,7 @@ import one.njk.sao.extensions.*
 
 @AndroidEntryPoint
 class SourceSettingsActivity : AppCompatActivity() {
+    @javax.inject.Inject lateinit var imageLoader: coil3.ImageLoader
     private val model: SourceProfilesViewModel by viewModels()
     private val uploads: UploadSettingsViewModel by viewModels()
     private val catalog: ExtensionCatalogViewModel by viewModels()
@@ -62,7 +63,7 @@ class SourceSettingsActivity : AppCompatActivity() {
                 else if(supportFragmentManager.findFragmentByTag(ExtensionTrustDialog.RESULT)==null)
                     ExtensionTrustDialog.create(app.name,app.packageName,app.signer).show(supportFragmentManager,ExtensionTrustDialog.RESULT)
             },::requestExtensionInstall,catalog::cancel)
-        val available=AvailableExtensionsAdapter(catalog::refresh,::requestExtensionInstall,catalog::cancel)
+        val available=AvailableExtensionsAdapter(catalog::refresh,::requestExtensionInstall,catalog::cancel,imageLoader)
         binding.sourceList.layoutManager = LinearLayoutManager(this)
         binding.sourceList.adapter = ConcatAdapter(header,adapter,extensions,available)
         var initialProfilesShown = savedInstanceState != null

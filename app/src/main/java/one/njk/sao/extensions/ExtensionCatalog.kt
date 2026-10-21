@@ -6,7 +6,7 @@ import java.net.URI
 data class ExtensionArtifact(val abi: String, val url: String, val sha256: String, val size: Long)
 data class CatalogExtension(val id: String, val packageName: String, val name: String, val description: String,
     val versionCode: Long, val versionName: String, val apiVersion: Int, val minSdk: Int,
-    val signerSha256: String, val channel: String, val artifacts: List<ExtensionArtifact>) {
+    val signerSha256: String, val channel: String, val artifacts: List<ExtensionArtifact>, val iconUrl: String? = null) {
     fun artifact(abis: List<String>): ExtensionArtifact? = abis.firstNotNullOfOrNull { abi -> artifacts.firstOrNull { it.abi==abi } }
         ?: artifacts.firstOrNull { it.abi=="universal" }
 }
@@ -36,7 +36,8 @@ internal object ExtensionCatalog {
             require(artifacts.map { it.abi }.distinct().size==artifacts.size)
             CatalogExtension(id,pkg,label("name",100),label("description",600),row.getLong("versionCode").also { require(it>0) },
                 label("versionName",60),row.getInt("apiVersion").also { require(it>0) },row.getInt("minSdk").also { require(it>=21) },
-                signer,row.optString("channel","stable").also { require(it in setOf("stable","development")) },artifacts)
+                signer,row.optString("channel","stable").also { require(it in setOf("stable","development")) },artifacts,
+                row.optString("iconUrl").takeIf { it=="https://raw.githubusercontent.com/nijuyonkadesu/SAO-extensions/repo/icons/$id.svg" })
         }
         require(result.map { it.packageName }.distinct().size==result.size)
         return result

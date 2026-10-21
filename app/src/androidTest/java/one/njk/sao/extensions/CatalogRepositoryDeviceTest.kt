@@ -45,6 +45,12 @@ class CatalogRepositoryDeviceTest {
     @Test fun catalogRejectsUnapprovedPublishersWrongPackagesDuplicateEntriesAndUnsafeUrls() {
         val row=entry(file.readBytes()); val valid=json(row)
         assertEquals(row.packageName,ExtensionCatalog.decode(valid.toString(),signer).single().packageName)
+        val icon="https://raw.githubusercontent.com/nijuyonkadesu/SAO-extensions/repo/icons/findthatmeme.svg"
+        val decorated=JSONObject(valid.toString()).apply { getJSONArray("extensions").getJSONObject(0).put("iconUrl",icon) }
+        assertEquals(icon,ExtensionCatalog.decode(decorated.toString(),signer).single().iconUrl)
+        decorated.getJSONArray("extensions").getJSONObject(0).put("iconUrl","https://unrelated.example/icon.svg")
+        assertNull(ExtensionCatalog.decode(decorated.toString(),signer).single().iconUrl)
+
         for(change in listOf<(JSONObject)->Unit>(
             { it.put("schemaVersion",2) },
             { it.getJSONArray("extensions").getJSONObject(0).put("signerSha256","f".repeat(64)) },

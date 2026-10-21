@@ -195,8 +195,12 @@ Only explicit Discord Paste / Attach over the free-tier threshold asks whether t
 
 Supported APKs build independently in [SAO-extensions](https://github.com/nijuyonkadesu/SAO-extensions). Media sources offers Install, Update, App info and Uninstall on the same page. These captures show public development releases, including a real FindThatMeme 1.0.0 → 1.0.1 update with a saved synthetic profile retained. Android owns permission and confirmation; cancelling leaves Update available. No personal credentials or media were used.
 
-<img src="extension-catalog-light.png" width="220" alt="Get extensions with the published Moeview release and Install action" /> <img src="extension-catalog-dark.png" width="220" alt="The same extension catalog in Material dark colors" />
+<img src="extension-catalog-light.png" width="220" alt="Get extensions with catalog icons and Install actions for Local Sticker and FindThatMeme" /> <img src="extension-catalog-dark.png" width="220" alt="The same extension catalog in Material dark colors" />
 
 <img src="extension-update-light.png" width="220" alt="A newer FindThatMeme release offers Update beside App info and Uninstall" /> <img src="extension-update-dark.png" width="220" alt="Installed extension updates in Material dark colors" /> <img src="extension-update-confirmation.png" width="220" alt="Android confirms the FindThatMeme update before changing the installed APK" />
+
+Installed APK icons come from Android’s package inventory; available icons use the catalog SVGs. The existing app artwork is preserved. Icon requests use the shared image cache and survive progress rebinds.
+
+<img src="extension-installed-icons.png" width="220" alt="Installed Immich and Moeview cards display their Android app icons" />
 
 [200% text: extension actions wrap without clipping](extension-actions-large-text.png). [Catalog and validation details](../extension-catalog.md).
