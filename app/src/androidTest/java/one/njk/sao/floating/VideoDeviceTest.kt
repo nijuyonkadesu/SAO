@@ -53,6 +53,9 @@ class VideoDeviceTest {
             }
         }
         server.start(); access.immichSettings().save(ImmichConfig(server.url("/").toString(), "video-contract-key"))
+        // Non-UI tests do not open the source screen, which refreshes installed profiles.
+        // Replace availability left behind by a previously closed fixture explicitly.
+        access.sources().available(access.sources().current().profiles.map { it.id }.toSet())
     }
     @After fun cleanup() = runBlocking {
         access.sources().restore(previous); access.browseSession().reset(); server.shutdown()

@@ -50,6 +50,18 @@ class RaysMediaSource(private val context: Context, private val config: RaysConf
     private val client = RaysClient(context, config.packageName, dispatchers.io)
     @Volatile private var closed = false
     private val videoFiles = Mutex()
+    private val videoReaders = mutableMapOf<File,Int>()
+    private fun videoFile(item: MediaItem) = File(File(context.cacheDir,"rays/videos"),
+        item.id + if(item.mimeType=="video/webm") ".webm" else ".mp4")
+    override suspend fun <T> withVideoFile(item: MediaItem, block: suspend (File) -> T): T {
+        val file=videoFile(item)
+        videoFiles.withLock { videoReaders[file]=(videoReaders[file] ?: 0)+1 }
+        try { return block(requireNotNull(video(item))) }
+        finally { withContext(kotlinx.coroutines.NonCancellable) { videoFiles.withLock {
+            val remaining=videoReaders.getValue(file)-1
+            if(remaining==0) videoReaders.remove(file) else videoReaders[file]=remaining
+        } } }
+    }
     override suspend fun page(query: MediaQuery, cursor: String?): MediaPage = withContext(dispatchers.io) {
         check(!closed)
         val keyword = listOfNotNull(query.text.takeIf { it.isNotBlank() }, query.filter).joinToString(" ")
@@ -101,7 +113,7 @@ class RaysMediaSource(private val context: Context, private val config: RaysConf
         videoFiles.withLock {
             val input = uri(item)
             val directory = File(context.cacheDir, "rays/videos").apply { mkdirs() }
-            val file = File(directory, item.id + if (item.mimeType == "video/webm") ".webm" else ".mp4")
+            val file = videoFile(item)
             if (!file.isFile) {
                 val staging = File(directory, file.name + ".pending")
                 try {
@@ -120,7 +132,7 @@ class RaysMediaSource(private val context: Context, private val config: RaysConf
                     check(!closed && staging.renameTo(file))
                 } finally { staging.delete() }
                 var total = directory.listFiles().orEmpty().filter { it.isFile }.sumOf { it.length() }
-                directory.listFiles().orEmpty().filter { it.isFile && it != file && !it.name.endsWith(".pending") }
+                directory.listFiles().orEmpty().filter { it.isFile && it != file && it !in videoReaders && !it.name.endsWith(".pending") }
                     .sortedBy { it.lastModified() }.forEach {
                         val length = it.length()
                         if (total > 128L * 1024 * 1024 && it.delete()) total -= length

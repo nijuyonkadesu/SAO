@@ -186,7 +186,7 @@ class PickerActivity : AppCompatActivity() {
             val rendition = nativePasteRendition(item)
             if (rendition != null) {
                 nativeInsert(item, rendition)
-            } else if (model.prepareClipboard(target) && PasteAssistService.requestPaste(pasteAnchor, targetPackage)) finish()
+            } else if (model.prepareClipboard(target) { limitAttachment(item,it) } && PasteAssistService.requestPaste(pasteAnchor, targetPackage)) finish()
             else inlineFailure(R.string.floating_paste_unavailable)
         } } }
         binding.mediaAction.setOnClickListener { withCenteredItem { item -> dispatch { share(item, Rendition.MEDIA) } } }
@@ -703,7 +703,7 @@ class PickerActivity : AppCompatActivity() {
             try { action() }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: android.content.ActivityNotFoundException) { inlineFailure(R.string.floating_app_unavailable) }
-            catch (_: Exception) { inlineFailure(R.string.floating_failure) }
+            catch (error: Exception) { inlineFailure((error as? MediaExportException)?.messageRes ?: R.string.floating_failure) }
             finally { busy = false; binding.progress.isVisible = model.state.value.loading; renderDock() }
         }
     }
@@ -716,7 +716,7 @@ class PickerActivity : AppCompatActivity() {
             nativeInsert(item, Rendition.MEDIA)
             return
         }
-        var media = exports.prepare(item, rendition)
+        var media = exports.prepare(item, rendition, DeliveryPolicy.stickerRequirements(receivingTarget))
         if (item.mimeType == "video/webm" && receivingPackage != null && receivingTarget != MessagingTarget.OTHER) {
             val compatibleMime = withContext(dispatchers.io) {
                 VideoCompatibility.mime(item.mimeType) { mime ->
@@ -727,6 +727,7 @@ class PickerActivity : AppCompatActivity() {
             }
             if (compatibleMime == "video/mp4") media = exports.mp4(item)
         }
+        if(rendition==Rendition.MEDIA) media=limitAttachment(item,media)
         if (receivingTarget == MessagingTarget.INSTAGRAM) {
             val receiver = withContext(dispatchers.io) { InstagramDelivery.receiver(packageManager, media.mimeType) }
             if (receiver == null) {
@@ -745,12 +746,17 @@ class PickerActivity : AppCompatActivity() {
     }
     private suspend fun nativeInsert(item: MediaItem, rendition: Rendition = Rendition.STICKER_WEBP) {
         val pkg = targetPackage ?: return; val session = nativeSession ?: return
-        val mime = if (rendition == Rendition.STICKER_WEBP) "image/webp.wasticker" else nativeMediaMime(item)
+        var mime = if (rendition == Rendition.STICKER_WEBP) "image/webp.wasticker" else nativeMediaMime(item)
         if (!NativeBridgeRegistry.supports(pkg, session, mime)) { inlineFailure(R.string.floating_native_rejected); return }
         val instagram = target == MessagingTarget.INSTAGRAM
         val discord = target == MessagingTarget.DISCORD
-        val media = if (item.mimeType == "video/webm" && mime == "video/mp4") exports.mp4(item)
-            else exports.prepare(item, rendition)
+        var media = if (item.mimeType == "video/webm" && mime == "video/mp4") exports.mp4(item)
+            else exports.prepare(item, rendition, DeliveryPolicy.stickerRequirements(target))
+        if(rendition==Rendition.MEDIA) {
+            media=limitAttachment(item,media)
+            mime=media.mimeType
+            if(!NativeBridgeRegistry.supports(pkg,session,mime)) { inlineFailure(R.string.floating_native_rejected); return }
+        }
         val context = applicationContext
         // Explicit handoff must outlive this activity while the original host regains focus.
         deliveryScope.launch {
@@ -765,6 +771,16 @@ class PickerActivity : AppCompatActivity() {
             }, Toast.LENGTH_LONG).show()
         }
         finish()
+    }
+    private suspend fun limitAttachment(item: MediaItem, media: ExportedMedia): ExportedMedia {
+        val maximum=AttachmentSizePolicy.warningLimit(target) ?: return media
+        val bytes=withContext(dispatchers.io) { media.file.length() }
+        if(bytes<=maximum) return media
+        return when(AttachmentLimitDialog.choose(this,bytes,AttachmentSizePolicy.canReduce(media.mimeType,item.hasMotion))) {
+            false -> media
+            true -> exports.smaller(item,media,maximum)
+            null -> throw CancellationException("Attachment delivery cancelled")
+        }
     }
     companion object {
         private const val EXTRA_TARGET = "target_package"

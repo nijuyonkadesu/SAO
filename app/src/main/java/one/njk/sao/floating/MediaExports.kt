@@ -3,41 +3,30 @@ package one.njk.sao.floating
 import one.njk.sao.source.*
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RectF
 import android.net.Uri
-import androidx.core.content.FileProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
 data class ExportedMedia(val uri: Uri, val mimeType: String, val file: File)
-
-/** Both browsing surfaces write the same export files, so their staging work shares one lock. */
-@Singleton
-class MediaExportLock @Inject constructor() { internal val mutex = Mutex() }
 
 @Singleton
 class MediaExports @Inject constructor(@ApplicationContext private val context: Context,
     private val source: MediaSource,
     private val dispatchers: FloatingDispatchers = FloatingDispatchers(),
     private val transcoder: VideoTranscoder = VideoTranscoder(context, dispatchers),
-    private val exportLock: MediaExportLock = MediaExportLock()) {
-    private val mutex get() = exportLock.mutex
-
+    private val store: MediaExportStore = MediaExportStore(context, dispatchers)) {
     /** Home Share uses the displayed rendition, including animation/video; never fetch its original. */
     suspend fun displayed(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
         require(item.id.matches(Regex("[a-z0-9_-]+")))
-        val data=if(item.isVideo) requireNotNull(source.video(item)) else source.preview(item)
+        if(item.isVideo) source.withVideoFile(item) { snapshot(item,it) } else snapshot(item,source.preview(item))
+    }
+
+    private suspend fun snapshot(item: MediaItem, data: Any): ExportedMedia {
         fun input(): java.io.InputStream = when(data) {
             is File -> data.inputStream()
             is Uri -> requireNotNull(context.contentResolver.openInputStream(data))
@@ -54,96 +43,79 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
             bounds.outMimeType ?: item.mimeType
         }
         val extension=android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime) ?: "bin"
-        val dir=File(context.cacheDir,"share_cache/home").apply { mkdirs() }
-        val file=File(dir,"${item.id}-display.$extension")
-        mutex.withLock {
-            if(!file.isFile) {
-                val staging=File(dir,file.name+".pending")
-                try {
-                    input().use { from -> staging.outputStream().use { from.copyTo(it) } }
-                    check(staging.length()>0 && staging.renameTo(file))
-                } finally { staging.delete() }
-            }
-            val now=System.currentTimeMillis()
-            file.setLastModified(now)
-            // Share grants need a stable snapshot; reclaim old snapshots only on another explicit share.
-            dir.listFiles()?.filter { it!=file && now-it.lastModified()>24L*60*60*1000 }?.forEach { it.delete() }
+        val file=store.write("${item.id}-display.$extension") { staging ->
+            input().use { from -> staging.outputStream().use { MediaExportStore.copy(from,it) } }
         }
-        ExportedMedia(FileProvider.getUriForFile(context,"${context.packageName}.fileprovider",file),mime,file)
+        return store.exported(file,mime)
     }
 
-    suspend fun prepare(item: MediaItem, rendition: Rendition): ExportedMedia = withContext(dispatchers.io) {
+    suspend fun prepare(item: MediaItem, rendition: Rendition,
+        sticker: StickerRequirements = StickerRequirements.WHATSAPP): ExportedMedia = withContext(dispatchers.io) {
         require(!item.hasMotion || rendition == Rendition.MEDIA) { "Animated sticker conversion is unavailable" }
         require(item.id.matches(Regex("[a-z0-9_-]+")))
-        val (extension, mime) = when {
-            rendition == Rendition.MEDIA -> (android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(item.mimeType) ?: "bin") to item.mimeType
-            rendition == Rendition.STICKER_WEBP -> "webp" to "image/webp"
-            else -> "png" to "image/png"
+        val (extension,mime) = when(rendition) {
+            Rendition.MEDIA -> (android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(item.mimeType) ?: "bin") to item.mimeType
+            Rendition.STICKER_WEBP -> "webp" to "image/webp"
+            Rendition.STICKER_PNG -> "png" to "image/png"
         }
-        val dir = File(context.filesDir, "floating_exports/v2").apply { mkdirs() }
-        val file = File(dir, "${item.id}-${rendition.name.lowercase()}.$extension")
-        mutex.withLock {
-            if (!file.exists()) {
-                val staging = File(dir, file.name + ".pending")
-                try {
-                    if (rendition == Rendition.MEDIA) {
-                        source.original(item).use { input -> staging.outputStream().use { input.copyTo(it) } }
-                    } else {
-                        val original = source.raster(item).use { it.readBytes() }
-                        val encoded = withContext(dispatchers.conversion) { encode(original, rendition) }
-                        staging.writeBytes(encoded)
-                    }
-                    check(staging.renameTo(file)) { "Unable to save export" }
-                } finally { staging.delete() }
+        val budget=if(rendition==Rendition.STICKER_WEBP) "-${sticker.maxBytes}" else ""
+        val file=store.write("${item.id}-${rendition.name.lowercase()}$budget.$extension") { staging ->
+            if(rendition==Rendition.MEDIA) {
+                source.original(item).use { input -> staging.outputStream().use { MediaExportStore.copy(input,it) } }
+            } else source.raster(item).use { input ->
+                // Cached extension images already have a seekable FD. A pipe/SVG gets one
+                // temporary disk spool; neither path allocates the compressed file on the heap.
+                val seekable=input as? java.io.FileInputStream
+                if(seekable!=null && runCatching { seekable.channel.position(0) }.isSuccess)
+                    writeSticker(seekable,staging,rendition,sticker)
+                else {
+                    val scratch=File.createTempFile("raster-", ".pending",store.directory)
+                    try {
+                        scratch.outputStream().use { MediaExportStore.copy(input,it) }
+                        scratch.inputStream().use { writeSticker(it,staging,rendition,sticker) }
+                    } finally { scratch.delete() }
+                }
             }
         }
-        ExportedMedia(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file), mime, file)
-    }
-    suspend fun mp4(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
-        require(item.mimeType == "video/webm")
-        val original = prepare(item, Rendition.MEDIA)
-        val file = File(original.file.parentFile, "${item.id}-compatible.mp4")
-        mutex.withLock {
-            if (!file.isFile) {
-                val staging = File(file.parentFile, file.name + ".pending")
-                try {
-                    transcoder.mp4(original.file, staging)
-                    check(staging.isFile && staging.length() > 0 && staging.renameTo(file))
-                } finally { staging.delete() }
-            }
-        }
-        ExportedMedia(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file), "video/mp4", file)
-    }
-    private fun encode(original: ByteArray, rendition: Rendition): ByteArray {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(original, 0, original.size, bounds)
-        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Invalid image" }
-        var sample = 1
-        while (bounds.outWidth / sample > 2048 || bounds.outHeight / sample > 2048) sample *= 2
-        val bitmap = BitmapFactory.decodeByteArray(original, 0, original.size,
-            BitmapFactory.Options().apply { inSampleSize = sample }) ?: error("Unable to decode image")
-        val result = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
-        try {
-            val canvas = Canvas(result)
-            canvas.drawColor(Color.TRANSPARENT)
-            val scale = 496f / maxOf(bitmap.width, bitmap.height)
-            val width = bitmap.width * scale; val height = bitmap.height * scale
-            canvas.drawBitmap(bitmap, null, RectF((512-width)/2, (512-height)/2,
-                (512+width)/2, (512+height)/2), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
-            val format = when (rendition) {
-                Rendition.MEDIA -> error("Media exports preserve the original file")
-                Rendition.STICKER_PNG -> Bitmap.CompressFormat.PNG
-                Rendition.STICKER_WEBP -> Bitmap.CompressFormat.WEBP_LOSSY
-            }
-            var quality = 90
-            var bytes: ByteArray
-            do {
-                bytes = ByteArrayOutputStream().use { check(result.compress(format, quality, it)); it.toByteArray() }
-                quality -= 10
-            } while (rendition == Rendition.STICKER_WEBP && bytes.size > 100 * 1024 && quality >= 10)
-            require(rendition != Rendition.STICKER_WEBP || bytes.size <= 100 * 1024) { "Sticker exceeds 100 KB" }
-            return bytes
-        } finally { result.recycle(); bitmap.recycle() }
+        store.exported(file,mime)
     }
 
+    private suspend fun writeSticker(input: java.io.FileInputStream, staging: File, rendition: Rendition, requirements: StickerRequirements) {
+        val bytes=store.conversions.withPermit {
+            withContext(dispatchers.conversion) { StaticStickerEncoder.encode(input,rendition,requirements) }
+        }
+        if(bytes==null) {
+            input.channel.position(0)
+            staging.outputStream().use { MediaExportStore.copy(input,it) }
+        } else staging.writeBytes(bytes)
+    }
+
+    suspend fun mp4(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
+        require(item.mimeType=="video/webm")
+        require(item.id.matches(Regex("[a-z0-9_-]+")))
+        val file=store.write("${item.id}-compatible.mp4") { staging ->
+            source.withVideoFile(item) { input ->
+                store.conversions.withPermit { transcoder.mp4(input,staging) }
+            }
+        }
+        store.exported(file,"video/mp4")
+    }
+
+    /** Called only after the user explicitly chooses the receiving app's smaller-copy option. */
+    suspend fun smaller(item: MediaItem, original: ExportedMedia, maxBytes: Long): ExportedMedia = withContext(dispatchers.io) {
+        require(maxBytes>0 && AttachmentSizePolicy.canReduce(original.mimeType,item.animated))
+        if(original.file.length()<=maxBytes) return@withContext original
+        val mime=if(item.isVideo) "video/mp4" else original.mimeType
+        val extension=if(item.isVideo) "mp4" else if(mime=="image/jpeg") "jpg" else "png"
+        val file=store.write("${item.id}-limited-$maxBytes.$extension") { staging ->
+            store.using(original.file) {
+                store.conversions.withPermit {
+                    if(item.isVideo) transcoder.mp4(original.file,staging,maxBytes)
+                    else withContext(dispatchers.conversion) { AttachmentImageEncoder.write(original.file,staging,mime,maxBytes) }
+                }
+            }
+            if(staging.length()>maxBytes) throw MediaExportException(one.njk.sao.R.string.media_export_size_unavailable)
+        }
+        store.exported(file,mime)
+    }
 }

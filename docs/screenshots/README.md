@@ -182,3 +182,11 @@ A differently signed APK remains unverified after explicit approval. The warning
 The separate APK supplies keyword search, media filters, pagination and home presets to the unchanged SAO host. Settings and floating captures use synthetic fixtures; the last capture shows a public cat MP4 playing through the signed optimized extension. Light/dark forms, their save footer and the existing picker were reviewed. [Setup and validation](../findthatmeme-source.md).
 
 <img src="findthatmeme-settings-light.png" width="220" alt="FindThatMeme profile settings with source name, included words and content ratings in light mode" /> <img src="findthatmeme-settings-dark.png" width="220" alt="The same extension-owned settings in Material dark colors" /> <img src="findthatmeme-floating-dark.png" width="220" alt="Existing SAO floating search uses Description and media filters while hiding unsupported Lucky" /> <img src="findthatmeme-live-video-dark.png" width="220" alt="Public cat video playing in the unchanged SAO carousel through the optimized FindThatMeme APK" />
+
+## Attachment size choice
+
+Only explicit Discord Paste / Attach over the free-tier threshold asks whether to keep the original or create a smaller copy. Copy stays unchanged. Synthetic JPEG and intercepted send intents; visually checked in both themes. [Conversion and HDR policy](../media-exports.md).
+
+| Light | Dark |
+| --- | --- |
+| <img src="discord-attachment-size-light.png" width="260" alt="Discord oversized attachment choice in light theme" /> | <img src="discord-attachment-size-dark.png" width="260" alt="Discord oversized attachment choice in dark theme" /> |

@@ -33,7 +33,7 @@ abstract class FloatingModule {
 
         @Provides @Singleton @HomeSources
         fun homeExports(@ApplicationContext context: Context, @HomeSources source: MediaSource,
-            dispatchers: FloatingDispatchers, transcoder: VideoTranscoder, exportLock: MediaExportLock) = MediaExports(context, source, dispatchers, transcoder, exportLock)
+            dispatchers: FloatingDispatchers, transcoder: VideoTranscoder, store: MediaExportStore) = MediaExports(context, source, dispatchers, transcoder, store)
     }
     @Binds @IntoMap @StringKey("rays")
     abstract fun raysFactory(factory: RaysSourceFactory): MediaSourceFactory

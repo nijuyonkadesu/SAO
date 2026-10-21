@@ -25,6 +25,18 @@ class SourceMediaCache @Inject constructor(@ApplicationContext private val conte
     private val locks = Array(32) { Mutex() }
     private val maintenance = Mutex()
     private var prepared = false
+    private val readers = mutableMapOf<String, Int>()
+
+    suspend fun <T> withFile(owner: String, key: String, maxBytes: Long, resource: suspend () -> Uri,
+        block: suspend (File) -> T): T {
+        val path = File(File(directory, digest(owner).take(32)), digest(key)).absolutePath
+        maintenance.withLock { readers[path] = (readers[path] ?: 0) + 1 }
+        try { return block(get(owner, key, maxBytes, resource)) }
+        finally { withContext(NonCancellable) { maintenance.withLock {
+            val remaining = readers.getValue(path) - 1
+            if (remaining == 0) readers.remove(path) else readers[path] = remaining
+        } } }
+    }
 
     suspend fun get(owner: String, key: String, maxBytes: Long, resource: suspend () -> Uri): File = withContext(Dispatchers.IO) {
         maintenance.withLock {
@@ -101,7 +113,7 @@ class SourceMediaCache @Inject constructor(@ApplicationContext private val conte
         var total = files.sumOf { it.length() }
         for (file in files) {
             if (total <= 192L * 1024 * 1024) break
-            if (file != keep) {
+            if (file != keep && file.absolutePath !in readers) {
                 val bytes = file.length()
                 if (file.delete()) total -= bytes
             }

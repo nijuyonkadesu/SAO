@@ -111,7 +111,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         copying = viewModelScope.launch {
             try {
                 val choice = DeliveryPolicy.clipboard(item, prefer ?: preferences.current().preferStickers, target)
-                val media = exports.prepare(item, choice.rendition)
+                val media = exports.prepare(item, choice.rendition, DeliveryPolicy.stickerRequirements(target))
                 if (source.owns(item) && clipboard.publish(item, media, request, version)) copyStatus.value = when {
                     item.isVideo -> one.njk.sao.R.string.picker_video_copied
                     item.animated -> one.njk.sao.R.string.picker_gif_copied
@@ -121,7 +121,8 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
                     else -> one.njk.sao.R.string.picker_copied
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { if (request.current(version)) copyStatus.value = (error as? SourceReadException)?.messageRes ?: one.njk.sao.R.string.picker_copy_failed }
+            catch (error: Exception) { if (request.current(version)) copyStatus.value = (error as? SourceReadException)?.messageRes
+                ?: (error as? MediaExportException)?.messageRes ?: one.njk.sao.R.string.picker_copy_failed }
         }
     }
     fun copyFilename(item: MediaItem) {
@@ -136,11 +137,11 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
             catch(_: Exception) { if(request.current(version)) copyStatus.value=one.njk.sao.R.string.picker_copy_failed }
         }
     }
-    suspend fun prepareClipboard(target: MessagingTarget): Boolean {
+    suspend fun prepareClipboard(target: MessagingTarget, delivery: suspend (ExportedMedia) -> ExportedMedia = { it }): Boolean {
         val item = selection.value ?: return false
         val version = request.next(); copying?.cancel()
         val choice = DeliveryPolicy.clipboard(item, preferredOverride ?: preferences.current().preferStickers, target)
-        val media = exports.prepare(item, choice.rendition)
+        val media = delivery(exports.prepare(item, choice.rendition, DeliveryPolicy.stickerRequirements(target)))
         return source.owns(item) && clipboard.publish(item, media, request, version)
     }
     override fun onCleared() { session.releaseSequence(visibilityOwner); request.next(); pickerVisible(false) }

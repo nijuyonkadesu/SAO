@@ -100,22 +100,27 @@ class ExtensionMediaSource(private val context: Context, private val profile: So
     private fun validate(uri: String): Uri = Uri.parse(uri).also {
         require(it.scheme == "content" && context.packageManager.resolveContentProvider(it.authority.orEmpty(),0)?.packageName == config.packageName)
     }
-    private suspend fun file(item: MediaItem, kind: String): File {
+    private suspend fun <T> withFile(item: MediaItem, kind: String, block: suspend (File) -> T): T {
         check(item.remote?.sourceId == profile.identity && !closed)
         val keys = requireNotNull(item.remote).cacheKeys
         val variant = keys[kind] ?: kind
         val fullSize = kind != "preview" || variant == (keys["original"] ?: "original")
         val maxBytes = if (fullSize) 64L*1024*1024 else 8L*1024*1024
-        return mediaRead { cache.get(profile.identity,"${item.id}:$variant",maxBytes) {
+        return mediaRead { cache.withFile(profile.identity,"${item.id}:$variant",maxBytes, {
             validate(request(ExtensionProtocol.MEDIA,JSONObject().put("item",SourceWire.item(item)).put("kind",kind)).getString("uri"))
-        } }
+        }, block) }
     }
+    private suspend fun file(item: MediaItem, kind: String): File = withFile(item, kind) { it }
     private suspend fun <T> mediaRead(block: suspend () -> T): T = try { block() }
         catch (error: ExtensionFailure) { throw SourceReadException(error.messageResource(),error) }
     override suspend fun preview(item: MediaItem): Any = file(item,"preview")
     override suspend fun video(item: MediaItem): File? = if (item.isVideo) file(item,"video") else null
-    override suspend fun original(item: MediaItem): InputStream = file(item,"original").inputStream()
-    override suspend fun raster(item: MediaItem): InputStream = file(item,"raster").inputStream()
+    override suspend fun <T> withVideoFile(item: MediaItem, block: suspend (File) -> T): T {
+        require(item.isVideo)
+        return withFile(item, "video", block)
+    }
+    override suspend fun original(item: MediaItem): InputStream = withFile(item,"original") { it.inputStream() }
+    override suspend fun raster(item: MediaItem): InputStream = withFile(item,"raster") { it.inputStream() }
     override suspend fun personPreview(person: SearchPerson): Any {
         check(person.sourceId == profile.identity)
         return mediaRead { cache.get(profile.identity,"person:${person.id}",2L*1024*1024) {

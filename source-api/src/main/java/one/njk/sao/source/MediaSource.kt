@@ -26,6 +26,9 @@ interface MediaSource {
     suspend fun preview(item: MediaItem): Any
     /** Local original for a focused video preview; no player receives account credentials. */
     suspend fun video(item: MediaItem): java.io.File? = null
+    /** Scoped host-side use keeps a cached input alive through a conversion. No RPC/API change. */
+    suspend fun <T> withVideoFile(item: MediaItem, block: suspend (java.io.File) -> T): T =
+        block(requireNotNull(video(item)))
     /** Caller owns the stream and reads/closes it on IO. Fetching remote bytes suspends. */
     suspend fun original(item: MediaItem): InputStream
     /** A decoder-compatible still image for the existing 512px export pipeline. */

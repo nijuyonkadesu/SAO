@@ -22,6 +22,8 @@ enum class Rendition { MEDIA, STICKER_PNG, STICKER_WEBP }
 data class DeliveryChoice(val rendition: Rendition, val mediaFallback: Boolean)
 
 object DeliveryPolicy {
+    fun stickerRequirements(target: MessagingTarget) =
+        if(target==MessagingTarget.TELEGRAM) StickerRequirements.TELEGRAM else StickerRequirements.WHATSAPP
     // Discord's native composer receives image/* URIs, including GIFs, but not video/*.
     // Verified against the unmodified 348.10 composer; see docs/discord-apk-analysis.md.
     fun supportsPaste(item: MediaItem, target: MessagingTarget) = when (target) {

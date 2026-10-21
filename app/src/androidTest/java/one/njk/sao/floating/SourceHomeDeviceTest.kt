@@ -464,6 +464,7 @@ class SourceHomeDeviceTest {
                 assertEquals(alternate.id,profiles.current().selectedId)
                 scenario.onActivity { it.findViewById<View>(R.id.type).performClick() }
                 androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Home fixture"))
+                    .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
                     .perform(androidx.test.espresso.action.ViewActions.click())
                 await(scenario,"Tap retains the full collection list") { it.findViewById<TextView>(R.id.type).text.toString()=="Collection: Home fixture" && !model.state.value.browse.loading }
             }

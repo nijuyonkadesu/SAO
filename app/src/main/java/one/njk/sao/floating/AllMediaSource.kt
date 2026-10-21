@@ -129,6 +129,7 @@ internal class AllMediaSource(private val profile: SourceProfile,
     override suspend fun filters(): List<String> = emptyList()
     override suspend fun preview(item: MediaItem) = child(item).preview(item)
     override suspend fun video(item: MediaItem) = child(item).video(item)
+    override suspend fun <T> withVideoFile(item: MediaItem, block: suspend (java.io.File) -> T): T = child(item).withVideoFile(item, block)
     override suspend fun original(item: MediaItem) = child(item).original(item)
     override suspend fun raster(item: MediaItem) = child(item).raster(item)
     override suspend fun openSequence(anchor: MediaItem) = child(anchor).openSequence(anchor)
