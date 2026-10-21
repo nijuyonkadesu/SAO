@@ -23,7 +23,7 @@ class CatalogHttp internal constructor(private val client: OkHttpClient) {
         .connectTimeout(15,TimeUnit.SECONDS).readTimeout(30,TimeUnit.SECONDS).callTimeout(5,TimeUnit.MINUTES).build())
     internal suspend fun <T> receive(url: String, consume: suspend (InputStream,Long)->T): T = withContext(Dispatchers.IO) {
         coroutineScope {
-            val call=client.newCall(Request.Builder().url(url).build())
+            val call=client.newCall(Request.Builder().url(url).header("Cache-Control","no-cache").build())
             // Keep cancellation attached while reading the body, not only until headers arrive.
             val closer=launch(Dispatchers.Default,start=CoroutineStart.UNDISPATCHED) {
                 try { awaitCancellation() } finally { call.cancel() }

@@ -20,6 +20,25 @@ class CatalogIconDeviceTest {
             assertEquals(Color.rgb(75,93,146),bitmap.getPixel(48,48))
         } finally { bitmap.recycle() }
     }
+    @Test fun publishedArtworkDecodesThroughCoil(): Unit=runBlocking {
+        val app=androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        val files=java.io.File(app.cacheDir,"catalog-icon-fixtures").listFiles().orEmpty().filter { it.extension=="svg" }
+        org.junit.Assume.assumeTrue("Stage the built catalog SVGs in cache/catalog-icon-fixtures",files.isNotEmpty())
+        val loader=one.njk.sao.di.AppModule.provideImageLoader(app)
+        try {
+            for(file in files) {
+                val models=mutableListOf<Any>(file)
+                if(androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("liveCatalogIcons")=="true")
+                    models+="https://raw.githubusercontent.com/nijuyonkadesu/SAO-extensions/repo/icons/${file.name}?artwork=1"
+                for(data in models) {
+                    val result=loader.execute(coil3.request.ImageRequest.Builder(app).data(data).size(105,105)
+                        .decoderFactory(CatalogIconDecoder.factory(105)).build())
+                    val error=(result as? coil3.request.ErrorResult)?.throwable
+                    assertTrue("$data: ${error?.stackTraceToString()}",result is coil3.request.SuccessResult)
+                }
+            }
+        } finally { loader.shutdown() }
+    }
     @Test fun oversizedIconsAndEntityDocumentsAreRejectedBeforeRendering(): Unit=runBlocking {
         for(text in listOf(" ".repeat(64*1024+1),"<!DOCTYPE svg [<!ENTITY x 'expansion'>]><svg>&x;</svg>")) {
             try { CatalogIconDecoder.decode(Buffer().writeUtf8(text),96); fail("Unsafe icon accepted") }

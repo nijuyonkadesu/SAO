@@ -95,7 +95,7 @@ internal class AvailableExtensionsAdapter(private val refresh: ()->Unit,private 
             }
             is Card -> {
                 val entry=requireNotNull(row.entry)
-                holder.bindIcon(entry.iconUrl)
+                holder.bindIcon(entry.iconUrl,entry.versionCode)
                 holder.binding.name.text=entry.name
                 holder.binding.details.text=entry.packageName
                 holder.binding.trustStatus.setText(R.string.source_trust_publisher)
@@ -114,14 +114,15 @@ internal class AvailableExtensionsAdapter(private val refresh: ()->Unit,private 
         private var iconUrl: String?=null
         private var request: Disposable?=null
         init { binding.icon.setImageDrawable(extensionIconPlaceholder(binding.icon)) }
-        fun bindIcon(url: String?) {
-            // Progress/state updates must not restart the same icon request.
-            if(iconUrl==url) return
+        fun bindIcon(url: String?,version: Long) {
+            // A published version refreshes artwork; progress/state rebinds reuse its request/cache.
+            val versionedUrl=url?.let { "$it?v=$version" }
+            if(iconUrl==versionedUrl) return
             clearIcon()
-            iconUrl=url
-            if(url==null) return
+            iconUrl=versionedUrl
+            if(versionedUrl==null) return
             val pixels=(40*binding.root.resources.displayMetrics.density).toInt().coerceIn(1,256)
-            request=loader.enqueue(ImageRequest.Builder(binding.root.context).data(url).size(pixels,pixels)
+            request=loader.enqueue(ImageRequest.Builder(binding.root.context).data(versionedUrl).size(pixels,pixels)
                 .decoderFactory(CatalogIconDecoder.factory(pixels))
                 .placeholder(binding.icon.drawable).error(binding.icon.drawable).target(binding.icon).build())
         }
