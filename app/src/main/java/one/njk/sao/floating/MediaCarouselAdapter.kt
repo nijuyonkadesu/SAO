@@ -184,7 +184,8 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
                 holder.binding.videoPreview.alpha = 0f
                 holder.binding.videoPreview.isVisible = true
                 holder.binding.videoPreview.player = created
-                created.setMediaItem(PlayerMediaItem.Builder().setUri(Uri.fromFile(file)).setMimeType(item.mimeType).build())
+                // The source's playback rendition may use a different container from the original.
+                created.setMediaItem(PlayerMediaItem.fromUri(Uri.fromFile(file)))
                 created.prepare(); created.play()
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (version == videoVersion) stopVideo() }

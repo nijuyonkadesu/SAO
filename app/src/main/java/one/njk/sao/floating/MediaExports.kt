@@ -23,7 +23,7 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
     /** Home Share uses the displayed rendition, including animation/video; never fetch its original. */
     suspend fun displayed(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
         require(item.id.matches(Regex("[a-z0-9_-]+")))
-        if(item.isVideo) source.withVideoFile(item) { snapshot(item,it) } else snapshot(item,source.preview(item))
+        if(item.isVideo) source.withPlaybackFile(item) { snapshot(item,it) } else snapshot(item,source.preview(item))
     }
 
     private suspend fun snapshot(item: MediaItem, data: Any): ExportedMedia {
@@ -37,7 +37,14 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
             else -> error("Unsupported display media")
         }
         // A JPEG preview may represent a PNG/HEIC original. Advertise the actual displayed format.
-        val mime=if(item.isVideo) item.mimeType else {
+        val mime=if(item.isVideo) {
+            val retriever=android.media.MediaMetadataRetriever()
+            try {
+                require(data is File)
+                retriever.setDataSource(data.absolutePath)
+                retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_MIMETYPE) ?: item.mimeType
+            } finally { retriever.release() }
+        } else {
             val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true }
             input().use { BitmapFactory.decodeStream(it,null,bounds) }
             bounds.outMimeType ?: item.mimeType

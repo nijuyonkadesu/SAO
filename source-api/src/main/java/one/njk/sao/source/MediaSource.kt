@@ -24,9 +24,12 @@ interface MediaSource {
     suspend fun page(query: MediaQuery, cursor: String? = null): MediaPage
     suspend fun filters(): List<String>
     suspend fun preview(item: MediaItem): Any
-    /** Local original for a focused video preview; no player receives account credentials. */
+    /** Local playback rendition for a focused video; it may differ from the original's container/quality. */
     suspend fun video(item: MediaItem): java.io.File? = null
-    /** Scoped host-side use keeps a cached input alive through a conversion. No RPC/API change. */
+    /** Keep the displayed rendition alive while sharing it. */
+    suspend fun <T> withPlaybackFile(item: MediaItem, block: suspend (java.io.File) -> T): T =
+        block(requireNotNull(video(item)))
+    /** Keep the original input alive through a conversion; never substitute a smaller preview. */
     suspend fun <T> withVideoFile(item: MediaItem, block: suspend (java.io.File) -> T): T =
         block(requireNotNull(video(item)))
     /** Caller owns the stream and reads/closes it on IO. Fetching remote bytes suspends. */

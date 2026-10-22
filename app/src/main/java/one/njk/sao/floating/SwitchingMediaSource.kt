@@ -127,6 +127,7 @@ class SwitchingMediaSource(private val profiles: SourceProfiles,
     override suspend fun places(level: PlaceLevel, country: String?, state: String?, expectedSourceId: String?) = read(expectedSourceId = expectedSourceId) { it.places(level, country, state, expectedSourceId) }
     override suspend fun preview(item: MediaItem): Any = read(item) { it.preview(item) }
     override suspend fun video(item: MediaItem): File? = read(item) { it.video(item) }
+    override suspend fun <T> withPlaybackFile(item: MediaItem, block: suspend (File) -> T): T = read(item) { it.withPlaybackFile(item, block) }
     override suspend fun <T> withVideoFile(item: MediaItem, block: suspend (File) -> T): T = read(item) { it.withVideoFile(item, block) }
     override suspend fun original(item: MediaItem): InputStream = read(item) { it.original(item) }
     override suspend fun raster(item: MediaItem): InputStream = read(item) { it.raster(item) }

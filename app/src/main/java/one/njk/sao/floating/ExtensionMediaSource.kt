@@ -105,7 +105,7 @@ class ExtensionMediaSource(private val context: Context, private val profile: So
         val keys = requireNotNull(item.remote).cacheKeys
         val variant = keys[kind] ?: kind
         val fullSize = kind != "preview" || variant == (keys["original"] ?: "original")
-        val maxBytes = if (fullSize) 64L*1024*1024 else 8L*1024*1024
+        val maxBytes = if (kind == "playback" || !fullSize) 8L*1024*1024 else 64L*1024*1024
         return mediaRead { cache.withFile(profile.identity,"${item.id}:$variant",maxBytes, {
             validate(request(ExtensionProtocol.MEDIA,JSONObject().put("item",SourceWire.item(item)).put("kind",kind)).getString("uri"))
         }, block) }
@@ -114,10 +114,15 @@ class ExtensionMediaSource(private val context: Context, private val profile: So
     private suspend fun <T> mediaRead(block: suspend () -> T): T = try { block() }
         catch (error: ExtensionFailure) { throw SourceReadException(error.messageResource(),error) }
     override suspend fun preview(item: MediaItem): Any = file(item,"preview")
-    override suspend fun video(item: MediaItem): File? = if (item.isVideo) file(item,"video") else null
+    private fun playbackKind(item: MediaItem) = if (item.remote?.cacheKeys?.containsKey("playback") == true) "playback" else "video"
+    override suspend fun video(item: MediaItem): File? = if (item.isVideo) file(item,playbackKind(item)) else null
+    override suspend fun <T> withPlaybackFile(item: MediaItem, block: suspend (File) -> T): T {
+        require(item.isVideo)
+        return withFile(item, playbackKind(item), block)
+    }
     override suspend fun <T> withVideoFile(item: MediaItem, block: suspend (File) -> T): T {
         require(item.isVideo)
-        return withFile(item, "video", block)
+        return withFile(item, "original", block)
     }
     override suspend fun original(item: MediaItem): InputStream = withFile(item,"original") { it.inputStream() }
     override suspend fun raster(item: MediaItem): InputStream = withFile(item,"raster") { it.inputStream() }
