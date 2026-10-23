@@ -23,7 +23,7 @@ class PlaybackExportDeviceTest {
             override suspend fun owns(item: MediaItem)=true
             override suspend fun page(query: MediaQuery, cursor: String?)=MediaPage(emptyList(), null)
             override suspend fun filters()=emptyList<String>()
-            override suspend fun preview(item: MediaItem): Preview=error("Video uses its playback rendition")
+            override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(error("Video uses its playback rendition"))
             override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
                 block: suspend (MediaHandle)->T): T=when(kind) {
                 Rendition.PLAYBACK -> {

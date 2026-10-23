@@ -59,6 +59,7 @@
     <string name="floating_native_unavailable">LSPosed bridge is inactive</string>
     <string name="floating_native_description">Optional: enable SAO for WhatsApp, Instagram or Discord in an API-102 LSPosed framework, restart that app, then focus a chat. Compatible editors offer native insertion.</string>
     <string name="floating_native_rejected">The chat or media handler changed or rejected the request. Nothing was retried.</string>
+    <string name="picker_native_uncertain">Check the chat before pasting again. The app did not confirm whether it accepted the media.</string>
     <string name="floating_native_accepted">WhatsApp accepted the sticker insertion.</string>
     <string name="floating_media_title">%1$s %2$s</string>
     <string name="floating_animated_description">%1$s, animated</string>

@@ -26,19 +26,24 @@ class SourceMediaCache @Inject constructor(@ApplicationContext private val conte
     private val maintenance = Mutex()
     private var prepared = false
     private val readers = mutableMapOf<String, Int>()
+    private val retired = mutableSetOf<String>()
 
     suspend fun <T> withFile(owner: String, key: String, maxBytes: Long, resource: suspend () -> Uri,
         block: suspend (File) -> T): T {
         val path = File(File(directory, digest(owner).take(32)), digest(key)).absolutePath
         maintenance.withLock { readers[path] = (readers[path] ?: 0) + 1 }
         try { return block(get(owner, key, maxBytes, resource)) }
-        finally { withContext(NonCancellable) { maintenance.withLock {
+        finally { withContext(NonCancellable + Dispatchers.IO) { maintenance.withLock {
             val remaining = readers.getValue(path) - 1
             if (remaining == 0) readers.remove(path) else readers[path] = remaining
+            val folder = File(path).parentFile!!
+            if (folder.absolutePath in retired && readers.keys.none { it.startsWith(folder.absolutePath + File.separator) }) {
+                folder.deleteRecursively(); retired.remove(folder.absolutePath)
+            }
         } } }
     }
 
-    suspend fun get(owner: String, key: String, maxBytes: Long, resource: suspend () -> Uri): File = withContext(Dispatchers.IO) {
+    private suspend fun get(owner: String, key: String, maxBytes: Long, resource: suspend () -> Uri): File = withContext(Dispatchers.IO) {
         maintenance.withLock {
             if (!prepared) {
                 directory.walkTopDown().filter { it.isFile && it.name.endsWith(".pending") }.forEach { it.delete() }
@@ -70,14 +75,16 @@ class SourceMediaCache @Inject constructor(@ApplicationContext private val conte
 
     private suspend fun transfer(uri: Uri, pending: File, maxBytes: Long) {
         val signal = CancellationSignal()
-        val descriptor = requireNotNull(context.contentResolver.openFileDescriptor(uri, "r", signal))
+        val opened = java.util.concurrent.atomic.AtomicReference<ParcelFileDescriptor?>()
         try {
             coroutineScope {
-                // Closing on a different dispatcher interrupts a blocked pipe read on cancellation.
+                // Register before open: cancellation must reach a provider blocked in openFile too.
                 val closer = launch(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
-                    try { awaitCancellation() } finally { signal.cancel(); descriptor.close() }
+                    try { awaitCancellation() } finally { signal.cancel(); opened.get()?.close() }
                 }
                 try {
+                    val descriptor = requireNotNull(context.contentResolver.openFileDescriptor(uri, "r", signal)).also(opened::set)
+                    currentCoroutineContext().ensureActive()
                     ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
                         pending.outputStream().use { output ->
                             val buffer = ByteArray(32 * 1024)
@@ -104,7 +111,7 @@ class SourceMediaCache @Inject constructor(@ApplicationContext private val conte
             val remote = if (marker < 0) null else try { JSONObject(message.substring(marker)) } catch (_: Exception) { null }
             if (remote != null) throw ExtensionFailure(remote.optString("code", "NETWORK"), SourceWire.nullable(remote, "retryAfter"))
             throw error
-        } finally { descriptor.close() }
+        } finally { opened.get()?.close() }
     }
 
     private suspend fun trim(keep: File) = maintenance.withLock {
@@ -121,7 +128,11 @@ class SourceMediaCache @Inject constructor(@ApplicationContext private val conte
     }
 
     suspend fun remove(owner: String) = withContext(Dispatchers.IO) {
-        maintenance.withLock { File(directory, digest(owner).take(32)).deleteRecursively() }
+        maintenance.withLock {
+            val folder = File(directory, digest(owner).take(32))
+            if (readers.keys.any { it.startsWith(folder.absolutePath + File.separator) }) retired.add(folder.absolutePath)
+            else folder.deleteRecursively()
+        }
         Unit
     }
 }

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -29,7 +30,7 @@ class SwitchingMediaSource(private val profiles: SourceProfiles,
     private val dispatchers: FloatingDispatchers, private val floatingOnly: Boolean = false) : MediaSource {
     private val catalogs = if (floatingOnly) profiles.floatingCatalogs else profiles.browsingCatalogs
     private suspend fun current() = if (floatingOnly) profiles.currentFloating() else profiles.currentBrowsing()
-    private class Session(val identity: String, val source: MediaSource) {
+    private class Session(val identity: String, val profileId: String?, val source: MediaSource) {
         val lifetime = SupervisorJob()
         fun close() { lifetime.cancel(); (source as? ManagedMediaSource)?.close() }
         suspend fun <T> read(block: suspend (MediaSource) -> T): T = coroutineScope {
@@ -46,15 +47,32 @@ class SwitchingMediaSource(private val profiles: SourceProfiles,
         .catch { error -> if (error is CancellationException) throw error; emit("unavailable") }.distinctUntilChanged()
     override val changes = catalogs.map { it.identity }.distinctUntilChanged()
         .flatMapLatest { flow { emitAll(session().source.changes) }.catch { error -> if(error is CancellationException) throw error } }
-    override val capabilities = catalogs.map { it.identity }.distinctUntilChanged()
+    override val capabilitiesState = catalogs.map { it.identity }.distinctUntilChanged()
         .flatMapLatest { id -> flow {
-            val declared=session().source.capabilities
-            val effective=if(floatingOnly) declared else kotlinx.coroutines.flow.combine(declared,profiles.snapshots) { caps,snapshot ->
-                caps.copy(categories=snapshot.homeCategories[snapshot.browsingCatalog.selectedId] ?: caps.categories)
+            emit(SourceCapabilitiesState.Loading)
+            val owner = session()
+            if(owner.identity != id) return@flow
+            val declared = owner.source.capabilitiesState
+            val effective = if(floatingOnly) declared.map { it.scoped(id) } else kotlinx.coroutines.flow.combine(declared,profiles.snapshots) { status,snapshot ->
+                status.scoped(id,snapshot.homeCategories[owner.profileId])
             }
-            emitAll(effective.map { it.copy(sourceId = id) })
-        }.catch { error -> if (error is CancellationException) throw error; emit(SourceCapabilities(sourceId = id)) } }
+            emitAll(effective)
+        }.catch { error ->
+            if(error is CancellationException || error !is Exception) throw error
+            emit(SourceCapabilitiesState.Failed(error, SourceCapabilities(sourceId=id)))
+        } }.stateIn(scope, SharingStarted.WhileSubscribed(0),SourceCapabilitiesState.Loading)
+    override val capabilities = capabilitiesState.filterNot { it == SourceCapabilitiesState.Loading }
+        .map { it.available }.distinctUntilChanged()
         .stateIn(scope, SharingStarted.WhileSubscribed(0),SourceCapabilities())
+
+    private fun SourceCapabilitiesState.scoped(id: String, categories: List<SourceCategory>?=null): SourceCapabilitiesState {
+        fun SourceCapabilities.owned() = copy(sourceId=id,categories=categories ?: this.categories)
+        return when(this) {
+            SourceCapabilitiesState.Loading -> this
+            is SourceCapabilitiesState.Ready -> SourceCapabilitiesState.Ready(value.owned())
+            is SourceCapabilitiesState.Failed -> copy(available=available.owned())
+        }
+    }
 
     private suspend fun session(): Session = withContext(dispatchers.io) { mutex.withLock {
         if (!watching) {
@@ -75,7 +93,7 @@ class SwitchingMediaSource(private val profiles: SourceProfiles,
             val source = if (profile == null) NoSource else if (profile.configuration is AllSourceConfiguration) AllMediaSource(profile, factories, dispatchers) else checkNotNull(factories[profile.configuration.kind]) {
                 "Source provider is unavailable"
             }.get().create(profile)
-            Session(catalog.identity, source).also { active = it }
+            Session(catalog.identity, catalog.selectedId, source).also { active = it }
         }
     } }
     private suspend fun belongs(session: Session, item: MediaItem) =
@@ -118,9 +136,11 @@ class SwitchingMediaSource(private val profiles: SourceProfiles,
     override suspend fun filters() = read { it.filters() }
     override suspend fun suggestions(query: MediaQuery, cursor: Int) = read { it.suggestions(query,cursor) }
     override suspend fun people(name: String, page: Int) = read { it.people(name, page) }
-    override suspend fun personPreview(person: SearchPerson) = read(expectedIdentity=person.sourceId) { it.personPreview(person) }
+    override suspend fun <T> withPersonPreview(person: SearchPerson, block: suspend (Preview?) -> T): T =
+        read(expectedIdentity=person.sourceId) { it.withPersonPreview(person,block) }
     override suspend fun places(scope: PlaceScope) = read { it.places(scope) }
-    override suspend fun preview(item: MediaItem): Preview = read(item) { it.preview(item) }
+    override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview) -> T): T =
+        read(item) { it.withPreview(item,block) }
     override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
         block: suspend (MediaHandle) -> T): T = read(item) { it.withRendition(item, kind, block) }
 }

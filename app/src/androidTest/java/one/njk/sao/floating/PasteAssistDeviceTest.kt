@@ -308,7 +308,7 @@ class PasteAssistDeviceTest {
                                 val model = ViewModelProvider(it)[PickerViewModel::class.java]
                                 val grid = it.findViewById<androidx.recyclerview.widget.RecyclerView>(one.njk.sao.R.id.media_grid)
                                 val snap = (grid.onFlingListener as com.google.android.material.carousel.CarouselSnapHelper).findSnapView(grid.layoutManager!!)
-                                trace = "focus=${model.state.value.items.indexOfFirst { item -> item.id == model.focusedId }}, snap=${snap?.let { grid.getChildAdapterPosition(it) }}, layout=${grid.isLayoutRequested}, computing=${grid.isComputingLayout}, message=$hint"
+                                trace = "focus=${model.state.value.items.indexOfFirst { item -> item.identityKey == model.focusedId }}, snap=${snap?.let { grid.getChildAdapterPosition(it) }}, layout=${grid.isLayoutRequested}, computing=${grid.isComputingLayout}, message=$hint"
                             }
                             hint == app.getString(one.njk.sao.R.string.picker_gif_hint)
                         }

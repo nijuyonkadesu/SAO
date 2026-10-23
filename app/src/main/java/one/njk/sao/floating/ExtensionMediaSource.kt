@@ -125,10 +125,10 @@ class ExtensionMediaSource(private val context: Context, private val profile: So
             validate(request(ExtensionProtocol.MEDIA,JSONObject().put("item",SourceWire.item(item)).put("kind",kind)).getString("uri"))
         }, block) }
     }
-    private suspend fun file(item: MediaItem, kind: String): File = withFile(item, kind) { it }
     private suspend fun <T> mediaRead(feature: SourceFeature, block: suspend () -> T): T = try { block() }
         catch (error: ExtensionFailure) { throw error.asSourceFailure(feature) }
-    override suspend fun preview(item: MediaItem): Preview = Preview.Local(file(item,"preview"))
+    override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview) -> T): T =
+        withFile(item,"preview") { block(Preview.Local(it)) }
     private fun playbackKind(item: MediaItem) = if (item.remote?.cacheKeys?.containsKey("playback") == true) "playback" else "video"
     override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
         block: suspend (MediaHandle) -> T): T = when (kind) {
@@ -136,11 +136,11 @@ class ExtensionMediaSource(private val context: Context, private val profile: So
         Rendition.PLAYBACK -> { require(item.isVideo); withFile(item, playbackKind(item)) { file -> block(MediaHandle.Local(file)) } }
         Rendition.STILL -> withFile(item, "raster") { file -> block(MediaHandle.Local(file)) }
     }
-    override suspend fun personPreview(person: SearchPerson): Preview? {
+    override suspend fun <T> withPersonPreview(person: SearchPerson, block: suspend (Preview?) -> T): T {
         check(person.sourceId == profile.identity)
-        return Preview.Local(mediaRead(SourceFeature.PERSON_PREVIEW) { cache.get(profile.identity,"person:${person.id}",2L*1024*1024) {
+        return mediaRead(SourceFeature.PERSON_PREVIEW) { cache.withFile(profile.identity,"person:${person.id}",2L*1024*1024, {
             validate(request(ExtensionProtocol.PERSON_MEDIA,JSONObject().put("person",SourceWire.person(person))).getString("uri"))
-        } })
+        }) { block(Preview.Local(it)) } }
     }
     override suspend fun openSequence(anchor: MediaItem): MediaSequence {
         check(loadCapabilities().sequence)

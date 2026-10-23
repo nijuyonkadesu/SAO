@@ -151,7 +151,7 @@ class LiveImmichDeviceTest {
             report.put("emoji_filters", source.filters().size)
             preferences.preferStickers(true)
             access.browseSession().reset()
-            var focused: String? = null
+            var focused: MediaIdentity? = null
             ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, "nu.gpu.nagramx", null)).use { scenario ->
                 await(scenario, "Real images must load") { model(it).state.value.let { state -> !state.loading && !state.error && state.items.isNotEmpty() } }
                 await(scenario, "Remote thumbnail must decode") {
@@ -183,7 +183,7 @@ class LiveImmichDeviceTest {
                 scenario.onActivity { it.findViewById<RecyclerView>(R.id.media_grid).scrollToPosition(50) }
                 await(scenario, "Carousel must request the next live page") { model(it).state.value.items.size > first.items.size }
                 scenario.onActivity { it.findViewById<RecyclerView>(R.id.media_grid).scrollToPosition(5) }
-                await(scenario, "Carousel must settle on a later image") { (it.findViewById<RecyclerView>(R.id.media_grid).adapter as MediaCarouselAdapter).focusedId?.let { id -> id != first.items[0].id } == true }
+                await(scenario, "Carousel must settle on a later image") { (it.findViewById<RecyclerView>(R.id.media_grid).adapter as MediaCarouselAdapter).focusedId?.let { id -> id != first.items[0].identityKey } == true }
                 SystemClock.sleep(200)
                 scenario.onActivity { focused = (it.findViewById<RecyclerView>(R.id.media_grid).adapter as MediaCarouselAdapter).focusedId }
             }
@@ -200,9 +200,11 @@ class LiveImmichDeviceTest {
             val gif = source.page(MediaQuery(".gif")).items.firstOrNull { it.mimeType == "image/gif" }
             report.put("gif_available", gif != null)
             if (gif != null) {
-                val original = source.preview(gif) as File
-                assertTrue("GIF preview must use original GIF bytes", original.inputStream().use { stream ->
-                    val header = ByteArray(6); stream.read(header) == 6 && header.toString(Charsets.US_ASCII).startsWith("GIF8") })
+                val original = source.withPreview(gif) { preview ->
+                    assertTrue("GIF preview must use original GIF bytes", (preview as Preview.Local).file.inputStream().use { stream ->
+                        val header = ByteArray(6); stream.read(header) == 6 && header.toString(Charsets.US_ASCII).startsWith("GIF8") })
+                    preview.file.readBytes()
+                }
                 ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, "nu.gpu.nagramx", null)).use { scenario ->
                     scenario.onActivity { model(it).select(gif, MessagingTarget.TELEGRAM) }
                     await(scenario, "Real GIF must copy without flattening") { it.findViewById<TextView>(R.id.selection_message).text.toString().startsWith(it.getString(R.string.picker_gif_copied)) }
@@ -210,7 +212,7 @@ class LiveImmichDeviceTest {
                         val clip = it.getSystemService(ClipboardManager::class.java).primaryClip!!
                         assertTrue(clip.description.hasMimeType("image/gif"))
                         it.contentResolver.openInputStream(clip.getItemAt(0).uri)!!.use { stream ->
-                            assertTrue("Exported GIF bytes must remain identical", original.readBytes().contentEquals(stream.readBytes())) }
+                            assertTrue("Exported GIF bytes must remain identical", original.contentEquals(stream.readBytes())) }
                     }
                 }
                 report.put("gif_original_and_clipboard_retained", true)

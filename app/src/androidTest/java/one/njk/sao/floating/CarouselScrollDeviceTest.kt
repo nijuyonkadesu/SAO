@@ -93,9 +93,9 @@ class CarouselScrollDeviceTest {
             scenario.onActivity { activity ->
                 val view = grid(activity); val adapter = view.adapter as MediaCarouselAdapter
                 val cards = holders(view)
-                val next = cards.first { it.item?.id != adapter.focusedId }.item!!
+                val next = cards.first { it.item?.identityKey != adapter.focusedId }.item!!
                 val before = cards.count { it.binding.gifBadge.isLayoutRequested }
-                adapter.focusedId = next.id
+                adapter.focusedId = next.identityKey
                 val after = cards.count { it.binding.gifBadge.isLayoutRequested }
                 val report = JSONObject()
                     .put("attached_cards", cards.size).put("badge_layout_requests_before", before)
@@ -137,7 +137,7 @@ class CarouselScrollDeviceTest {
                 val view = grid(activity)
                 val adapter = view.adapter as MediaCarouselAdapter
                 movingFrames > 5 && view.scrollState == RecyclerView.SCROLL_STATE_IDLE &&
-                    adapter.currentList.indexOfFirst { it.id == adapter.focusedId } > 1 &&
+                    adapter.currentList.indexOfFirst { it.identityKey == adapter.focusedId } > 1 &&
                     holders(view).any { it.binding.videoPreview.player?.isPlaying == true }
             }
             scenario.onActivity {

@@ -6,8 +6,17 @@ enum class SearchFacet { PEOPLE, PLACES, MEDIA, EMOJI_TAGS }
 sealed interface SourceCapabilitiesState {
     data object Loading : SourceCapabilitiesState
     data class Ready(val value: SourceCapabilities) : SourceCapabilitiesState
-    data class Failed(val error: Exception) : SourceCapabilitiesState
+    /** Readiness failed, but healthy aggregate members can still declare usable browsing features. */
+    data class Failed(val error: Exception, val available: SourceCapabilities = SourceCapabilities()) : SourceCapabilitiesState
 }
+
+/** Loading is not a declaration; callers decide whether to wait or show their initial controls. */
+val SourceCapabilitiesState.available: SourceCapabilities
+    get() = when (this) {
+        SourceCapabilitiesState.Loading -> SourceCapabilities()
+        is SourceCapabilitiesState.Ready -> value
+        is SourceCapabilitiesState.Failed -> available
+    }
 
 /** A small provider-authored home collection; the host submits its query without interpreting it. */
 data class SourceCategory(val id: String, val label: String, val query: MediaQuery = MediaQuery(), val adult: Boolean = false)

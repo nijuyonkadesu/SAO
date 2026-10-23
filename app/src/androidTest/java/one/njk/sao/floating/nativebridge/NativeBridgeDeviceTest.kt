@@ -32,12 +32,45 @@ class NativeBridgeDeviceTest {
     private val access get() = EntryPointAccessors.fromApplication(app, FloatingTestAccess::class.java)
     private var previous: SourceCatalog? = null
     private var previousActive = false
+    private var catalogServer: okhttp3.mockwebserver.MockWebServer? = null
+    private suspend fun preparePickerCatalog() {
+        if(catalogServer!=null) return
+        val items=LocalMediaSource(app).all()
+        val assets=InstrumentationRegistry.getInstrumentation().context.assets
+        val server=okhttp3.mockwebserver.MockWebServer().apply {
+            dispatcher=object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse {
+                    val path=request.requestUrl!!.encodedPath
+                    return when {
+                        path=="/api/server/features" -> okhttp3.mockwebserver.MockResponse().setBody("""{"smartSearch":true,"ocr":true}""")
+                        path=="/api/tags" -> okhttp3.mockwebserver.MockResponse().setBody("[]")
+                        path.startsWith("/api/search/") -> okhttp3.mockwebserver.MockResponse().setBody(org.json.JSONObject().put("assets",org.json.JSONObject().put("items",org.json.JSONArray(items.map { item ->
+                            org.json.JSONObject().put("id",item.id).put("type",if(item.isVideo) "VIDEO" else "IMAGE")
+                                .put("updatedAt","2026-01-01T00:00:00Z")
+                                .put("originalFileName",item.asset.substringAfterLast('/')).put("originalMimeType",item.mimeType)
+                                .put("exifInfo",org.json.JSONObject().put("description",item.title))
+                        }))).toString())
+                        path.startsWith("/api/assets/") -> {
+                            val item=items.first { it.id==path.split('/')[3] }
+                            okhttp3.mockwebserver.MockResponse().setBody(okio.Buffer().write(assets.open(item.asset).use { it.readBytes() }))
+                        }
+                        else -> okhttp3.mockwebserver.MockResponse().setResponseCode(404)
+                    }
+                }
+            }
+            start()
+        }
+        catalogServer=server
+        val profile=immichProfile("Native fixtures",one.njk.sao.immichprovider.ImmichConfig(server.url("/").toString(),"synthetic-key"))
+        access.sources().upsert(profile,true); access.sources().selectFloating(profile.id)
+    }
     @Before fun setup() = runBlocking {
         previous = access.sources().current(); access.sources().select(null); access.browseSession().reset()
         NativeBridgeRegistry.clear(); previousActive = FloatingSession.active.value; FloatingSession.active(true)
     }
     @After fun cleanup() = runBlocking {
         NativeBridgeRegistry.clear(); FloatingSession.active(previousActive); previous?.let { access.sources().restore(it) }; access.browseSession().reset()
+        catalogServer?.shutdown(); catalogServer=null
     }
     private open class Policy : ComposerPolicy {
         var identity: String? = "synthetic-thread-a"
@@ -121,19 +154,20 @@ class NativeBridgeDeviceTest {
     @Test fun inactiveFloatingServiceStopsNativeSnapshotCallsAndClearsLeases() = runBlocking {
         val snapshots = AtomicInteger(); val control = java.util.concurrent.atomic.AtomicReference<Boolean>()
         FloatingSession.active(false)
-        NativeBridgeRegistry.register("com.discord", object : INativeStickerClient.Stub() {
+        NativeBridgeRegistry.register("com.discord", object : one.njk.sao.floating.nativebridge.TestNativeClient() {
             override fun setActive(active: Boolean, generation: Long) { control.set(active) }
             override fun snapshot(beginSelection: Boolean) = Bundle().apply {
                 snapshots.incrementAndGet(); putString("session", "idle-check")
                 putLong("created", SystemClock.elapsedRealtime()); putBoolean("resumed", true)
                 putStringArray("mime_types", arrayOf("image/gif"))
             }
-            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long) = false
+            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long) = one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED.wireValue
         })
         withTimeout(5_000) { while (control.get() != false) delay(20) }
         delay(900); assertEquals("Inactive registration must not poll Android/native clients", 0, snapshots.get())
         FloatingSession.active(true)
-        withTimeout(5_000) { while (!NativeBridgeRegistry.supports("com.discord", "idle-check", "image/gif")) delay(20) }
+        delay(900); assertEquals("Enabled idle icon must not poll",0,snapshots.get())
+        assertNotNull(NativeBridgeRegistry.beginSelection("com.discord"))
         assertTrue(snapshots.get() > 0)
         FloatingSession.active(false)
         withTimeout(5_000) { while (control.get() != false) delay(20) }
@@ -309,7 +343,7 @@ class NativeBridgeDeviceTest {
             for (sticker in listOf(true, false)) {
                 preferences.preferStickers(sticker)
                 assertNativePaste("com.whatsapp", LocalMediaSource(app).all().first { !it.hasMotion },
-                    if (sticker) "image/webp.wasticker" else "image/jpeg", arrayOf("image/webp.wasticker", "image/jpeg"))
+                    if (sticker) "image/webp.wasticker" else "image/png", arrayOf("image/webp.wasticker", "image/jpeg", "image/png"))
             }
         } finally { preferences.preferStickers(before.preferStickers); preferences.pasteAssistance(before.pasteAssistance) }
     }
@@ -435,7 +469,7 @@ class NativeBridgeDeviceTest {
     @Test fun explicitSelectionRecoversClientFailureWithoutWaitingForPollingBackoff() = runBlocking {
         val beginCalls = AtomicInteger(); val normalCalls = AtomicInteger()
         val failing = java.util.concurrent.atomic.AtomicBoolean(true)
-        NativeBridgeRegistry.register("com.discord", object : INativeStickerClient.Stub() {
+        NativeBridgeRegistry.register("com.discord", object : one.njk.sao.floating.nativebridge.TestNativeClient() {
             override fun setActive(active: Boolean, generation: Long) = Unit
             override fun snapshot(beginSelection: Boolean): Bundle {
                 if (beginSelection) beginCalls.incrementAndGet() else normalCalls.incrementAndGet()
@@ -445,9 +479,9 @@ class NativeBridgeDeviceTest {
                     putBoolean("resumed", true); putStringArray("mime_types", arrayOf("video/mp4"))
                 }
             }
-            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long) = false
+            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long) = one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED.wireValue
         })
-        withTimeout(5_000) { while (normalCalls.get() == 0) delay(20) }
+        delay(200); assertEquals(0,normalCalls.get())
         assertEquals("Polling never begins a new selection", 0, beginCalls.get())
         assertNull(NativeBridgeRegistry.beginSelection("com.discord"))
         failing.set(false)
@@ -455,7 +489,7 @@ class NativeBridgeDeviceTest {
         assertEquals("recovered", selected.session)
         assertTrue(NativeBridgeRegistry.supports("com.discord", selected.session, "video/mp4"))
         assertEquals(2, beginCalls.get())
-        withTimeout(5_000) { while (normalCalls.get() < 2) delay(20) }
+        delay(200); assertEquals(0,normalCalls.get())
         assertEquals("Normal refreshes cannot rotate the explicit selection", 2, beginCalls.get())
     }
     @Test fun rejectedAttemptDoesNotRevokeTheFileAccessOfAnEarlierAttachment() = runBlocking {
@@ -464,22 +498,43 @@ class NativeBridgeDeviceTest {
         val media = MediaExports(app, LocalMediaSource(app)).prepare(LocalMediaSource(app).all().first { !it.hasMotion }, ExportRendition.MEDIA)
         val read = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
         val calls = AtomicInteger()
-        NativeBridgeRegistry.register(pkg, object : INativeStickerClient.Stub() {
+        NativeBridgeRegistry.register(pkg, object : one.njk.sao.floating.nativebridge.TestNativeClient() {
             override fun setActive(active: Boolean, generation: Long) = Unit
             override fun snapshot(beginSelection: Boolean) = Bundle().apply {
                 putString("session", "grant-recovery"); putLong("created", SystemClock.elapsedRealtime())
                 putBoolean("resumed", true); putStringArray("mime_types", arrayOf(media.mimeType))
             }
-            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long): Boolean { calls.incrementAndGet(); return false }
+            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long): Int { calls.incrementAndGet(); return one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED.wireValue }
         })
         app.grantUriPermission(pkg, media.uri, read)
         try {
             assertEquals(android.content.pm.PackageManager.PERMISSION_GRANTED, app.checkUriPermission(media.uri, -1, uid, read))
-            assertFalse(NativeBridgeRegistry.insert(app, pkg, media.uri, media.mimeType, "grant-recovery"))
+            assertEquals(NativeInsertResult.REJECTED,NativeBridgeRegistry.insert(app, pkg, media.uri, media.mimeType, "grant-recovery"))
             assertEquals(1, calls.get())
             assertEquals("Failure must preserve access held by a previously staged attachment",
                 android.content.pm.PackageManager.PERMISSION_GRANTED, app.checkUriPermission(media.uri, -1, uid, read))
         } finally { app.revokeUriPermission(pkg, media.uri, read) }
+    }
+    @Test fun uncertainDispatchRetainsItsReadGrantAndIsNeverRetried(): Unit=runBlocking {
+        val pkg="com.discord"; val uid=app.packageManager.getPackageUid(pkg,0)
+        val read=android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+        val local=LocalMediaSource(app); val media=MediaExports(app,local).prepare(local.all().first { !it.hasMotion },ExportRendition.MEDIA)
+        val calls=AtomicInteger()
+        NativeBridgeRegistry.register(pkg,object : TestNativeClient() {
+            override fun setActive(active: Boolean,generation: Long)=Unit
+            override fun snapshot(beginSelection: Boolean)=Bundle().apply {
+                putString("session","uncertain"); putLong("created",SystemClock.elapsedRealtime())
+                putBoolean("resumed",true); putStringArray("mime_types",arrayOf(media.mimeType))
+            }
+            override fun insert(uri: Uri,mimeType: String,session: String,requestId: Long): Int {
+                calls.incrementAndGet(); return NativeInsertResult.UNKNOWN.wireValue
+            }
+        })
+        try {
+            assertEquals(NativeInsertResult.UNKNOWN,NativeBridgeRegistry.insert(app,pkg,media.uri,media.mimeType,"uncertain"))
+            assertEquals(1,calls.get())
+            assertEquals(android.content.pm.PackageManager.PERMISSION_GRANTED,app.checkUriPermission(media.uri,-1,uid,read))
+        } finally { app.revokeUriPermission(pkg,media.uri,read); media.file.delete() }
     }
     @Test fun discordNativeGifStagesDraftOnceWithoutAccessibility() = runBlocking {
         val preferences = FloatingPreferences(app); val before = preferences.current()
@@ -489,29 +544,30 @@ class NativeBridgeDeviceTest {
         } finally { preferences.pasteAssistance(before.pasteAssistance) }
     }
     private suspend fun assertNativePaste(pkg: String, item: MediaItem, expectedMime: String, types: Array<String>) {
+        preparePickerCatalog()
         val calls = AtomicInteger(); var delivered: String? = null
-        NativeBridgeRegistry.register(pkg, object : INativeStickerClient.Stub() {
+        NativeBridgeRegistry.register(pkg, object : one.njk.sao.floating.nativebridge.TestNativeClient() {
             override fun setActive(active: Boolean, generation: Long) = Unit
             override fun snapshot(beginSelection: Boolean) = Bundle().apply {
                 putString("session", "priority-session"); putLong("created", SystemClock.elapsedRealtime())
                 putStringArray("mime_types", types); putBoolean("resumed", true)
                 putString("status", "ready"); putString("host_version", "fixture-version")
             }
-            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long): Boolean {
-                delivered = mimeType; calls.incrementAndGet(); return true
+            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long): Int {
+                delivered = mimeType; calls.incrementAndGet(); return one.njk.sao.floating.nativebridge.NativeInsertResult.ACCEPTED.wireValue
             }
         })
-        withTimeout(5_000) { while (!NativeBridgeRegistry.supports(pkg, "priority-session", expectedMime)) delay(20) }
+        assertNotNull(NativeBridgeRegistry.beginSelection(pkg))
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, pkg, null, "priority-session")).use { scenario ->
             val deadline = SystemClock.elapsedRealtime() + 10_000; var selected = false
             while (!selected && SystemClock.elapsedRealtime() < deadline) {
                 scenario.onActivity {
                     val grid = it.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.media_grid)
                     val adapter = grid.adapter as MediaCarouselAdapter
-                    val position = adapter.currentList.indexOfFirst { media -> media.id == item.id }
+                    val position = adapter.currentList.indexOfFirst { media -> media.title == item.title && media.mimeType == item.mimeType }
                     if (position >= 0) {
                         val focal = (grid.onFlingListener as com.google.android.material.carousel.CarouselSnapHelper).findSnapView(grid.layoutManager!!)
-                        selected = focal?.let { (grid.getChildViewHolder(it) as MediaCarouselAdapter.Holder).item?.id == item.id } == true &&
+                        selected = focal?.let { (grid.getChildViewHolder(it) as MediaCarouselAdapter.Holder).item?.title == item.title } == true &&
                             it.findViewById<android.view.View>(R.id.paste_action).isEnabled
                         if (!selected) grid.scrollToPosition(position)
                     }
@@ -550,35 +606,36 @@ class NativeBridgeDeviceTest {
     }
     @Test fun registryUsesActualMimeAndNeverRetriesRejectedSend() = runBlocking {
         val inserts = AtomicInteger(); val snapshots = AtomicInteger(); var deliveredMime: String? = null
-        val client = object : INativeStickerClient.Stub() {
+        val client = object : one.njk.sao.floating.nativebridge.TestNativeClient() {
             override fun setActive(active: Boolean, generation: Long) = Unit
             override fun snapshot(beginSelection: Boolean) = Bundle().apply {
                 putString("session", "fixture-session"); putLong("created", SystemClock.elapsedRealtime())
-                putStringArray("mime_types", arrayOf("image/jpeg")); putBoolean("resumed", snapshots.incrementAndGet() >= 3)
+                putStringArray("mime_types", arrayOf("image/png")); putBoolean("resumed", snapshots.incrementAndGet() >= 3)
             }
-            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long): Boolean {
-                inserts.incrementAndGet(); deliveredMime = mimeType; return false
+            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long): Int {
+                inserts.incrementAndGet(); deliveredMime = mimeType; return one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED.wireValue
             }
         }
         NativeBridgeRegistry.register("com.instagram.android", client)
         val media = MediaExports(app, LocalMediaSource(app)).prepare(LocalMediaSource(app).all().first { !it.hasMotion }, ExportRendition.MEDIA)
-        assertFalse(NativeBridgeRegistry.insert(app, "com.instagram.android", media.uri, "image/gif", "fixture-session"))
+        assertEquals(NativeInsertResult.REJECTED,NativeBridgeRegistry.insert(app, "com.instagram.android", media.uri, "image/gif", "fixture-session"))
         assertEquals(0, inserts.get())
-        assertFalse(NativeBridgeRegistry.insert(app, "com.instagram.android", media.uri, media.mimeType, "fixture-session"))
-        assertEquals(1, inserts.get()); assertEquals("image/jpeg", deliveredMime)
+        assertEquals(NativeInsertResult.REJECTED,NativeBridgeRegistry.insert(app, "com.instagram.android", media.uri, media.mimeType, "fixture-session"))
+        assertEquals(1, inserts.get()); assertEquals(media.mimeType, deliveredMime)
         NativeBridgeRegistry.clear(); assertFalse(NativeBridgeRegistry.available("com.instagram.android"))
     }
     @Test fun verifiedInstagramLeaseEnablesOnlyExplicitPhotoActionWithoutAccessibility() = runBlocking {
+        preparePickerCatalog()
         val calls = AtomicInteger()
-        NativeBridgeRegistry.register("com.instagram.android", object : INativeStickerClient.Stub() {
+        NativeBridgeRegistry.register("com.instagram.android", object : one.njk.sao.floating.nativebridge.TestNativeClient() {
             override fun setActive(active: Boolean, generation: Long) = Unit
             override fun snapshot(beginSelection: Boolean) = Bundle().apply {
                 putString("session", "ui-session"); putLong("created", SystemClock.elapsedRealtime())
                 putStringArray("mime_types", arrayOf("image/jpeg", "image/png")); putBoolean("resumed", true)
             }
-            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long): Boolean { calls.incrementAndGet(); return true }
+            override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long): Int { calls.incrementAndGet(); return one.njk.sao.floating.nativebridge.NativeInsertResult.ACCEPTED.wireValue }
         })
-        withTimeout(5_000) { while (!NativeBridgeRegistry.supports("com.instagram.android", "ui-session", "image/jpeg")) delay(20) }
+        assertNotNull(NativeBridgeRegistry.beginSelection("com.instagram.android"))
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, "com.instagram.android", null, "ui-session")).use { scenario ->
             val local = LocalMediaSource(app).all(); val photo = local.first { !it.hasMotion }; val gif = local.first { it.animated }
             for (item in listOf(photo, gif, photo)) {
@@ -587,10 +644,10 @@ class NativeBridgeDeviceTest {
                     scenario.onActivity {
                         val grid = it.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.media_grid)
                         val adapter = grid.adapter as MediaCarouselAdapter
-                        val position = adapter.currentList.indexOfFirst { media -> media.id == item.id }
+                        val position = adapter.currentList.indexOfFirst { media -> media.title == item.title && media.mimeType == item.mimeType }
                         if (position >= 0) {
                             val focal = (grid.onFlingListener as com.google.android.material.carousel.CarouselSnapHelper).findSnapView(grid.layoutManager!!)
-                            selected = focal?.let { (grid.getChildViewHolder(it) as MediaCarouselAdapter.Holder).item?.id == item.id } == true &&
+                            selected = focal?.let { (grid.getChildViewHolder(it) as MediaCarouselAdapter.Holder).item?.title == item.title } == true &&
                                 it.findViewById<android.widget.TextView>(R.id.selection_title).text.toString() == item.title
                             if (!selected) grid.scrollToPosition(position)
                         }

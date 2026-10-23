@@ -25,7 +25,7 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
         require(item.id.matches(Regex("[a-z0-9_-]+")))
         if(item.isVideo) source.withRendition(item, Rendition.PLAYBACK) { handle ->
             snapshot(item, Preview.Local(handle.requireFile()))
-        } else snapshot(item, source.preview(item))
+        } else source.withPreview(item) { snapshot(item,it) }
     }
 
     private suspend fun snapshot(item: MediaItem, preview: Preview): ExportedMedia {
@@ -49,7 +49,7 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
             bounds.outMimeType ?: item.mimeType
         }
         val extension=android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime) ?: "bin"
-        val file=store.write("${item.id}-display.$extension") { staging ->
+        val file=store.write(MediaExportKey(item,MediaExportPolicy.Displayed),extension) { staging ->
             input().use { from -> staging.outputStream().use { MediaExportStore.copy(from,it) } }
         }
         return store.exported(file,mime)
@@ -73,8 +73,7 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
             ExportRendition.STICKER_WEBP -> "webp" to "image/webp"
             ExportRendition.STICKER_PNG -> "png" to "image/png"
         }
-        val budget=if(rendition==ExportRendition.STICKER_WEBP) "-${sticker.maxBytes}" else ""
-        val file=store.write("${item.id}-${rendition.name.lowercase()}$budget.$extension") { staging ->
+        val file=store.write(MediaExportKey(item,MediaExportPolicy.Prepared(rendition,sticker)),extension) { staging ->
             if(rendition==ExportRendition.MEDIA) {
                 source.withRendition(item, Rendition.ORIGINAL) { handle ->
                     handle.openStream().use { input -> staging.outputStream().use { MediaExportStore.copy(input,it) } }
@@ -112,7 +111,7 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
     suspend fun mp4(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
         require(item.mimeType=="video/webm")
         require(item.id.matches(Regex("[a-z0-9_-]+")))
-        val file=store.write("${item.id}-compatible.mp4") { staging ->
+        val file=store.write(MediaExportKey(item,MediaExportPolicy.CompatibleMp4),"mp4") { staging ->
             source.withRendition(item, Rendition.ORIGINAL) { handle ->
                 val input=handle.file ?: run {
                     val scratch=File.createTempFile("original-", ".pending",store.directory)
@@ -134,7 +133,7 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
         if(original.file.length()<=maxBytes) return@withContext original
         val mime=if(item.isVideo) "video/mp4" else original.mimeType
         val extension=if(item.isVideo) "mp4" else if(mime=="image/jpeg") "jpg" else "png"
-        val file=store.write("${item.id}-limited-$maxBytes.$extension") { staging ->
+        val file=store.write(MediaExportKey(item,MediaExportPolicy.Limited(mime,maxBytes)),extension) { staging ->
             store.using(original.file) {
                 store.conversions.withPermit {
                     if(item.isVideo) transcoder.mp4(original.file,staging,maxBytes)

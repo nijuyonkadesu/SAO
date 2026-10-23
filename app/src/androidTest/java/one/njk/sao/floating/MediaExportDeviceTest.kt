@@ -41,13 +41,16 @@ class MediaExportDeviceTest {
         return file
     }
     private fun item(mime: String) = MediaItem(name(),"Synthetic export","",mime,emptyList(),emptyList())
+    private fun fixtureKey(name: String) = MediaExportKey(MediaItem(name.substringBeforeLast('.'),"Fixture",name,"image/png",emptyList(),emptyList()),MediaExportPolicy.Displayed)
+    private suspend fun MediaExportStore.writeFixture(name: String, build: suspend (File)->Unit) =
+        write(fixtureKey(name),name.substringAfterLast('.'),build)
     private class Files(private val file: File) : MediaSource {
         val originals=AtomicInteger(); val playbacks=AtomicInteger(); val stills=AtomicInteger()
         override val identity=kotlinx.coroutines.flow.flowOf(LOCAL_SOURCE_ID)
         override suspend fun owns(item: MediaItem)=true
         override suspend fun page(query: MediaQuery,cursor: String?)=MediaPage(emptyList())
         override suspend fun filters()=emptyList<String>()
-        override suspend fun preview(item: MediaItem): Preview=Preview.Local(file)
+        override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(Preview.Local(file))
         override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
             block: suspend (MediaHandle)->T): T {
             when(kind) {
@@ -57,6 +60,39 @@ class MediaExportDeviceTest {
             }
             return block(MediaHandle.Local(file))
         }
+    }
+
+    @Test fun equalProviderIdsAndChangedContentRevisionsNeverReuseAnotherExport(): Unit=runBlocking {
+        val first=picture(32,32); val second=picture(48,24)
+        val id=name()
+        val a=MediaItem(id,"A","","image/png",emptyList(),emptyList(),remote=RemoteMedia("profile-a","asset",false))
+        val b=a.copy(remote=RemoteMedia("profile-b","asset",false))
+        val revised=a.copy(remote=a.remote!!.copy(cacheKeys=mapOf("original" to "revision-2")))
+        val outputs=mutableListOf<File>()
+        try {
+            val original=MediaExports(app,Files(first)).prepare(a,ExportRendition.MEDIA).file.also(outputs::add)
+            val other=MediaExports(app,Files(second)).prepare(b,ExportRendition.MEDIA).file.also(outputs::add)
+            val changed=MediaExports(app,Files(second)).prepare(revised,ExportRendition.MEDIA).file.also(outputs::add)
+            assertNotEquals(original,other); assertNotEquals(original,changed)
+            assertArrayEquals(first.readBytes(),original.readBytes())
+            assertArrayEquals(second.readBytes(),other.readBytes())
+            assertArrayEquals(second.readBytes(),changed.readBytes())
+        } finally { outputs.forEach(File::delete); first.delete(); second.delete() }
+    }
+
+    @Test fun removingAnOwnerDefersDeletionUntilItsLastPreviewLeaseCloses(): Unit=runBlocking {
+        val store=MediaExportStore(app)
+        val input=store.writeFixture(name()+".png") { it.writeBytes(byteArrayOf(1,2,3)) }
+        val cache=SourceMediaCache(app); val owner=name()
+        val folder=File(app.cacheDir,"source-media/${digest(owner).take(32)}")
+        try {
+            cache.withFile(owner,"preview",1024,{ store.exported(input,"image/png").uri }) { file ->
+                cache.remove(owner)
+                assertTrue("An active decode must retain its input",file.isFile)
+                assertArrayEquals(byteArrayOf(1,2,3),file.readBytes())
+            }
+            assertFalse("Retired bytes are removed when the final lease ends",folder.exists())
+        } finally { input.delete(); cache.remove(owner) }
     }
 
     @Test fun largeStillUsesTargetSizedSoftwareDecode(): Unit=runBlocking(dispatchers.conversion) {
@@ -152,7 +188,7 @@ class MediaExportDeviceTest {
     @Test fun aWaitingConversionDoesNotBlockAnUnrelatedCopyAndSameOutputIsWrittenOnce(): Unit=runBlocking {
         val store=MediaExportStore(app)
         val started=CompletableDeferred<Unit>(); val release=CompletableDeferred<Unit>()
-        val slow=async(Dispatchers.IO) { store.write(name()+".mp4") { started.complete(Unit); release.await(); it.writeBytes(byteArrayOf(1)) } }
+        val slow=async(Dispatchers.IO) { store.writeFixture(name()+".mp4") { started.complete(Unit); release.await(); it.writeBytes(byteArrayOf(1)) } }
         try {
             started.await()
             val input=picture(); val source=Files(input); val media=item("image/png")
@@ -170,7 +206,7 @@ class MediaExportDeviceTest {
     @Test fun cancellationRemovesPartialOutputAndAllowsTheNextAttempt(): Unit=runBlocking {
         val store=MediaExportStore(app); val output=name()+".png"
         val entered=CountDownLatch(1); val resume=CountDownLatch(1)
-        val job=launch(Dispatchers.IO) { store.write(output) { pending ->
+        val job=launch(Dispatchers.IO) { store.writeFixture(output) { pending ->
             val input=object: java.io.InputStream() {
                 override fun read(): Int=error("Bulk reads only")
                 override fun read(bytes: ByteArray,offset: Int,count: Int): Int {
@@ -181,29 +217,29 @@ class MediaExportDeviceTest {
         } }
         try {
             assertTrue(entered.await(5,TimeUnit.SECONDS)); job.cancel(); resume.countDown(); job.join()
-            assertFalse(File(store.directory,output).exists())
+            assertFalse(File(store.directory,fixtureKey(output).filename("png")).exists())
             assertFalse(store.directory.listFiles().orEmpty().any { it.name.endsWith(".pending") })
-            val result=store.write(output) { it.writeBytes(byteArrayOf(2,3)) }
+            val result=store.writeFixture(output) { it.writeBytes(byteArrayOf(2,3)) }
             assertArrayEquals(byteArrayOf(2,3),result.readBytes()); result.delete()
         } finally { resume.countDown(); job.cancelAndJoin() }
     }
 
     @Test fun retentionProtectsClipboardAndHandoffsWhileReclaimingOldExports(): Unit=runBlocking {
         val store=MediaExportStore(app)
-        val kept=store.write(name()+".png") { it.writeBytes(byteArrayOf(1)) }
+        val kept=store.writeFixture(name()+".png") { it.writeBytes(byteArrayOf(1)) }
         store.clipboard(kept)
-        val handoff=store.write(name()+".png") { it.writeBytes(byteArrayOf(2)) }
+        val handoff=store.writeFixture(name()+".png") { it.writeBytes(byteArrayOf(2)) }
         val old=File(store.directory.parentFile,"${name()}.old").apply { writeBytes(byteArrayOf(3)) }
         val expired=System.currentTimeMillis()-MediaExportStore.MAX_AGE_MS-1000
         try {
             kept.setLastModified(expired); handoff.setLastModified(expired); old.setLastModified(expired)
             // A fresh store has no in-memory handoff for the current clipboard.
-            MediaExportStore(app).write(name()+".png") { it.writeBytes(byteArrayOf(4)) }.delete()
+            MediaExportStore(app).writeFixture(name()+".png") { it.writeBytes(byteArrayOf(4)) }.delete()
             assertTrue(kept.exists()); assertFalse(old.exists())
             // Same-process handoff protection survives another export even if its mtime is old.
-            val active=store.write(name()+".png") { it.writeBytes(byteArrayOf(5)) }
+            val active=store.writeFixture(name()+".png") { it.writeBytes(byteArrayOf(5)) }
             active.setLastModified(expired)
-            store.write(name()+".png") { it.writeBytes(byteArrayOf(6)) }.delete()
+            store.writeFixture(name()+".png") { it.writeBytes(byteArrayOf(6)) }.delete()
             assertTrue(active.exists()); active.delete()
         } finally { store.clipboard(null); kept.delete(); handoff.delete(); old.delete() }
     }
@@ -225,7 +261,7 @@ class MediaExportDeviceTest {
 
     @Test fun scopedCacheInputCannotBeEvictedDuringConversion(): Unit=runBlocking {
         val store=MediaExportStore(app)
-        val input=store.write(name()+".png") { it.writeBytes(byteArrayOf(1,2,3)) }
+        val input=store.writeFixture(name()+".png") { it.writeBytes(byteArrayOf(1,2,3)) }
         val cache=SourceMediaCache(app)
         val owner=name(); val key="leased"
         val folder=File(app.cacheDir,"source-media/${digest(owner).take(32)}")
@@ -235,7 +271,7 @@ class MediaExportDeviceTest {
                 val disposable=File(folder,digest("oversized"))
                 RandomAccessFile(disposable,"rw").use { it.setLength(193L*1024*1024) }
                 disposable.setLastModified(2)
-                cache.get(owner,"next",1024) { store.exported(input,"image/png").uri }
+                cache.withFile(owner,"next",1024,{ store.exported(input,"image/png").uri }) { }
                 assertTrue("The oldest active input is protected",leased.exists())
                 assertFalse("Unleased cache bytes are evicted instead",disposable.exists())
                 assertArrayEquals(byteArrayOf(1,2,3),leased.readBytes())

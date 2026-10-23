@@ -30,9 +30,13 @@ interface MediaSource {
 
     suspend fun filters(): List<String> = throw SourceUnsupportedException(SourceFeature.FILTERS)
 
-    suspend fun preview(item: MediaItem): Preview
+    /** Keep preview resources alive until decoding/copying finishes; the preview must not escape. */
+    suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview) -> T): T
 
-    suspend fun personPreview(person: SearchPerson): Preview? = throw SourceUnsupportedException(SourceFeature.PERSON_PREVIEW)
+    suspend fun warmPreview(item: MediaItem) { withPreview(item) { } }
+
+    suspend fun <T> withPersonPreview(person: SearchPerson, block: suspend (Preview?) -> T): T =
+        throw SourceUnsupportedException(SourceFeature.PERSON_PREVIEW)
 
     suspend fun openSequence(anchor: MediaItem): MediaSequence = throw SourceUnsupportedException(SourceFeature.SEQUENCE)
 

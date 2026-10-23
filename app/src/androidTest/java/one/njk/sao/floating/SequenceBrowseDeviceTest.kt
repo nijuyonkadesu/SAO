@@ -182,7 +182,7 @@ class SequenceBrowseDeviceTest {
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
             originalModel = ready(scenario)
             scenario.onActivity { grid(it).scrollToPosition(47) }
-            await("Search must settle on the original result") { originalModel.focusedId == originalModel.state.value.items[47].id }
+            await("Search must settle on the original result") { originalModel.focusedId == originalModel.state.value.items[47].identityKey }
             scenario.onActivity { originalModel.browseSequence(originalModel.state.value.items.first { item -> item.remote!!.assetId == id(80) }) }
             await("Initial sequence must load") { originalModel.state.value.sequenceId != null && !originalModel.state.value.loading }
             scenario.onActivity { originalModel.loadMore(0) }
@@ -223,7 +223,7 @@ class SequenceBrowseDeviceTest {
                 reopened.onActivity { correct = focal(grid(it))?.item?.remote?.assetId == id(55) }; correct
             }
             reopened.onActivity {
-                originalModel.focus("stale-exiting-picker", sequenceId)
+                originalModel.focus(MediaIdentity("stale-owner","stale-exiting-picker"), sequenceId)
                 originalModel.pickerVisible(false)
                 originalModel.rememberBrowsing()
                 assertFalse("An exiting picker cannot clear the new picker's navigation", originalModel.backToResults())
@@ -425,7 +425,7 @@ class SequenceBrowseDeviceTest {
             await("Hold must open the sequence") { picker.state.value.sequenceId != null && !picker.state.value.loading }
             hold.send(MotionEvent.ACTION_UP)
             assertEquals("A visible edge press must browse the photo under the finger, not its masked neighbor",
-                id(87), picker.state.value.items.firstOrNull { it.id == picker.focusedId }?.remote?.assetId)
+                id(87), picker.state.value.items.firstOrNull { it.identityKey == picker.focusedId }?.remote?.assetId)
             await("The photo touched on its visible edge must actually be centered") {
                 var correct = false
                 scenario.onActivity { correct = focal(grid(it))?.item?.remote?.assetId == id(87) }; correct
@@ -587,14 +587,14 @@ class SequenceBrowseDeviceTest {
             val picker = ready(scenario)
             val original = picker.state.value.items
             scenario.onActivity { grid(it).scrollToPosition(47) }
-            await("Original carousel must navigate") { picker.focusedId == original[47].id }
+            await("Original carousel must navigate") { picker.focusedId == original[47].identityKey }
             scenario.onActivity { picker.browseSequence(original[0]) }
             await("Other result must open as sequence anchor") { picker.state.value.sequenceId != null && !picker.state.value.loading }
             scenario.onActivity { grid(it).scrollToPosition(30) }
-            await("Sequence must navigate independently") { picker.focusedId == picker.state.value.items[30].id }
+            await("Sequence must navigate independently") { picker.focusedId == picker.state.value.items[30].identityKey }
             scenario.onActivity { it.findViewById<View>(R.id.sequence_back).performClick() }
             await("Original results and focal item must restore") {
-                picker.state.value.sequenceId == null && picker.state.value.items == original && picker.focusedId == original[47].id
+                picker.state.value.sequenceId == null && picker.state.value.items == original && picker.focusedId == original[47].identityKey
             }
         }
     }

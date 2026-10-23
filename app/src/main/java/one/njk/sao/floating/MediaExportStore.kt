@@ -31,8 +31,8 @@ class MediaExportStore @Inject constructor(@ApplicationContext private val conte
     private var prepared = false
     private val clipboardMarker get() = File(directory.parentFile, ".clipboard")
 
-    internal suspend fun write(name: String, build: suspend (File) -> Unit): File = withContext(dispatchers.io) {
-        require(name.matches(Regex("[a-zA-Z0-9_.-]+")) && !name.endsWith(".pending"))
+    internal suspend fun write(key: MediaExportKey, extension: String, build: suspend (File) -> Unit): File = withContext(dispatchers.io) {
+        val name = key.filename(extension)
         val file = File(directory, name)
         val writer = maintenance.withLock {
             directory.mkdirs()

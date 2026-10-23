@@ -75,4 +75,17 @@ class ImportStoreDeviceTest {
         assertEquals(listOf("local" to "rev"),store.unfinalized(network=false))
         assertEquals(listOf("cloud" to "rev"),store.unfinalized(network=true))
     }
+    @Test fun connectedFolderRetainsItsNetworkPolicyAndLegacyRoutesRemainOnline()=database { store ->
+        store.connect("local","rev","folder","Folder","content://fixture/local","Local",network=false)
+        store.connect("cloud","rev","album","Album","content://fixture/cloud","Cloud",network=true)
+        assertFalse(store.routes("local").single().network)
+        assertTrue(store.routes("cloud").single().network)
+        val file=File(app.cacheDir,"legacy-imports-${UUID.randomUUID()}.db")
+        try { android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(file,null).use { db ->
+            db.execSQL("CREATE TABLE routes(id TEXT PRIMARY KEY)")
+            db.execSQL("INSERT INTO routes VALUES('old-route')")
+            store.onUpgrade(db,1,2)
+            db.rawQuery("SELECT network FROM routes",null).use { assertTrue(it.moveToFirst()); assertEquals(1,it.getInt(0)) }
+        } } finally { file.delete() }
+    }
 }

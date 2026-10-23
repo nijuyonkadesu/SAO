@@ -11,32 +11,34 @@ import java.io.File
 import java.util.UUID
 
 /** Durable transfer state, not a search/media cache. Unchanged completed files produce no writes. */
-internal class ImportStore(context: Context): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"media-imports.db").path,null,1) {
+internal class ImportStore(context: Context): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"media-imports.db").path,null,2) {
     private val resolver=context.contentResolver
     private val notification=one.njk.sao.source.ImportSettings.changes(context.packageName)
     val changes=MutableStateFlow(0L)
-    data class Route(val id: String,val source: String,val identity: String,val target: String,val label: String,val tree: String,val name: String,val checked: Long,val error: String?)
+    data class Route(val id: String,val source: String,val identity: String,val target: String,val label: String,val tree: String,val name: String,val checked: Long,val error: String?,val network: Boolean=true)
     data class Task(val id: String,val source: String,val identity: String,val target: String,val uri: String,val name: String,
         val mime: String,val size: Long,val modified: Long,val fingerprint: String,val staged: String?,val checksum: String?,val attempts: Int,val automatic: Boolean,val network: Boolean)
     data class Stats(val done: Int=0,val pending: Int=0,val blocked: Int=0,val error: String?=null,val paused: Boolean=false)
     override fun onConfigure(db: SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true); db.enableWriteAheadLogging() }
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE routes(id TEXT PRIMARY KEY,source TEXT NOT NULL,identity TEXT NOT NULL,target TEXT NOT NULL,label TEXT NOT NULL,tree TEXT NOT NULL,name TEXT NOT NULL,checked INTEGER NOT NULL DEFAULT 0,error TEXT,scanning INTEGER NOT NULL DEFAULT 0,UNIQUE(source,identity,target,tree))")
+        db.execSQL("CREATE TABLE routes(id TEXT PRIMARY KEY,source TEXT NOT NULL,identity TEXT NOT NULL,target TEXT NOT NULL,label TEXT NOT NULL,tree TEXT NOT NULL,name TEXT NOT NULL,checked INTEGER NOT NULL DEFAULT 0,error TEXT,scanning INTEGER NOT NULL DEFAULT 0,network INTEGER NOT NULL DEFAULT 1,UNIQUE(source,identity,target,tree))")
         db.execSQL("CREATE TABLE directories(route TEXT NOT NULL REFERENCES routes(id) ON DELETE CASCADE,document TEXT NOT NULL,position INTEGER NOT NULL DEFAULT 0,done INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(route,document))")
         db.execSQL("CREATE TABLE tasks(id TEXT PRIMARY KEY,source TEXT NOT NULL,identity TEXT NOT NULL,target TEXT NOT NULL,uri TEXT NOT NULL,name TEXT NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL,modified INTEGER NOT NULL,fingerprint TEXT NOT NULL,route TEXT,status TEXT NOT NULL DEFAULT 'pending',staged TEXT,checksum TEXT,receipt TEXT,attempts INTEGER NOT NULL DEFAULT 0,next INTEGER NOT NULL DEFAULT 0,error TEXT,finalized INTEGER NOT NULL DEFAULT 0,automatic INTEGER NOT NULL DEFAULT 0,network INTEGER NOT NULL DEFAULT 0,UNIQUE(source,identity,target,uri))")
         db.execSQL("CREATE INDEX task_queue ON tasks(status,next)")
         db.execSQL("CREATE TABLE controls(source TEXT PRIMARY KEY,paused INTEGER NOT NULL DEFAULT 0)")
     }
-    override fun onUpgrade(db: SQLiteDatabase,old: Int,new: Int)=Unit
+    override fun onUpgrade(db: SQLiteDatabase,old: Int,new: Int) {
+        if(old<2) db.execSQL("ALTER TABLE routes ADD COLUMN network INTEGER NOT NULL DEFAULT 1")
+    }
     private fun signal() { synchronized(changes) { changes.value++ }; resolver.notifyChange(notification,null) }
     private fun Cursor.text(name: String)=getString(getColumnIndexOrThrow(name))
     private fun Cursor.number(name: String)=getLong(getColumnIndexOrThrow(name))
-    private fun route(c: Cursor)=Route(c.text("id"),c.text("source"),c.text("identity"),c.text("target"),c.text("label"),c.text("tree"),c.text("name"),c.number("checked"),c.text("error"))
+    private fun route(c: Cursor)=Route(c.text("id"),c.text("source"),c.text("identity"),c.text("target"),c.text("label"),c.text("tree"),c.text("name"),c.number("checked"),c.text("error"),c.number("network")!=0L)
     private fun task(c: Cursor)=Task(c.text("id"),c.text("source"),c.text("identity"),c.text("target"),c.text("uri"),c.text("name"),c.text("mime"),c.number("size"),c.number("modified"),c.text("fingerprint"),c.text("staged"),c.text("checksum"),c.number("attempts").toInt(),c.number("automatic")!=0L,c.number("network")!=0L)
     fun routes(source: String?=null): List<Route> = readableDatabase.rawQuery("SELECT * FROM routes"+if(source==null) "" else " WHERE source=?",source?.let { arrayOf(it) }).use { c -> buildList { while(c.moveToNext()) add(route(c)) } }
-    fun connect(source: String,identity: String,target: String,label: String,tree: String,name: String) {
+    fun connect(source: String,identity: String,target: String,label: String,tree: String,name: String,network: Boolean=true) {
         writableDatabase.insertWithOnConflict("routes",null,ContentValues().apply {
-            put("id",UUID.randomUUID().toString()); put("source",source); put("identity",identity); put("target",target); put("label",label); put("tree",tree); put("name",name)
+            put("id",UUID.randomUUID().toString()); put("source",source); put("identity",identity); put("target",target); put("label",label); put("tree",tree); put("name",name); put("network",if(network) 1 else 0)
         },SQLiteDatabase.CONFLICT_IGNORE); signal()
     }
     @Synchronized fun add(source: String,identity: String,target: String,entry: MediaDocuments.Entry,route: String?=null,staged: File?=null,checksum: String?=null,network: Boolean=false): Boolean {

@@ -14,14 +14,24 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class SourceSetupActivity : AppCompatActivity() {
+    private enum class Phase { DISCOVERING, SETTINGS, RECONCILING }
+    private var phase = Phase.DISCOVERING
+    private var returnedProfile: String? = null
+    private var opening: Job? = null
     @Inject lateinit var extensions: SourceExtensions
     @Inject lateinit var trust: ExtensionTrust
     private val launcher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        lifecycleScope.launch {
+        returnedProfile = if (result.resultCode == RESULT_OK) result.data?.getStringExtra(ExtensionProtocol.PROFILE) else null
+        phase = Phase.RECONCILING
+        reconcile()
+    }
+    private fun reconcile() {
+        opening?.cancel()
+        opening = lifecycleScope.launch {
             try {
                 val component = ComponentName.unflattenFromString(intent.getStringExtra("component").orEmpty())
                 val found = extensions.installed().firstOrNull { it.component == component } ?: error("Extension unavailable")
-                extensions.refresh(found,if (result.resultCode == RESULT_OK) result.data?.getStringExtra(ExtensionProtocol.PROFILE) else null, intent.getBooleanExtra(EXTRA_FLOATING, false))
+                extensions.refresh(found,returnedProfile,intent.getBooleanExtra(EXTRA_FLOATING, false))
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { android.widget.Toast.makeText(this@SourceSetupActivity,one.njk.sao.R.string.source_extension_failed,android.widget.Toast.LENGTH_LONG).show() }
             finish()
@@ -29,6 +39,8 @@ class SourceSetupActivity : AppCompatActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        phase = savedInstanceState?.getString("setup_phase")?.let { name -> Phase.entries.firstOrNull { it.name == name } } ?: Phase.DISCOVERING
+        returnedProfile = savedInstanceState?.getString("returned_profile")
         supportFragmentManager.setFragmentResultListener(ExtensionTrustDialog.RESULT,this) { _,result ->
             if(!result.getBoolean(ExtensionTrustDialog.ALLOWED)) { finish(); return@setFragmentResultListener }
             lifecycleScope.launch {
@@ -41,9 +53,21 @@ class SourceSetupActivity : AppCompatActivity() {
                 catch(_: Exception) { unavailable() }
             }
         }
-        if(savedInstanceState==null) open()
+        when (phase) {
+            Phase.DISCOVERING -> if (supportFragmentManager.findFragmentByTag(ExtensionTrustDialog.RESULT)==null) open()
+            Phase.SETTINGS -> Unit // ActivityResultRegistry restores the outstanding external result.
+            Phase.RECONCILING -> reconcile()
+        }
     }
-    private fun open() { lifecycleScope.launch {
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("setup_phase",phase.name)
+        outState.putString("returned_profile",returnedProfile)
+        super.onSaveInstanceState(outState)
+    }
+    private fun open() {
+        opening?.cancel()
+        phase=Phase.DISCOVERING
+        opening=lifecycleScope.launch {
         try {
             val component=ComponentName.unflattenFromString(intent.getStringExtra("component").orEmpty())
             val found=extensions.candidates().firstOrNull { it.component==component } ?: error("Extension unavailable")
@@ -53,11 +77,13 @@ class SourceSetupActivity : AppCompatActivity() {
                 return@launch
             }
             extensions.migrate(found)
+            phase=Phase.SETTINGS
             launcher.launch(Intent().setComponent(ComponentName(found.component.packageName,found.settings))
                 .putExtra(ExtensionProtocol.PROFILE,intent.getStringExtra(ExtensionProtocol.PROFILE)))
         } catch(cancelled: CancellationException) { throw cancelled }
         catch(_: Exception) { unavailable() }
-    } }
+        }
+    }
     private fun unavailable() {
         android.widget.Toast.makeText(this,one.njk.sao.R.string.source_extension_failed,android.widget.Toast.LENGTH_LONG).show()
         finish()

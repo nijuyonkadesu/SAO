@@ -89,7 +89,7 @@ class SourceNsfwDeviceTest {
                         override suspend fun filters()=emptyList<String>()
                         override val identity=kotlinx.coroutines.flow.flowOf(profile.identity)
                         override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
-                        override suspend fun preview(item: MediaItem): Preview=error("unused")
+                        override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(error("unused"))
                         override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
                             block: suspend (MediaHandle)->T): T=error("unused")
                     }

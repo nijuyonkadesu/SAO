@@ -48,14 +48,14 @@ class RaysLiveDeviceTest {
                 handle.openStream().use { it.readBytes() } }, webpExport.file.readBytes())
             val svg = source.page(MediaQuery("api-fixture 061")).items.single { it.title == "api-fixture 061" }
             assertEquals("image/svg+xml", svg.mimeType)
-            assertTrue(source.preview(svg) is Preview.Bytes)
+            source.withPreview(svg) { assertTrue(it is Preview.Bytes) }
             assertTrue(source.withRendition(svg,Rendition.STILL) { handle ->
                 handle.openStream().use { android.graphics.BitmapFactory.decodeStream(it) != null } })
             assertEquals("image/png", MediaExports(app, source).prepare(svg, ExportRendition.STICKER_PNG).mimeType)
             val video = source.page(MediaQuery("api-fixture 060")).items.single { it.title == "api-fixture 060" }
             assertEquals("video/mp4", video.mimeType)
             assertTrue(video.isVideo)
-            assertTrue(source.preview(video) is Preview.Decoded)
+            source.withPreview(video) { assertTrue(it is Preview.Decoded) }
             assertTrue(source.withRendition(video,Rendition.PLAYBACK) { handle -> handle.requireFile().isFile })
             val movie = source.page(MediaQuery("api-fixture 059")).items.single { it.title == "api-fixture 059" }
             assertEquals("video/webm", movie.mimeType)
@@ -83,7 +83,7 @@ class RaysLiveDeviceTest {
             val animated = emoji.items.single()
             assertTrue(animated.animated)
             assertEquals("image/gif", animated.mimeType)
-            assertTrue(source.preview(animated) is Preview.Uri)
+            source.withPreview(animated) { assertTrue(it is Preview.Uri) }
             val original = source.withRendition(animated,Rendition.ORIGINAL) { handle ->
                 handle.openStream().use { it.readBytes() } }
             assertEquals("GIF", original.take(3).toByteArray().toString(Charsets.US_ASCII))

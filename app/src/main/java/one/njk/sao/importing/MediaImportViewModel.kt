@@ -25,10 +25,11 @@ class MediaImportViewModel @Inject constructor(internal val repository: MediaImp
     init { refresh() }
     fun incoming(uris: List<Uri>) {
         if(saved.get<Boolean>("received")==true) return
-        saved["incoming"]=ArrayList(uris.distinct()); mutable.update { it.copy(total=uris.size,inspecting=uris.isNotEmpty()) }
+        val pending=saved.get<ArrayList<Uri>>("incoming") ?: ArrayList(uris.distinct()).also { saved["incoming"]=it }
+        mutable.update { it.copy(total=pending.size,inspecting=pending.isNotEmpty()) }
         viewModelScope.launch {
             try {
-                val types=repository.types(uris)
+                val types=repository.types(pending)
                 mutable.update { it.copy(incomingTypes=types,inspecting=false) }
             } catch(cancelled: CancellationException) { throw cancelled }
             catch(error: Exception) { mutable.update { it.copy(inspecting=false,error=MediaImports.code(error)) } }
@@ -48,6 +49,7 @@ class MediaImportViewModel @Inject constructor(internal val repository: MediaImp
                     ?: selected?.options?.targets?.firstOrNull()
                 mutable.update { it.copy(loaded=true,profile=profile,destinations=destinations,selected=selected,target=target,error=null) }
                 observe(id)
+                if(selected!=null && target!=null && !saved.get<ArrayList<Uri>>("incoming").isNullOrEmpty()) receive()
             } catch(cancelled: CancellationException) { throw cancelled }
             catch(error: Exception) { mutable.update { it.copy(loaded=true,error=MediaImports.code(error)) } }
         }
@@ -72,12 +74,18 @@ class MediaImportViewModel @Inject constructor(internal val repository: MediaImp
     fun receive(uris: List<Uri>?=null) {
         val destination=state.value.selected ?: return
         val target=state.value.target ?: return
-        val input=uris ?: saved.get<ArrayList<Uri>>("incoming").orEmpty()
+        val input=(saved.get<ArrayList<Uri>>("incoming").orEmpty()+uris.orEmpty()).distinct()
         if(input.isEmpty()) return
         action {
             mutable.update { it.copy(prepared=0,total=input.size,preparing=true) }
-            try { repository.enqueue(destination,target,input) { done,total -> mutable.update { it.copy(prepared=done,total=total) } } }
-            finally { saved["incoming"]=null; saved["received"]=true }
+            saved["incoming"]=ArrayList(input); saved["received"]=false
+            repository.enqueue(destination,target,input) { done,total ->
+                withContext(Dispatchers.Main.immediate) {
+                    saved["incoming"]=ArrayList(input.drop(done))
+                    mutable.update { it.copy(prepared=done,total=total) }
+                }
+            }
+            saved["incoming"]=null; saved["received"]=true
             mutable.update { it.copy(received=true) }
         }
     }

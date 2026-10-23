@@ -608,7 +608,7 @@ class ImmichSearchDeviceTest {
 
     @Test fun luckyReshufflesOnDemandAndRestoresTheBatchAndFocusWithoutRecopy() {
         var firstIds = emptyList<String>()
-        var focused: String? = null
+        var focused: MediaIdentity? = null
         var nonce: String? = null
         var copied: String? = null
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, "com.discord", null)).use { scenario ->
@@ -641,8 +641,8 @@ class ImmichSearchDeviceTest {
                 await(scenario, "The random carousel must navigate") { activity ->
                     val grid = activity.findViewById<RecyclerView>(R.id.media_grid)
                     val positions = (0 until grid.childCount).map { grid.getChildAdapterPosition(grid.getChildAt(it)) }
-                    scrollTrace = "focus=${model(activity).focusedId?.let(firstIds::indexOf)},positions=$positions,layout=${grid.isLayoutRequested},count=${grid.adapter!!.itemCount},scroll=${grid.scrollState}"
-                    model(activity).focusedId?.let { id -> firstIds.indexOf(id) >= 30 } == true
+                    scrollTrace = "focus=${model(activity).state.value.items.indexOfFirst { it.identityKey == model(activity).focusedId }},positions=$positions,layout=${grid.isLayoutRequested},count=${grid.adapter!!.itemCount},scroll=${grid.scrollState}"
+                    model(activity).state.value.items.indexOfFirst { it.identityKey == model(activity).focusedId } >= 30
                 }
             } catch (failure: AssertionError) { throw AssertionError("${failure.message}: $scrollTrace", failure) }
             SystemClock.sleep(5_000); screenshot("search-lucky-results.png")

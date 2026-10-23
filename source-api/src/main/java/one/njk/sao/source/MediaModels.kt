@@ -1,6 +1,8 @@
 package one.njk.sao.source
 
 import java.text.Normalizer
+import java.nio.ByteBuffer
+import java.util.Base64
 import java.util.Locale
 
 const val LOCAL_SOURCE_ID = "local"
@@ -28,8 +30,32 @@ data class MediaPage(val items: List<MediaItem>, val nextCursor: String? = null,
     /** Successful items are usable; continuation requires an explicit retry. */
     val interrupted: Boolean = false)
 
+/** An asset's stable owner and backend identity, independent of rendition/content revisions. */
+data class MediaIdentity(val owner: String, val asset: String) {
+    /** Canonical, delimiter-safe saved-state representation; provider IDs remain opaque. */
+    fun encode(): String {
+        val encoder = Base64.getUrlEncoder().withoutPadding()
+        return encoder.encodeToString(owner.toByteArray(Charsets.UTF_8)) + "." +
+            encoder.encodeToString(asset.toByteArray(Charsets.UTF_8))
+    }
+
+    companion object {
+        /** Malformed or oversized restored focus is ignored instead of breaking browsing. */
+        fun decode(value: String?): MediaIdentity? {
+            if (value == null || value.length > 16 * 1024) return null
+            return runCatching {
+                val fields = value.split('.')
+                require(fields.size == 2)
+                val decoder = Base64.getUrlDecoder()
+                fun text(field: String) = Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(decoder.decode(field))).toString()
+                MediaIdentity(text(fields[0]), text(fields[1])).also { require(it.encode() == value) }
+            }.getOrNull()
+        }
+    }
+}
+
 /** Stable across asset revisions and distinct across accounts/providers. */
-val MediaItem.identityKey get() = remote?.let { it.sourceId to it.assetId } ?: (LOCAL_SOURCE_ID to id)
+val MediaItem.identityKey get() = remote?.let { MediaIdentity(it.sourceId, it.assetId) } ?: MediaIdentity(LOCAL_SOURCE_ID, id)
 
 enum class SearchMode { CONTEXT, FILENAME, DESCRIPTION, PATH, OCR }
 enum class SearchMedia { ALL, IMAGES, VIDEOS }

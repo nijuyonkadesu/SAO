@@ -8,7 +8,6 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil3.ImageLoader
-import coil3.request.Disposable
 import coil3.request.ImageRequest
 import coil3.request.target
 import kotlinx.coroutines.*
@@ -27,7 +26,6 @@ internal class SearchPeopleAdapter(private val source: MediaSource, private val 
     class Holder(val binding: ItemSearchPersonBinding) : RecyclerView.ViewHolder(binding.root) {
         var person: SearchPerson? = null
         var job: Job? = null
-        var request: Disposable? = null
     }
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = Holder(ItemSearchPersonBinding.inflate(LayoutInflater.from(parent.context), parent, false))
     override fun onBindViewHolder(holder: Holder, position: Int) {
@@ -46,21 +44,23 @@ internal class SearchPeopleAdapter(private val source: MediaSource, private val 
         holder.binding.portrait.setImageResource(R.drawable.ic_picker_person)
         holder.job = scope.launch {
             try {
-                val data = source.personPreview(person)?.data ?: return@launch
-                if (holder.person != person) return@launch
-                holder.request = loader.enqueue(ImageRequest.Builder(holder.binding.root.context).data(data)
+                source.withPersonPreview(person) { preview ->
+                val data = preview?.data ?: return@withPersonPreview
+                if (holder.person != person) return@withPersonPreview
+                loader.execute(ImageRequest.Builder(holder.binding.root.context).data(data)
                     .size(128, 128).target(holder.binding.portrait).build())
+                }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { /* A missing portrait does not prevent selecting a person. */ }
         }
     }
     private fun clear(holder: Holder) {
-        holder.job?.cancel(); holder.job = null; holder.request?.dispose(); holder.request = null
+        holder.job?.cancel(); holder.job = null
         holder.binding.portrait.setImageDrawable(null)
     }
     override fun onViewAttachedToWindow(holder: Holder) {
         holders += holder
-        if (holder.job == null && holder.request == null) load(holder)
+        if (holder.job == null) load(holder)
     }
     override fun onViewDetachedFromWindow(holder: Holder) { holders -= holder; clear(holder) }
     override fun onViewRecycled(holder: Holder) { holders -= holder; clear(holder); holder.person = null }

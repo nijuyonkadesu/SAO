@@ -11,7 +11,6 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil3.ImageLoader
-import coil3.request.Disposable
 import coil3.request.ImageRequest
 import coil3.request.target
 import coil3.request.placeholder
@@ -37,13 +36,13 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     private val canHold: () -> Boolean = { false }, private val held: (MediaItem) -> Unit = {},
     private val home: Boolean = false, private val select: (MediaItem) -> Unit) :
     ListAdapter<MediaItem, MediaCarouselAdapter.Holder>(object : DiffUtil.ItemCallback<MediaItem>() {
-        override fun areItemsTheSame(a: MediaItem, b: MediaItem) = a.id == b.id
+        override fun areItemsTheSame(a: MediaItem, b: MediaItem) = a.identityKey == b.identityKey
         override fun areContentsTheSame(a: MediaItem, b: MediaItem) = a == b
     }) {
     private val attached = mutableSetOf<Holder>()
     private var player: ExoPlayer? = null
     private var videoHolder: Holder? = null
-    private var videoId: String? = null
+    private var videoId: MediaIdentity? = null
     private var videoLoading: Job? = null
     private var videoRelease: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     private var videoVersion = 0L
@@ -52,9 +51,9 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     private var uploadFormatter: java.time.format.DateTimeFormatter? = null
     var showUploadTime = false
         set(value) { if (field != value) { field = value; furthestBound = -1; attached.forEach(::decorate) } }
-    var selectedId: String? = null
+    var selectedId: MediaIdentity? = null
         set(value) { if (field != value) { field = value; attached.forEach(::decorate) } }
-    var focusedId: String? = null
+    var focusedId: MediaIdentity? = null
         set(value) {
             if (field != value) {
                 field = value
@@ -71,7 +70,6 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         var uploadCaption: String? = null
         var description: String = ""
         var item: MediaItem? = null
-        var request: Disposable? = null
         var loading: Job? = null
     }
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = Holder(
@@ -91,7 +89,6 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         furthestBound = maxOf(furthestBound, position)
         prefetch(furthestBound)
         if (videoHolder === holder) stopVideo()
-        holder.request?.dispose()
         holder.loading?.cancel()
         val item = getItem(position); holder.item = item
         val kind = when { item.isVideo -> one.njk.sao.R.string.picker_video; item.animated -> one.njk.sao.R.string.picker_gif; else -> null }
@@ -108,7 +105,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     }
     override fun onCurrentListChanged(previousList: MutableList<MediaItem>, currentList: MutableList<MediaItem>) {
         val appended = previousList.isNotEmpty() && currentList.size > previousList.size &&
-            currentList.first().id == previousList.first().id && currentList[previousList.lastIndex].id == previousList.last().id
+            currentList.first().identityKey == previousList.first().identityKey && currentList[previousList.lastIndex].identityKey == previousList.last().identityKey
         if (!appended) furthestBound = -1
         // A short/overlapping page can leave the same viewport near the end without another
         // scroll callback. Continue prefetching as bindings approach the new end.
@@ -123,16 +120,17 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         } else holder.binding.preview.setImageDrawable(null)
         holder.loading = scope.launch {
             try {
-                val data = source.preview(item).data
-                if (holder.item?.id != item.id) return@launch
-                holder.request = loader.enqueue(ImageRequest.Builder(holder.binding.preview.context).data(data).size(1024, 1024)
+                source.withPreview(item) { preview ->
+                if (holder.item != item) return@withPreview
+                loader.execute(ImageRequest.Builder(holder.binding.preview.context).data(preview.data).size(1024, 1024)
                     .apply { if (home) { placeholder(one.njk.sao.R.drawable.eager); error(one.njk.sao.R.drawable.eager) } }
                     .target(holder.binding.preview).listener(onSuccess = { _, _ ->
                         if (home) holder.binding.preview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
                         decorate(holder)
                     }).build())
+                }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (holder.item?.id == item.id) holder.binding.preview.setImageResource(
+            catch (_: Exception) { if (holder.item == item) holder.binding.preview.setImageResource(
                 if (home) one.njk.sao.R.drawable.eager else one.njk.sao.R.drawable.ic_picker_media) }
         }
     }
@@ -145,20 +143,20 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
                 uploadedAt.text = holder.uploadCaption
             }
             root.contentDescription = holder.description + if (showUploadTime) ", ${holder.uploadCaption}" else ""
-            val selected = item.id == selectedId
+            val selected = item.identityKey == selectedId
             root.isSelected = selected; check.isVisible = selected
             (preview.drawable as? Animatable)?.let {
-                if (playing && !scrolling && item.id == focusedId && holder in attached) it.start() else it.stop()
+                if (playing && !scrolling && item.identityKey == focusedId && holder in attached) it.start() else it.stop()
             }
         }
     }
     private fun syncVideo() {
-        val holder = if (playing && !scrolling && !closed) attached.firstOrNull { it.item?.let { item -> item.id == focusedId && item.isVideo } == true } else null
+        val holder = if (playing && !scrolling && !closed) attached.firstOrNull { it.item?.let { item -> item.identityKey == focusedId && item.isVideo } == true } else null
         val item = holder?.item
-        if (holder === videoHolder && item?.id == videoId) return
+        if (holder === videoHolder && item?.identityKey == videoId) return
         stopVideo()
         if (holder == null || item == null) return
-        videoHolder = holder; videoId = item.id
+        videoHolder = holder; videoId = item.identityKey
         val version = videoVersion
         videoLoading = scope.launch {
             try {
@@ -166,7 +164,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
                 delay(200)
                 source.withRendition(item, Rendition.PLAYBACK) { handle ->
                     val file = handle.requireFile()
-                    if (version != videoVersion || !playing || scrolling || holder !in attached || holder.item?.id != item.id) return@withRendition
+                    if (version != videoVersion || !playing || scrolling || holder !in attached || holder.item != item) return@withRendition
                     val created = ExoPlayer.Builder(holder.binding.root.context)
                         .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(1000, 5000, 250, 500)
                             .setTargetBufferBytes(8 * 1024 * 1024).build()).build().apply {
@@ -219,19 +217,19 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     }
     fun cancelGestures() { attached.forEach { it.hold?.cancel() } }
     fun close() { closed = true; cancelGestures(); stopVideo() }
-    override fun onViewAttachedToWindow(holder: Holder) { attached += holder; if (holder.request == null && holder.loading?.isActive != true) load(holder); decorate(holder); syncVideo() }
+    override fun onViewAttachedToWindow(holder: Holder) { attached += holder; if (holder.loading == null) load(holder); decorate(holder); syncVideo() }
     override fun onViewDetachedFromWindow(holder: Holder) {
         holder.hold?.cancel()
         attached -= holder; (holder.binding.preview.drawable as? Animatable)?.stop()
         if (videoHolder === holder) stopVideo()
-        holder.request?.dispose(); holder.request = null; holder.binding.preview.setImageDrawable(null)
+        holder.binding.preview.setImageDrawable(null)
         holder.loading?.cancel(); holder.loading = null
         syncVideo()
     }
     override fun onViewRecycled(holder: Holder) {
         holder.hold?.cancel()
         if (videoHolder === holder) stopVideo()
-        attached -= holder; holder.request?.dispose(); holder.request = null; holder.item = null
+        attached -= holder; holder.item = null
         holder.loading?.cancel(); holder.loading = null
         holder.binding.preview.setImageDrawable(null)
         holder.binding.videoPreview.player = null; holder.binding.videoPreview.isVisible = false

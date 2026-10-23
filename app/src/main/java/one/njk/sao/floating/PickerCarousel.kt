@@ -14,8 +14,8 @@ internal data class PickerBrowseKey(val sourceId: String, val query: MediaQuery,
 /** A carousel owns its list, layout and pending placement. Search stays mounted during sequence navigation. */
 internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarouselAdapter,
     private val current: (PickerBrowseKey) -> Boolean,
-    private val focused: (PickerBrowseKey) -> String?,
-    private val focusChanged: (PickerBrowseKey, String?, Int) -> Unit,
+    private val focused: (PickerBrowseKey) -> MediaIdentity?,
+    private val focusChanged: (PickerBrowseKey, MediaIdentity?, Int) -> Unit,
     private val centerChanged: () -> Unit,
     private val remember: () -> Unit, private val dragging: () -> Unit,
     private val home: Boolean = false) : AutoCloseable {
@@ -27,7 +27,7 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
     private var generation = 0L
     private var placing = false
     private var needsPlacement = false
-    private var wanted: String? = null
+    private var wanted: MediaIdentity? = null
     private var recordingPending = false
     private var fullScreen = false
     private var closed = false
@@ -77,8 +77,8 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
             return
         }
         val changed = key != next
-        val prepended = !changed && next.sequenceId != null && adapter.currentList.firstOrNull()?.id?.let {
-            it != state.items.firstOrNull()?.id
+        val prepended = !changed && next.sequenceId != null && adapter.currentList.firstOrNull()?.identityKey?.let {
+            it != state.items.firstOrNull()?.identityKey
         } == true
         if (changed || prepended) {
             wanted = focused(next)
@@ -101,8 +101,8 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
 
     private fun place(version: Long, browse: PickerBrowseKey) {
         if (adapter.currentList.isEmpty()) { placing = false; needsPlacement = false; center(null); return }
-        val position = adapter.currentList.indexOfFirst { it.id == wanted }.coerceAtLeast(0)
-        adapter.focusedId = adapter.currentList[position].id
+        val position = adapter.currentList.indexOfFirst { it.identityKey == wanted }.coerceAtLeast(0)
+        adapter.focusedId = adapter.currentList[position].identityKey
         placing = true
         center(null)
         view.stopScroll()
@@ -130,7 +130,7 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
         val focal = snap.findSnapView(manager) ?: return
         val position = manager.getPosition(focal)
         val item = adapter.currentList.getOrNull(position) ?: return
-        val id = item.id
+        val id = item.identityKey
         adapter.focusedId = id
         center(item)
         focusChanged(browse, id, position)

@@ -95,15 +95,15 @@ class DiscordDeviceTest {
                         access.browseSession().reset()
                         val calls = java.util.concurrent.atomic.AtomicInteger()
                         val delivered = AtomicReference<Triple<String, String, ByteArray>>()
-                        registry.register(pkg, object : one.njk.sao.floating.nativebridge.INativeStickerClient.Stub() {
+                        registry.register(pkg, object : one.njk.sao.floating.nativebridge.TestNativeClient() {
                             override fun setActive(active: Boolean, generation: Long) = Unit
                             override fun snapshot(beginSelection: Boolean) = android.os.Bundle().apply {
                                 putString("session", "video-draft"); putLong("created", SystemClock.elapsedRealtime())
                                 putStringArray("mime_types", arrayOf("image/jpeg", "video/mp4", "video/webm")); putBoolean("resumed", true)
                             }
-                            override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Boolean {
+                            override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Int {
                                 delivered.set(Triple(session, mimeType, app.contentResolver.openInputStream(uri)!!.use { it.readBytes() }))
-                                calls.incrementAndGet(); return true
+                                calls.incrementAndGet(); return one.njk.sao.floating.nativebridge.NativeInsertResult.ACCEPTED.wireValue
                             }
                         })
                         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, pkg, null, "video-draft")).use { scenario ->
@@ -115,7 +115,7 @@ class DiscordDeviceTest {
                                     val focal = (grid.onFlingListener as com.google.android.material.carousel.CarouselSnapHelper).findSnapView(grid.layoutManager!!)
                                     val item = focal?.let { v -> (grid.getChildViewHolder(v) as MediaCarouselAdapter.Holder).item }
                                     ready = item?.mimeType == mime && !grid.isLayoutRequested && !grid.isComputingLayout &&
-                                        (grid.adapter as MediaCarouselAdapter).focusedId == item.id &&
+                                        (grid.adapter as MediaCarouselAdapter).focusedId == item.identityKey &&
                                         registry.supports(pkg, "video-draft", mime) && it.findViewById<View>(action).isEnabled
                                 }
                                 kotlinx.coroutines.delay(40)
@@ -150,7 +150,7 @@ class DiscordDeviceTest {
         val results = java.util.concurrent.CopyOnWriteArrayList<Pair<String, ByteArray>>()
         try {
             mp4First = true; FloatingSession.active(true); preferences.pasteAssistance(false)
-            registry.register("com.discord", object : one.njk.sao.floating.nativebridge.INativeStickerClient.Stub() {
+            registry.register("com.discord", object : one.njk.sao.floating.nativebridge.TestNativeClient() {
                 override fun setActive(active: Boolean, generation: Long) = Unit
                 override fun snapshot(beginSelection: Boolean) = android.os.Bundle().apply {
                     if (beginSelection) lease.set(UUID.randomUUID().toString())
@@ -158,11 +158,11 @@ class DiscordDeviceTest {
                     putLong("created", SystemClock.elapsedRealtime()); putBoolean("resumed", true)
                     putStringArray("mime_types", arrayOf("video/mp4"))
                 }
-                override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Boolean {
-                    if (lease.get() != session) return false
+                override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Int {
+                    if (lease.get() != session) return one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED.wireValue
                     lease.set(null)
                     results.add(mimeType to app.contentResolver.openInputStream(uri)!!.use { it.readBytes() })
-                    calls.incrementAndGet(); return accept.get()
+                    calls.incrementAndGet(); return if(accept.get()) one.njk.sao.floating.nativebridge.NativeInsertResult.ACCEPTED.wireValue else one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED.wireValue
                 }
             })
             val tokens = mutableSetOf<String>()
@@ -179,7 +179,7 @@ class DiscordDeviceTest {
                             val focal = (grid.onFlingListener as com.google.android.material.carousel.CarouselSnapHelper).findSnapView(grid.layoutManager!!)
                             val item = focal?.let { v -> (grid.getChildViewHolder(v) as MediaCarouselAdapter.Holder).item }
                             ready = item?.mimeType == "video/mp4" && !grid.isLayoutRequested && !grid.isComputingLayout &&
-                                (grid.adapter as MediaCarouselAdapter).focusedId == item.id && it.findViewById<View>(R.id.paste_action).isEnabled
+                                (grid.adapter as MediaCarouselAdapter).focusedId == item.identityKey && it.findViewById<View>(R.id.paste_action).isEnabled
                         }
                         kotlinx.coroutines.delay(40)
                     }

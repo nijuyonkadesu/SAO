@@ -5,17 +5,15 @@ import one.njk.sao.source.*
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
+import kotlinx.coroutines.ensureActive
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.media.MediaMetadataRetriever
 import java.io.File
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
 import com.caverock.androidsvg.SVG
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import one.njk.sao.rays.RaysClient
 import one.njk.sao.rays.RaysException
@@ -24,7 +22,6 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import javax.inject.Inject
-import kotlin.coroutines.coroutineContext
 
 data class RaysConfig(val packageName: String = RaysClient.PACKAGE) : SourceConfiguration {
     init { require(packageName in RaysClient.packages) }
@@ -39,33 +36,22 @@ class RaysConfigurationCodec @Inject constructor() : SourceConfigurationCodec {
 }
 
 class RaysSourceFactory @Inject constructor(@ApplicationContext private val context: Context,
-    private val dispatchers: FloatingDispatchers) : MediaSourceFactory {
+    private val dispatchers: FloatingDispatchers, private val cache: SourceMediaCache) : MediaSourceFactory {
     override fun create(profile: SourceProfile) = RaysMediaSource(context,
-        profile.configuration as RaysConfig, profile.identity, dispatchers)
+        profile.configuration as RaysConfig, profile.identity, dispatchers, cache)
 }
 
 /** Read-through library: no query cache, private database access, or idle IPC connection. */
 class RaysMediaSource(private val context: Context, private val config: RaysConfig,
-    private val sourceId: String, private val dispatchers: FloatingDispatchers) : ManagedMediaSource {
+    private val sourceId: String, private val dispatchers: FloatingDispatchers,
+    private val cache: SourceMediaCache = SourceMediaCache(context)) : ManagedMediaSource {
     private val client = RaysClient(context, config.packageName, dispatchers.io)
     @Volatile private var closed = false
-    private val videoFiles = Mutex()
-    private val videoReaders = mutableMapOf<File,Int>()
     override val identity = kotlinx.coroutines.flow.flowOf(sourceId)
     override suspend fun owns(item: MediaItem) = item.remote?.sourceId == sourceId
-    private fun videoFile(item: MediaItem) = File(File(context.cacheDir,"rays/videos"),
-        item.id + if(item.mimeType=="video/webm") ".webm" else ".mp4")
     private suspend fun <T> withVideoFile(item: MediaItem, block: suspend (File) -> T): T {
-        val file = withContext(dispatchers.io) { videoFiles.withLock {
-            val file = ensureVideo(item)
-            videoReaders[file]=(videoReaders[file] ?: 0)+1
-            file
-        } }
-        try { return block(file) }
-        finally { withContext(kotlinx.coroutines.NonCancellable) { videoFiles.withLock {
-            val remaining=videoReaders.getValue(file)-1
-            if(remaining==0) videoReaders.remove(file) else videoReaders[file]=remaining
-        } } }
+        require(item.isVideo)
+        return cache.withFile(sourceId,"${item.id}:original",64L*1024*1024,{ uri(item) },block)
     }
     override suspend fun page(query: MediaQuery, cursor: String?): MediaPage = withContext(dispatchers.io) {
         check(!closed)
@@ -99,7 +85,8 @@ class RaysMediaSource(private val context: Context, private val config: RaysConf
             require(it.scheme == "content" && it.authority == "${config.packageName}.fileprovider")
         }
     }
-    override suspend fun preview(item: MediaItem): Preview = when {
+    override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview) -> T): T {
+        val preview = when {
         item.isVideo -> Preview.Decoded(withContext(dispatchers.io) {
             val retriever = MediaMetadataRetriever()
             try {
@@ -111,37 +98,8 @@ class RaysMediaSource(private val context: Context, private val config: RaysConf
             raster(item).use { java.nio.ByteBuffer.wrap(it.readBytes()) }
         })
         else -> Preview.Uri(uri(item))
-    }
-    private suspend fun ensureVideo(item: MediaItem): File {
-        if (!item.isVideo) error("Rays item is not a video")
-        val input = uri(item)
-        val directory = File(context.cacheDir, "rays/videos").apply { mkdirs() }
-        val file = videoFile(item)
-        if (!file.isFile) {
-            val staging = File(directory, file.name + ".pending")
-            try {
-                context.contentResolver.openInputStream(input)!!.use { source -> staging.outputStream().use { output ->
-                    val buffer = ByteArray(32 * 1024)
-                    var total = 0L
-                    while (true) {
-                        coroutineContext.ensureActive()
-                        val count = source.read(buffer)
-                        if (count < 0) break
-                        total += count
-                        require(total <= 64L * 1024 * 1024) { "Video exceeds 64 MiB" }
-                        output.write(buffer, 0, count)
-                    }
-                } }
-                check(!closed && staging.renameTo(file))
-            } finally { staging.delete() }
         }
-        var total = directory.listFiles().orEmpty().filter { it.isFile }.sumOf { it.length() }
-        directory.listFiles().orEmpty().filter { it.isFile && it != file && it !in videoReaders && !it.name.endsWith(".pending") }
-            .sortedBy { it.lastModified() }.forEach {
-            val length = it.length()
-            if (total > 128L * 1024 * 1024 && it.delete()) total -= length
-        }
-        return file
+        return block(preview)
     }
     @SuppressLint("Recycle")
     private suspend fun original(item: MediaItem): InputStream = withContext(dispatchers.io) {

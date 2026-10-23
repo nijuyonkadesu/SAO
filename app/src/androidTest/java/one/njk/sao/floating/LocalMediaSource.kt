@@ -39,7 +39,7 @@ class LocalMediaSource(private val context: Context,
     }
     suspend fun all(): List<MediaItem> = withContext(dispatchers.io) { catalog }
     override suspend fun filters() = all().flatMap { it.emojis.take(1) }.distinct()
-    override suspend fun preview(item: MediaItem): Preview = Preview.Local(withContext(dispatchers.io) { copy(item) })
+    override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(Preview.Local(withContext(dispatchers.io) { copy(item) }))
     override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
         block: suspend (MediaHandle) -> T): T = when (kind) {
         Rendition.ORIGINAL, Rendition.STILL -> block(MediaHandle.Local(withContext(dispatchers.io) { copy(item) }))

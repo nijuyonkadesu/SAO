@@ -124,8 +124,8 @@ class PickerActivity : AppCompatActivity() {
                     recordFocus(); collapseSearch(); model.browseSequence(item)
                 }) { item ->
                 if (!busy) {
-                    collapseSearch(); carousel.adapter.focusedId = item.id
-                    carousel.view.smoothScrollToPosition(carousel.adapter.currentList.indexOfFirst { it.id == item.id })
+                    collapseSearch(); carousel.adapter.focusedId = item.identityKey
+                    carousel.view.smoothScrollToPosition(carousel.adapter.currentList.indexOfFirst { it.identityKey == item.identityKey })
                     model.select(item, target)
                 }
             }
@@ -247,7 +247,7 @@ class PickerActivity : AppCompatActivity() {
                         if (state.sequenceId == null) sequenceCarousel.clear()
                         showCarousels(); renderHeader(); resize(imeHeight)
                     }
-                    if (!state.loading && model.selection.value?.id?.let { id -> state.items.none { it.id == id } } == true) model.clearSelection()
+                    if (!state.loading && model.selection.value?.identityKey?.let { id -> state.items.none { it.identityKey == id } } == true) model.clearSelection()
                     if (state.query == model.query.value)
                         carousel.render(state)
                     updatePlayback()
@@ -270,8 +270,8 @@ class PickerActivity : AppCompatActivity() {
                 launch { NativeBridgeRegistry.sessions.collect { renderDock() } }
                 launch { NativeBridgeRegistry.statuses.collect { renderDock() } }
                 launch { model.selection.collect {
-                    resultsCarousel.adapter.selectedId = it?.id
-                    sequenceCarousel.adapter.selectedId = it?.id
+                    resultsCarousel.adapter.selectedId = it?.identityKey
+                    sequenceCarousel.adapter.selectedId = it?.identityKey
                     renderDock()
                 } }
                 launch { model.copyStatus.collect { renderDock() } }
@@ -472,7 +472,7 @@ class PickerActivity : AppCompatActivity() {
         if (!::binding.isInitialized) return
         val item = carousel.centeredItem
         val title = item?.title ?: getString(R.string.picker_choose)
-        val status = if (item == null || model.selection.value?.id != item.id || model.copyStatus.value == R.string.picker_choose)
+        val status = if (item == null || model.selection.value?.identityKey != item.identityKey || model.copyStatus.value == R.string.picker_choose)
             "" else getString(model.copyStatus.value)
         dockMarquees.text(binding.selectionTitle, title)
         binding.selectionTitle.contentDescription = title
@@ -763,9 +763,10 @@ class PickerActivity : AppCompatActivity() {
         val context = applicationContext
         // Explicit handoff must outlive this activity while the original host regains focus.
         deliveryScope.launch {
-            val accepted = NativeBridgeRegistry.insert(context, pkg, media.uri, mime, session)
+            val outcome = NativeBridgeRegistry.insert(context, pkg, media.uri, mime, session)
             Toast.makeText(context, when {
-                !accepted -> R.string.floating_native_rejected
+                outcome == one.njk.sao.floating.nativebridge.NativeInsertResult.UNKNOWN -> R.string.picker_native_uncertain
+                outcome == one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED -> R.string.floating_native_rejected
                 instagram && item.isVideo -> R.string.picker_instagram_native_video_accepted
                 instagram -> R.string.picker_instagram_native_accepted
                 discord -> R.string.picker_discord_native_accepted

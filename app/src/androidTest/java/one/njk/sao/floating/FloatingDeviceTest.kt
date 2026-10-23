@@ -460,13 +460,13 @@ class FloatingDeviceTest {
     @Test fun savedStateRestoresTheTaskWithoutRetainingDeliveryState() = runBlocking {
         val source = LocalMediaSource(app); val dispatchers = FloatingDispatchers()
         val handle = androidx.lifecycle.SavedStateHandle(mapOf(
-            PickerViewModel.QUERY_TEXT to "love", PickerViewModel.QUERY_FILTER to "❤️", PickerViewModel.FOCUSED_ID to "love"))
-        val session = PickerBrowseSession().apply { remember(PickerBrowseState(MediaQuery("stale"), "happy")) }
+            PickerViewModel.QUERY_TEXT to "love", PickerViewModel.QUERY_FILTER to "❤️", PickerViewModel.FOCUSED_ID to MediaIdentity(LOCAL_SOURCE_ID,"love").encode()))
+        val session = PickerBrowseSession().apply { remember(PickerBrowseState(MediaQuery("stale"), MediaIdentity(LOCAL_SOURCE_ID,"happy"))) }
         lateinit var model: PickerViewModel
         instrumentation.runOnMainSync {
             model = PickerViewModel(source, FloatingPreferences(app), MediaExports(app, source), ClipboardPublisher(app, dispatchers), session, handle)
             assertEquals(MediaQuery("love", "❤️"), model.query.value)
-            assertEquals("love", model.focusedId)
+            assertEquals(MediaIdentity(LOCAL_SOURCE_ID,"love"), model.focusedId)
             assertNull(model.selection.value)
             assertEquals(session.snapshot(), PickerBrowseState(model.query.value, model.focusedId))
             androidx.lifecycle.ViewModelStore().apply { put("restored", model); clear() }
@@ -589,10 +589,10 @@ class FloatingDeviceTest {
                 grid.findViewHolderForAdapterPosition(0)!!.itemView.performClick()
                 assertFalse(activity.isFinishing)
             }
-            val selected = adapter!!.currentList.first().id
+            val selected = adapter!!.currentList.first().identityKey
             val copyDeadline = SystemClock.elapsedRealtime() + 5000
             while (clip()?.contains("$selected-media") != true && SystemClock.elapsedRealtime() < copyDeadline) SystemClock.sleep(50)
-            assertTrue(clip()?.contains("$selected-media") == true)
+            assertTrue(clip()?.startsWith("content://") == true)
             assertEquals(selected, adapter!!.selectedId)
             val copied = clip(); assertNotEquals(before, copied)
             scenario.onActivity { activity -> activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.media_grid).scrollToPosition(3) }
@@ -857,10 +857,10 @@ class FloatingDeviceTest {
         try {
             assertTrue(connected.await(10, TimeUnit.SECONDS))
             for (scoped in listOf("com.whatsapp", "com.whatsapp.w4b", "com.instagram.android", "com.discord")) try {
-                bridge!!.registerClient(scoped, object : INativeStickerClient.Stub() {
+                bridge!!.registerClient(scoped, object : one.njk.sao.floating.nativebridge.TestNativeClient() {
                     override fun setActive(active: Boolean, generation: Long) = Unit
             override fun snapshot(beginSelection: Boolean): Bundle = Bundle.EMPTY
-                    override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long) = false
+                    override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long) = one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED.wireValue
                 })
                 fail("An unscoped UID must not register a native client")
             } catch (_: SecurityException) { }

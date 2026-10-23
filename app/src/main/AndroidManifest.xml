@@ -48,7 +48,9 @@
         <activity android:name=".floating.RaysSettingsActivity" android:exported="false" />
         <activity android:name=".floating.SourceSettingsActivity" android:exported="false" />
         <provider android:name=".floating.ExtensionTrustProvider" android:authorities="${applicationId}.source-trust" android:exported="true" />
-        <service android:name=".importing.ImportSettingsService" android:exported="true" />
+        <service android:name=".importing.ImportSettingsService" android:exported="true">
+            <meta-data android:name="one.njk.sao.source.API_VERSION" android:value="1" />
+        </service>
         <activity android:name=".importing.ImportActionActivity" android:theme="@style/Theme.SAO.Picker" android:exported="true" />
         <activity android:name=".importing.MediaImportActivity" android:exported="true">
             <intent-filter>

@@ -34,6 +34,9 @@ class ExtensionClient(private val context: Context, val component: ComponentName
     }
     suspend fun request(profile: String = "", operation: String, payload: JSONObject = JSONObject()): JSONObject = withContext(Dispatchers.IO) {
         SourceAccess.requireTarget(context,component.packageName)
+        val service = try { context.packageManager.getServiceInfo(component,android.content.pm.PackageManager.GET_META_DATA) }
+            catch (_: android.content.pm.PackageManager.NameNotFoundException) { throw ExtensionFailure("UNAVAILABLE") }
+        if (service.metaData?.getInt(ExtensionProtocol.API_VERSION) != ExtensionProtocol.VERSION) throw ExtensionFailure("INCOMPATIBLE")
         require(payload.toString().length * 2 <= ExtensionProtocol.MAX_REQUEST)
         val ready = CompletableDeferred<ISourceExtension>()
         var pending: CompletableDeferred<JSONObject>? = null
@@ -53,8 +56,6 @@ class ExtensionClient(private val context: Context, val component: ComponentName
             bound = context.bindService(Intent().setComponent(component), connection, Context.BIND_AUTO_CREATE)
             if (!bound) throw ExtensionFailure("UNAVAILABLE")
             remote = withTimeout(5_000) { ready.await() }
-            val descriptor = JSONObject(remote.descriptor())
-            if (descriptor.getInt("api") != ExtensionProtocol.VERSION) throw ExtensionFailure("INCOMPATIBLE")
             val result = CompletableDeferred<JSONObject>(); pending = result
             remote.request(id, profile, operation, payload.toString(), object : ISourceCallback.Stub() {
                 override fun complete(requestId: String, response: String) {

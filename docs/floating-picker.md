@@ -583,7 +583,7 @@ WhatsApp no longer requires a `jid` in the activity launch intent. Its live edit
 `ARG_JID` bundle already identifies the conversation; missing/conflicting live metadata
 still disables native insertion, and changed metadata revokes the prior lease.
 
-When the floating **service is stopped**, native snapshot polling and accessibility
+Native snapshots are event-driven: an idle floating icon makes no snapshot IPC. Only explicit selection/insertion requests read a snapshot; picker-visible subscriptions receive pushed state. When the floating **service is stopped**, subscriptions and accessibility
 node discovery stop. Accessibility event types are set to zero and node leases cleared.
 Host hooks return without inspecting editors, scanning views or restarting input; native
 bindings are released and Instagram's captured controller bindings cleared. UsageStats
@@ -694,3 +694,6 @@ draft without an intervening photo paste or keyboard reconnect. Failed snapshots
 bounded backoff while the floating service is active; explicit opening can retry immediately.
 Rejected actions preserve any existing URI grant held by an earlier attachment and
 never retry the send. Instagram's verified gallery contracts cover 435 and 451.
+
+
+Native bridge revision 2 uses ACCEPTED / REJECTED / UNKNOWN results. A timeout while still queued cancels dispatch. If dispatch already began, SAO never retries automatically and keeps the URI read grant and prepared input alive for the host’s ongoing read; the user is told to check the chat. This avoids duplicate sends and revoking a file during an uncertain attachment operation. Physical Vector injection still requires device verification after installing both updated host and scoped app modules.

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import one.njk.sao.floating.ExtensionConfig
 import one.njk.sao.floating.SourceExtensions
 import one.njk.sao.floating.SourceProfiles
@@ -44,6 +45,7 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
     private val transferLock=Mutex()
     private val localTransferLock=Mutex()
     private val scanLock=Mutex()
+    private val discoveryPermits=kotlinx.coroutines.sync.Semaphore(3)
     private val active=java.util.concurrent.ConcurrentHashMap<String,String>()
     private val lifecycle=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     init {
@@ -65,12 +67,11 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
     internal suspend fun types(uris: List<Uri>)=withContext(Dispatchers.IO) { uris.map { MediaDocuments.details(app.contentResolver,it).mime }.toSet() }
     suspend fun destinations(source: String?=null): List<Destination> = withContext(Dispatchers.IO) {
         val all=profiles.current().profiles.filter { it.configuration is ExtensionConfig && (source==null || it.id==source) }
-        val requests=Dispatchers.IO.limitedParallelism(3)
-        coroutineScope { all.map { profile -> async(requests) {
+        coroutineScope { all.map { profile -> async { discoveryPermits.withPermit {
             try { Destination(profile,ImportWire.options(call(profile,ExtensionProtocol.IMPORT_OPTIONS))) }
             catch(cancelled: CancellationException) { throw cancelled }
             catch(error: ExtensionFailure) { if(source!=null && error.code!="UNSUPPORTED") throw error; null }
-        } }.awaitAll().filterNotNull() }
+        } } }.awaitAll().filterNotNull() }
     }
     private suspend fun call(profile: SourceProfile,operation: String,payload: JSONObject=JSONObject()): JSONObject {
         val config=profile.configuration as? ExtensionConfig ?: throw ExtensionFailure("UNSUPPORTED")
@@ -78,7 +79,7 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
         return ExtensionClient(app,config.component).request(config.profile,operation,payload.put("source",profile.identity).put("revision",config.revision))
     }
     suspend fun source(id: String): SourceProfile = profiles.current().profiles.firstOrNull { it.id==id } ?: throw ExtensionFailure("PROFILE_MISSING")
-    suspend fun enqueue(destination: Destination,target: ImportTarget,uris: List<Uri>,progress: (Int,Int)->Unit={_,_->}) = withContext(Dispatchers.IO) {
+    suspend fun enqueue(destination: Destination,target: ImportTarget,uris: List<Uri>,progress: suspend (Int,Int)->Unit={_,_->}) = withContext(Dispatchers.IO) {
         require(destination.options.targets.any { it.id==target.id })
         var added=0
         try { uris.distinct().forEachIndexed { index, uri ->
@@ -94,7 +95,7 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
             if(store.add(destination.source.id,destination.source.identity,target.id,entry,staged=staging?.file,checksum=staging?.checksum,network=destination.options.network)) added++
             else releaseInput(uri)
             progress(index+1,uris.size)
-        } } finally {
+        } } finally { withContext(NonCancellable) {
             store.added()
             if(added>0) {
                 if(destination.options.network) {
@@ -102,14 +103,14 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
                     if(!ImportJobs.userInitiated(app)) ImportJobs.enqueue(app,automatic=false)
                 } else ImportJobs.enqueue(app,automatic=false,network=false)
             }
-        }
+        } }
     }
     suspend fun connect(destination: Destination,target: ImportTarget,tree: Uri) = withContext(Dispatchers.IO) {
         require(destination.options.connectedFolders && destination.options.targets.any { it.id==target.id })
         app.contentResolver.takePersistableUriPermission(tree,Intent.FLAG_GRANT_READ_URI_PERMISSION)
         val root=DocumentsContract.buildDocumentUriUsingTree(tree,DocumentsContract.getTreeDocumentId(tree))
         val name=MediaDocuments.details(app.contentResolver,root).name
-        store.connect(destination.source.id,destination.source.identity,target.id,target.name,tree.toString(),name)
+        store.connect(destination.source.id,destination.source.identity,target.id,target.name,tree.toString(),name,destination.options.network)
         ImportJobs.configure(app,store.routes().isNotEmpty()); ImportJobs.scan(app)
     }
     internal suspend fun remove(route: ImportStore.Route) = withContext(Dispatchers.IO) {
@@ -137,7 +138,7 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
                         MediaDocuments.children(app.contentResolver,tree,directory.first,position) { entry ->
                             if(SystemClock.elapsedRealtime()>=deadline) throw ScanSlice()
                             if(entry.directory) store.child(route.id,requireNotNull(entry.document))
-                            else if(entry.media) store.add(route.source,route.identity,route.target,entry.copy(name=safeFilename(entry.name)),route.id,network=true)
+                            else if(entry.media) store.add(route.source,route.identity,route.target,entry.copy(name=safeFilename(entry.name)),route.id,network=route.network)
                             position++
                             if(position%100==0) store.checkpoint(route.id,directory.first,position)
                         }
@@ -146,10 +147,10 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
                 }
                 store.checked(route.id)
             } catch(cancelled: CancellationException) { throw cancelled }
-            catch(_: ScanSlice) { store.added(); if(store.pending()) ImportJobs.enqueue(app,true); return@withLock false }
+            catch(_: ScanSlice) { store.added(); schedulePending(); return@withLock false }
             catch(error: Exception) { store.checked(route.id,code(error)) }
         }
-        store.added(); if(store.pending()) ImportJobs.enqueue(app,true)
+        store.added(); schedulePending()
         true
     } }
     internal suspend fun transfer(automatic: Boolean,unlimited: Boolean=false,network: Boolean=true) = withContext(Dispatchers.IO) { (if(network) transferLock else localTransferLock).withLock {
@@ -236,6 +237,10 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
             check(pending.renameTo(completed))
             return Snapshot(completed,hash.digest().joinToString("") { "%02x".format(it) },size)
         } finally { pending.delete() }
+    }
+    private suspend fun schedulePending() {
+        for(network in listOf(true,false)) if(store.nextDelay(automatic=true,network=network)!=null)
+            ImportJobs.enqueue(app,automatic=true,network=network)
     }
     private class ScanSlice: Exception()
     internal suspend fun pause(source: String) = withContext(Dispatchers.IO) {

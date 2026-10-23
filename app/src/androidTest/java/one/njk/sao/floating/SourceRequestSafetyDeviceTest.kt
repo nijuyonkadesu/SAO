@@ -45,10 +45,10 @@ class SourceRequestSafetyDeviceTest {
                 override suspend fun places(scope: PlaceScope): List<String> {
                     calls += "${profile.id}:places"; return emptyList()
                 }
-                override suspend fun personPreview(person: SearchPerson): Preview? {
-                    calls += "${profile.id}:portrait"; return null
+                override suspend fun <T> withPersonPreview(person: SearchPerson, block: suspend (Preview?)->T): T {
+                    calls += "${profile.id}:portrait"; return block(null)
                 }
-                override suspend fun preview(item: MediaItem): Preview = error("Unused")
+                override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(error("Unused"))
                 override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
                     block: suspend (MediaHandle) -> T): T = error("Unused")
                 override fun close() { }
@@ -75,7 +75,7 @@ class SourceRequestSafetyDeviceTest {
                     try { source.withSource(a.identity, operation); fail("Dispatched stale helper") }
                     catch (_: CancellationException) { }
                 }
-                try { source.personPreview(SearchPerson("person", "Old person", a.identity)); fail("Dispatched stale portrait") }
+                try { source.withPersonPreview(SearchPerson("person", "Old person", a.identity)) { }; fail("Dispatched stale portrait") }
                 catch (_: CancellationException) { }
                 assertTrue("No helper may reach the replacement source", calls.isEmpty())
                 source.withSource(b.identity) { owned ->

@@ -36,7 +36,7 @@ class ArtsViewModel @Inject constructor(@HomeSources private val source: MediaSo
     private var retained: HomeState? = null
     private var cursor: String? = null
     private val seen = mutableSetOf<String>()
-    var focusedId: String? = saved["home_focus"]
+    var focusedId: MediaIdentity? = MediaIdentity.decode(saved["home_focus"])
         private set
     private var applied: PickerBrowseKey? = null
     private data class Browse(val sourceId: String, val capabilities: SourceCapabilities, val category: SourceCategory?)
@@ -99,7 +99,7 @@ class ArtsViewModel @Inject constructor(@HomeSources private val source: MediaSo
         if(category.value == id) return
         category.value = id; saved["home_category"] = id
     }
-    fun focus(id: String?) { if(focusedId == id) return; focusedId = id; saved["home_focus"] = id }
+    fun focus(id: MediaIdentity?) { if(focusedId == id) return; focusedId = id; saved["home_focus"] = id?.encode() }
     fun loadMore(position: Int) {
         val value = state.value.browse
         if(!paging && !value.loading && !value.loadingMore && !value.error && value.hasMore && position >= value.items.size-10) {

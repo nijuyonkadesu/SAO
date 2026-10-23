@@ -103,12 +103,14 @@ class ImmichDeviceTest {
             profile=profile.changeConnection(profile.testConnection().copy(apiKey="key-$mime")); profiles.upsert(profile,true)
             val item=source.page(MediaQuery()).items.single()
             mediaBytes=ByteArray(4096) { (it%251).toByte() }
-            val file=if(item.isVideo) source.withRendition(item,Rendition.PLAYBACK) { handle -> handle.requireFile() }
-                else (source.preview(item) as Preview.Local).file
-            assertArrayEquals(mediaBytes,file.readBytes())
-            assertTrue(file.canonicalPath.startsWith(File(app.cacheDir,"source-media").canonicalPath))
+            fun checkFile(file: File) {
+                assertArrayEquals(mediaBytes,file.readBytes())
+                assertTrue(file.canonicalPath.startsWith(File(app.cacheDir,"source-media").canonicalPath))
+            }
+            if(item.isVideo) source.withRendition(item,Rendition.PLAYBACK) { checkFile(it.requireFile()) }
+            else source.withPreview(item) { checkFile((it as Preview.Local).file) }
             val count=calls.size
-            if(item.isVideo) source.withRendition(item,Rendition.PLAYBACK) { } else source.preview(item)
+            if(item.isVideo) source.withRendition(item,Rendition.PLAYBACK) { } else source.warmPreview(item)
             assertEquals(count,calls.size)
         }
         profile=profile.changeConnection(profile.testConnection().copy(apiKey="bad-stream")); profiles.upsert(profile,true)
@@ -121,9 +123,9 @@ class ImmichDeviceTest {
     }
     @Test fun identicalPreviewAndOriginalShareOneHostCacheEntry() = runBlocking {
         val item=source.page(MediaQuery()).items.single()
-        val preview=(source.preview(item) as Preview.Local).file
+        val preview=source.withPreview(item) { (it as Preview.Local).file.readBytes() }
         val before=calls.size
-        assertArrayEquals(preview.readBytes(),
+        assertArrayEquals(preview,
             source.withRendition(item,Rendition.ORIGINAL) { handle -> handle.openStream().use { it.readBytes() } })
         assertEquals(before,calls.size)
         val folder=File(app.cacheDir,"source-media/${digest(profile.identity).take(32)}")

@@ -9,7 +9,7 @@ import kotlinx.coroutines.cancel
 import javax.inject.Inject
 import javax.inject.Singleton
 
-data class PickerBrowseState(val query: MediaQuery = MediaQuery(), val focusedId: String? = null)
+data class PickerBrowseState(val query: MediaQuery = MediaQuery(), val focusedId: MediaIdentity? = null)
 data class PickerResultsSnapshot(val sourceId: String, val query: MediaQuery, val items: List<MediaItem>,
     val nextCursor: String?, val seenCursors: Set<String> = emptySet(), val interrupted: Boolean = false)
 

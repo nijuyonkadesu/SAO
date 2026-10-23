@@ -57,10 +57,10 @@ class CarouselFragment : Fragment(), MenuProvider {
         (requireActivity() as MenuHost).addMenuProvider(this,viewLifecycleOwner,Lifecycle.State.RESUMED)
         val adapter = MediaCarouselAdapter(loader,viewLifecycleOwner.lifecycleScope,source,
             prefetch=model::loadMore,home=true) { item ->
-            val position = carousel.adapter.currentList.indexOfFirst { it.id == item.id }
+            val position = carousel.adapter.currentList.indexOfFirst { it.identityKey == item.identityKey }
             if(position >= 0) carousel.view.smoothScrollToPosition(position)
         }
-        previews=CarouselPreviewPrefetcher(viewLifecycleOwner.lifecycleScope,source::preview)
+        previews=CarouselPreviewPrefetcher(viewLifecycleOwner.lifecycleScope,source::warmPreview)
         carousel = PickerCarousel(binding.carouselRecyclerView,adapter,model::current,{ model.focusedId },
             { key, id, position ->
                 model.focus(id); model.loadMore(position)
@@ -113,7 +113,7 @@ class CarouselFragment : Fragment(), MenuProvider {
                 launch { model.state.collect { state ->
                     if(binding.carouselRecyclerView.scrollState==androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE)
                         previews.update(PickerBrowseKey(state.browse.sourceId,state.browse.query,null),state.browse.items,
-                            state.browse.items.indexOfFirst { it.id==model.focusedId }.coerceAtLeast(0))
+                            state.browse.items.indexOfFirst { it.identityKey==model.focusedId }.coerceAtLeast(0))
                     else previews.pause()
                     carousel.render(state.browse)
                     if(categories != state.categories) {

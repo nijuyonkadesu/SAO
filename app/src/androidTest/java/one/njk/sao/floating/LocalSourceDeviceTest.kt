@@ -38,7 +38,7 @@ class LocalSourceDeviceTest {
                 assertTrue(bytes.isNotEmpty())
                 if(item.isVideo) assertArrayEquals(bytes,
                     source.withRendition(item,Rendition.PLAYBACK) { handle -> handle.requireFile().readBytes() })
-                else assertTrue((source.preview(item) as Preview.Local).file.isFile)
+                else source.withPreview(item) { assertTrue((it as Preview.Local).file.isFile) }
             }
             ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,null,null)).use { scenario ->
                 lateinit var picker: PickerViewModel

@@ -95,17 +95,17 @@ class VideoDeviceTest {
         try {
             FloatingSession.active(true); preferences.pasteAssistance(false)
             for (videoEnabled in listOf(false, true)) {
-                registry.register("com.instagram.android", object : one.njk.sao.floating.nativebridge.INativeStickerClient.Stub() {
+                registry.register("com.instagram.android", object : one.njk.sao.floating.nativebridge.TestNativeClient() {
                     override fun setActive(active: Boolean, generation: Long) = Unit
                     override fun snapshot(beginSelection: Boolean) = android.os.Bundle().apply {
                         putString("session", "video-ui"); putLong("created", SystemClock.elapsedRealtime())
                         putStringArray("mime_types", if (videoEnabled) arrayOf("image/jpeg", "video/mp4") else arrayOf("image/jpeg"))
                         putBoolean("resumed", true)
                     }
-                    override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Boolean {
+                    override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Int {
                         assertEquals("video/mp4", mimeType)
                         assertArrayEquals(bytes, app.contentResolver.openInputStream(uri)!!.use { it.readBytes() })
-                        calls.incrementAndGet(); return true
+                        calls.incrementAndGet(); return one.njk.sao.floating.nativebridge.NativeInsertResult.ACCEPTED.wireValue
                     }
                 })
                 ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, "com.instagram.android", null, "video-ui")).use { scenario ->
@@ -144,14 +144,14 @@ class VideoDeviceTest {
         try {
             FloatingSession.active(true)
             for ((gate, expected) in listOf("gallery_unavailable" to "could not load", "thread_unresolved" to "could not bind")) {
-                registry.register("com.instagram.android", object : one.njk.sao.floating.nativebridge.INativeStickerClient.Stub() {
+                registry.register("com.instagram.android", object : one.njk.sao.floating.nativebridge.TestNativeClient() {
                     override fun setActive(active: Boolean, generation: Long) = Unit
                     override fun snapshot(beginSelection: Boolean) = android.os.Bundle().apply {
                         putString("status", "pending_metadata"); putString("host_version", "435.0.0.37.76")
                         putString("video_status", gate); putInt("bridge_revision", 1)
                     }
-                    override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Boolean {
-                        fail("An unavailable video handler must not dispatch"); return false
+                    override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Int {
+                        fail("An unavailable video handler must not dispatch"); return one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED.wireValue
                     }
                 })
                 ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, "com.instagram.android", null)).use { scenario ->
@@ -199,7 +199,7 @@ class VideoDeviceTest {
                 await(scenario, "Browsing to still image must release video") {
                     val model = ViewModelProvider(it)[PickerViewModel::class.java]
                     model.focusedId != null && model.focusedId != it.findViewById<RecyclerView>(R.id.media_grid)
-                        .let { grid -> (grid.adapter as MediaCarouselAdapter).currentList.first().id } &&
+                        .let { grid -> (grid.adapter as MediaCarouselAdapter).currentList.first().identityKey } &&
                         holder(it)?.binding?.videoPreview?.player == null
                 }
             }

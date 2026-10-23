@@ -55,7 +55,7 @@ class SourceHomeDeviceTest {
             override suspend fun owns(item: MediaItem)=true
             override suspend fun page(query: MediaQuery,cursor: String?)=MediaPage(emptyList())
             override suspend fun filters()=emptyList<String>()
-            override suspend fun preview(item: MediaItem): Preview=Preview.Local(preview)
+            override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(Preview.Local(preview))
             override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
                 block: suspend (MediaHandle)->T): T = when(kind) {
                 Rendition.PLAYBACK -> block(MediaHandle.Local(preview).also { videoReads++ })
@@ -102,7 +102,7 @@ class SourceHomeDeviceTest {
                 override suspend fun owns(item: MediaItem) = true
                 override suspend fun page(query: MediaQuery,cursor: String?) = MediaPage(listOf(item))
                 override suspend fun filters() = emptyList<String>()
-                override suspend fun preview(item: MediaItem): Preview = error("Preview cannot be used for an export")
+                override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(error("Preview cannot be used for an export"))
                 override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
                     block: suspend (MediaHandle) -> T): T = when (kind) {
                     Rendition.ORIGINAL -> block(MediaHandle.Stream(bytes.inputStream()))
@@ -163,7 +163,7 @@ class SourceHomeDeviceTest {
                 override suspend fun filters()=emptyList<String>()
                 override val identity=flowOf(profile.identity)
                 override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
-                override suspend fun preview(item: MediaItem): Preview=textPreview(profile.name)
+                override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(textPreview(profile.name))
                 override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
                     block: suspend (MediaHandle)->T): T=block(MediaHandle.Stream(profile.name.byteInputStream()))
                 override fun close() { closed+=profile.id }
@@ -182,7 +182,7 @@ class SourceHomeDeviceTest {
             assertEquals(7,calls.size); assertTrue(calls.values.all { it==3 }); assertTrue(peak.get()<=3)
             for(member in members) {
                 val item=items.first { it.remote?.sourceId==member.identity }
-                assertTrue(all.owns(item)); assertEquals(member.name,all.preview(item).text())
+                assertTrue(all.owns(item)); all.withPreview(item) { assertEquals(member.name,it.text()) }
                 assertEquals(member.name,all.withRendition(item,Rendition.ORIGINAL) { handle ->
                     handle.openStream().use { it.readBytes().toString(Charsets.UTF_8) } })
             }
@@ -205,7 +205,7 @@ class SourceHomeDeviceTest {
                 override suspend fun filters()=emptyList<String>()
                 override val identity=flowOf(profile.identity)
                 override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
-                override suspend fun preview(item: MediaItem): Preview=textPreview(profile.name)
+                override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(textPreview(profile.name))
                 override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
                     block: suspend (MediaHandle)->T): T=block(MediaHandle.Stream(profile.name.byteInputStream()))
                 override fun close() { }
@@ -250,7 +250,7 @@ class SourceHomeDeviceTest {
                 override suspend fun filters()=emptyList<String>()
                 override val identity=flowOf(profile.identity)
                 override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
-                override suspend fun preview(item: MediaItem): Preview=error("Unused")
+                override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(error("Unused"))
                 override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
                     block: suspend (MediaHandle)->T): T=error("Unused")
                 override fun close() { }
@@ -275,7 +275,7 @@ class SourceHomeDeviceTest {
                 override suspend fun filters()=emptyList<String>()
                 override val identity=flowOf(profile.identity)
                 override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
-                override suspend fun preview(item: MediaItem): Preview=error("Unused")
+                override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(error("Unused"))
                 override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
                     block: suspend (MediaHandle)->T): T=error("Unused")
                 override fun close() { }
@@ -303,7 +303,7 @@ class SourceHomeDeviceTest {
                 override suspend fun filters()=emptyList<String>()
                 override val identity=flowOf(profile.identity)
                 override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
-                override suspend fun preview(item: MediaItem): Preview=textPreview(profile.name)
+                override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(textPreview(profile.name))
                 override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
                     block: suspend (MediaHandle)->T): T=block(MediaHandle.Stream(profile.name.byteInputStream()))
                 override fun close() { }
@@ -438,7 +438,7 @@ class SourceHomeDeviceTest {
                     player?.isPlaying==true && player.volume==0f
                 }
                 pauseSourceVisual("source-home-video")
-                val wanted=model.state.value.browse.items[7].id
+                val wanted=model.state.value.browse.items[7].identityKey
                 scenario.onActivity { it.findViewById<RecyclerView>(R.id.carousel_recycler_view).scrollToPosition(7) }
                 await(scenario,"Scroll to seventh card") { model.focusedId==wanted }
                 scenario.onActivity { activity ->

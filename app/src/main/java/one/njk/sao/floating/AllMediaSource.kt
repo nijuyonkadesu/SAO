@@ -35,6 +35,7 @@ internal class AllMediaSource(private val profile: SourceProfile,
         checkNotNull(factories[member.configuration.kind]) { "Source provider is unavailable" }.get().create(member)
     } }
     private val requests = Semaphore(3)
+    private val scope = CoroutineScope(SupervisorJob() + dispatchers.io)
     @Volatile private var closed = false
     private fun child(identity: String): ManagedMediaSource {
         check(!closed)
@@ -45,31 +46,45 @@ internal class AllMediaSource(private val profile: SourceProfile,
     private fun child(item: MediaItem) = child(requireNotNull(item.remote).sourceId)
     override val identity = flowOf(profile.identity)
     override suspend fun owns(item: MediaItem) = !closed && item.remote?.sourceId in children
-    private fun memberCapabilities(member: SourceProfile) = flow {
+    private fun memberCapabilities(member: SourceProfile): Flow<SourceCapabilitiesState> = flow {
         requests.acquire()
         var holding = true
         try {
-            child(member.identity).capabilities.collect { value ->
-                if(holding) { holding=false; requests.release() }
+            child(member.identity).capabilitiesState.collect { value ->
+                if(holding && value != SourceCapabilitiesState.Loading) { holding=false; requests.release() }
                 emit(value)
             }
         } catch(cancelled: CancellationException) { throw cancelled }
-        catch(_: Exception) { emit(SourceCapabilities()) }
+        catch(error: Exception) { emit(SourceCapabilitiesState.Failed(error)) }
         finally { if(holding) requests.release() }
     }
-    override val capabilities = if(members.isEmpty()) flowOf(SourceCapabilities()) else
-        combine(members.map(::memberCapabilities)) { supported ->
-            val modes = supported.map { it.modes }.reduce { a, b -> a intersect b }
-            val facets = supported.map { it.facets }.reduce { a, b -> a intersect b } -
-                setOf(SearchFacet.PEOPLE, SearchFacet.PLACES)
-            SourceCapabilities(modes, facets, supported.all { it.random }, supported.all { it.sequence },
-                defaultMode = listOf(SearchMode.CONTEXT, SearchMode.DESCRIPTION).firstOrNull { it in modes } ?: modes.firstOrNull() ?: SearchMode.CONTEXT,
-                categories = supported.flatMap { it.categories }.distinctBy { it.id })
-        }
+    private val memberStates = members.map { member -> memberCapabilities(member)
+        .stateIn(scope, SharingStarted.WhileSubscribed(0), SourceCapabilitiesState.Loading) }
+    override val capabilitiesState: Flow<SourceCapabilitiesState> = if(members.isEmpty()) flowOf(SourceCapabilitiesState.Ready(SourceCapabilities())) else
+        combine(memberStates) { statuses ->
+            if(statuses.any { it == SourceCapabilitiesState.Loading }) return@combine SourceCapabilitiesState.Loading
+            val supported = statuses.filterIsInstance<SourceCapabilitiesState.Ready>().map { it.value }
+            val available = commonCapabilities(supported)
+            statuses.filterIsInstance<SourceCapabilitiesState.Failed>().firstOrNull()?.let {
+                SourceCapabilitiesState.Failed(it.error, available)
+            } ?: SourceCapabilitiesState.Ready(available)
+        }.stateIn(scope, SharingStarted.WhileSubscribed(0), SourceCapabilitiesState.Loading)
+    override val capabilities = capabilitiesState.filterNot { it == SourceCapabilitiesState.Loading }
+        .map { it.available }.distinctUntilChanged()
+    private fun commonCapabilities(supported: List<SourceCapabilities>): SourceCapabilities {
+        if(supported.isEmpty()) return SourceCapabilities()
+        val modes = supported.map { it.modes }.reduce { a, b -> a intersect b }
+        val facets = supported.map { it.facets }.reduce { a, b -> a intersect b } -
+            setOf(SearchFacet.PEOPLE, SearchFacet.PLACES)
+        return SourceCapabilities(modes, facets, supported.all { it.random }, supported.all { it.sequence },
+            defaultMode = listOf(SearchMode.CONTEXT, SearchMode.DESCRIPTION).firstOrNull { it in modes } ?: modes.firstOrNull() ?: SearchMode.CONTEXT,
+            categories = supported.flatMap { it.categories }.distinctBy { it.id })
+    }
     @OptIn(ExperimentalCoroutinesApi::class)
-    override val changes = merge(*members.map { member ->
+    override val changes = merge(*members.mapIndexed { index, member ->
         // Initial capability IPC shares the page budget; observing a URI never holds a permit.
-        memberCapabilities(member).flatMapLatest { caps ->
+        memberStates[index].flatMapLatest { status ->
+            val caps = status.available
             if(caps.changesUri == null) emptyFlow() else flow {
                 try { emitAll(child(member.identity).changes) }
                 catch(cancelled: CancellationException) { throw cancelled }
@@ -128,12 +143,14 @@ internal class AllMediaSource(private val profile: SourceProfile,
         if (SearchFacet.EMOJI_TAGS !in capabilities.first().facets) throw SourceUnsupportedException(SourceFeature.FILTERS)
         return members.flatMap { member -> child(member.identity).filters() }.distinct()
     }
-    override suspend fun preview(item: MediaItem): Preview = child(item).preview(item)
+    override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview) -> T): T =
+        child(item).withPreview(item,block)
     override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
         block: suspend (MediaHandle) -> T): T = child(item).withRendition(item, kind, block)
     override suspend fun openSequence(anchor: MediaItem) = child(anchor).openSequence(anchor)
     override fun close() {
         closed = true
+        scope.cancel()
         children.values.filter { it.isInitialized() }.forEach { it.value.close() }
     }
 }

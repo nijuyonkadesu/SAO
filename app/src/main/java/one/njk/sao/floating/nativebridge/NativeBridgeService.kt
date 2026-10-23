@@ -13,7 +13,7 @@ class NativeBridgeService : Service() {
                 throw SecurityException("Unscoped bridge package")
             val callers = packageManager.getPackagesForUid(Binder.getCallingUid()).orEmpty()
             if (packageName !in callers) throw SecurityException("Unexpected bridge caller")
-            NativeBridgeRegistry.register(packageName, client)
+            NativeBridgeRegistry.register(packageName, client, Binder.getCallingUid())
         }
     }
     override fun onBind(intent: Intent?): IBinder = bridge

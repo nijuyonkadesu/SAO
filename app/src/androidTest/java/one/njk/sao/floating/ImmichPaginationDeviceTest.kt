@@ -128,7 +128,7 @@ class ImmichPaginationDeviceTest {
                 return MockResponse().setBody(response((start until start + 100).map(::asset), if (page < 3) "${page + 1}" else null))
             }
         }
-        var focus: String? = null
+        var focus: MediaIdentity? = null
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
             scenario.onActivity { it.findViewById<EditText>(R.id.search).setText("skill") }
             await(scenario, "Initial context page must load") { model(it).state.value.let { state -> state.query.text == "skill" && !state.loading && state.items.size == 100 } }

@@ -107,7 +107,7 @@ class HomeCategoriesDeviceTest {
                     override suspend fun filters()=emptyList<String>()
                     override val identity=flowOf(profile.identity)
                     override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
-                    override suspend fun preview(item: MediaItem): Preview=error("Unused")
+                    override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(error("Unused"))
                     override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
                         block: suspend (MediaHandle)->T): T=error("Unused")
                     override fun close() { }
@@ -187,7 +187,7 @@ class HomeCategoriesDeviceTest {
                 await(scenario,"Home custom chip") { !ViewModelProvider(it)[ArtsViewModel::class.java].state.value.browse.loading && chips(it).any { chip -> chip.text=="Favourite" } }
                 scenario.onActivity { chips(it).first { chip -> chip.text=="Favourite" }.performClick() }
                 await(scenario,"Custom query searched intact") { !ViewModelProvider(it)[ArtsViewModel::class.java].state.value.browse.loading && lastQuery=="blue shirt" }
-                val before=searches.get(); var focus: String?=null
+                val before=searches.get(); var focus: MediaIdentity?=null
                 scenario.onActivity { focus=ViewModelProvider(it)[ArtsViewModel::class.java].focusedId }
                 val custom=profiles.snapshots.first().homeCategories.getValue(row.id)
                 profiles.homeCategories(row.id,custom.map { if(it.label=="Favourite") it.copy(label="Renamed") else it })

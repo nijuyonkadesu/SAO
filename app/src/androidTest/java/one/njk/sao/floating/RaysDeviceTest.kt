@@ -45,7 +45,7 @@ class RaysDeviceTest {
             profiles.upsert(profile, true)
             val fresh = SourceProfiles(app, FloatingDispatchers(), mapOf("extension" to ExtensionConfigurationCodec(), "rays" to RaysConfigurationCodec()))
             assertEquals(profile, fresh.current().selected)
-            val rays=RaysSourceFactory(app, FloatingDispatchers()).create(profile)
+            val rays=RaysSourceFactory(app, FloatingDispatchers(), SourceMediaCache(app)).create(profile)
             try {
                 val capabilities=rays.capabilities.first()
                 assertFalse(capabilities.searchOptions)

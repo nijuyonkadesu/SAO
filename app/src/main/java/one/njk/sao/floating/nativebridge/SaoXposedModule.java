@@ -56,6 +56,9 @@ public final class SaoXposedModule extends XposedModule {
     private final Set<View> focusObserved = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     private final Set<View> receiverObserved = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     private volatile Bundle cachedState = Bundle.EMPTY;
+    private volatile INativeStateObserver stateObserver;
+    private final java.util.concurrent.atomic.AtomicReference<Bundle> pendingState = new java.util.concurrent.atomic.AtomicReference<>();
+    private final AtomicBoolean notificationQueued = new AtomicBoolean();
     private volatile String hostVersion = "";
     private volatile String hostBuild = "";
     private String lastStatus = "";
@@ -380,6 +383,26 @@ public final class SaoXposedModule extends XposedModule {
             log(android.util.Log.INFO, "SAO", processName + " native state: " + status);
         }
         cachedState = state;
+        if (stateObserver != null) {
+            pendingState.set(new Bundle(state));
+            notifyState();
+        }
+    }
+    private void notifyState() {
+        if (!notificationQueued.compareAndSet(false, true)) return;
+        bridgeIo.execute(() -> {
+            try {
+                Bundle next;
+                while ((next = pendingState.getAndSet(null)) != null) {
+                    INativeStateObserver observer = stateObserver;
+                    if (nativeActive && observer != null) observer.changed(next);
+                }
+            } catch (android.os.RemoteException error) { stateObserver = null; }
+            finally {
+                notificationQueued.set(false);
+                if (pendingState.get() != null) notifyState();
+            }
+        });
     }
     private void enforceCaller() {
         // Resolve the installed module UID once per binding. Snapshots do not query
@@ -429,44 +452,47 @@ public final class SaoXposedModule extends XposedModule {
         @Override public void setActive(boolean active, long generation) {
             enforceCaller(); main.post(() -> applyActive(active, generation));
         }
-        @Override public boolean insert(Uri uri, String mimeType, String expected, long requestId) {
+        @Override public void observe(INativeStateObserver observer) {
+            enforceCaller(); main.post(() -> {
+                stateObserver = observer; pendingState.set(null);
+                if (observer != null) publishState();
+            });
+        }
+        @Override public int insert(Uri uri, String mimeType, String expected, long requestId) {
             enforceCaller();
-            if (!nativeActive || uri == null || !"content".equals(uri.getScheme()) || !(modulePackage + ".fileprovider").equals(uri.getAuthority())) return false;
-            if (!inserting.compareAndSet(false, true)) return false;
+            if (!nativeActive || uri == null || !"content".equals(uri.getScheme()) || !(modulePackage + ".fileprovider").equals(uri.getAuthority())) return NativeInsertResult.REJECTED.wireValue;
+            if (!inserting.compareAndSet(false, true)) return NativeInsertResult.REJECTED.wireValue;
+            boolean dispatching = false;
             try {
                 ComposerPolicy[] selected = new ComposerPolicy[1];
                 Context[] context = new Context[1];
-                if (!onMain(() -> {
+                if (onMain(() -> {
                     Activity current = activity.get();
                     if (current == null || editorSession == null ||
                         !editorSession.accepts(current, resumed, uri, mimeType, expected, requestId)) return false;
                     selected[0] = policy; context[0] = current.getApplicationContext();
                     return selected[0] != null;
-                })) return false;
+                }) != NativeInsertResult.ACCEPTED) return NativeInsertResult.REJECTED.wireValue;
                 // Binder worker: copying and metadata extraction never block the host UI.
-                try (PreparedNativeContent content = selected[0].prepareContent(context[0], uri, mimeType)) {
-                    if (content == null) return false;
-                    return onMain(() -> editorSession != null && policy == selected[0] &&
-                        editorSession.insert(activity.get(), resumed, uri, mimeType, expected, requestId, content));
-                }
-            } catch (Exception | LinkageError error) { warn("Native media preparation rejected insertion"); return false; }
+                PreparedNativeContent content = selected[0].prepareContent(context[0], uri, mimeType);
+                if (content == null) return NativeInsertResult.REJECTED.wireValue;
+                dispatching = true;
+                return MainThreadDispatch.run(main, () -> {
+                    try { return nativeActive && editorSession != null && policy == selected[0] &&
+                        editorSession.insert(activity.get(), resumed, uri, mimeType, expected, requestId, content); }
+                    finally { publishState(); }
+                }, 3000, () -> bridgeIo.execute(content::close)).wireValue;
+            } catch (Exception | LinkageError error) {
+                warn("Native media insertion did not return a definitive result");
+                return (dispatching ? NativeInsertResult.UNKNOWN : NativeInsertResult.REJECTED).wireValue;
+            }
             finally { inserting.set(false); }
         }
-        private boolean onMain(java.util.function.BooleanSupplier operation) {
-            boolean[] accepted = {false};
-            AtomicBoolean expired = new AtomicBoolean(false);
-            CountDownLatch ready = new CountDownLatch(1);
-            main.post(() -> {
-                try {
-                    if (nativeActive && !expired.get()) accepted[0] = operation.getAsBoolean();
-                } catch (RuntimeException error) { warn("Native content handler rejected insertion"); }
-                finally { publishState(); ready.countDown(); }
-            });
-            try {
-                boolean completed = ready.await(3, TimeUnit.SECONDS);
-                if (!completed) expired.set(true);
-                return completed && accepted[0];
-            } catch (InterruptedException error) { expired.set(true); Thread.currentThread().interrupt(); return false; }
+        private NativeInsertResult onMain(java.util.function.BooleanSupplier operation) {
+            return MainThreadDispatch.run(main, () -> {
+                try { return nativeActive && operation.getAsBoolean(); }
+                finally { publishState(); }
+            }, 3000);
         }
     }
 }

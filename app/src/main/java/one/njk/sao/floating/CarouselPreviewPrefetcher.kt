@@ -3,18 +3,21 @@ package one.njk.sao.floating
 import androidx.annotation.MainThread
 import kotlinx.coroutines.*
 import one.njk.sao.source.MediaItem
+import one.njk.sao.source.MediaIdentity
+import one.njk.sao.source.identityKey
 
 /** A small moving window of host-cached previews, owned by the visible browser. */
 @MainThread
 internal class CarouselPreviewPrefetcher(private val scope: CoroutineScope,
-    private val preview: suspend (MediaItem) -> Any) {
+    private val preview: suspend (MediaItem) -> Unit) {
+    private data class PreviewKey(val identity: MediaIdentity, val variant: String)
     private var browse: PickerBrowseKey? = null
     private var position = 0
     private var direction = 1
     private var failed = false
-    private var wanted = emptyList<Pair<String,MediaItem>>()
-    private val jobs = linkedMapOf<String,Job>()
-    private val completed = mutableSetOf<String>()
+    private var wanted = emptyList<Pair<PreviewKey,MediaItem>>()
+    private val jobs = linkedMapOf<PreviewKey,Job>()
+    private val completed = mutableSetOf<PreviewKey>()
 
     fun update(key: PickerBrowseKey,items: List<MediaItem>,index: Int) {
         if(browse!=key) {
@@ -27,7 +30,7 @@ internal class CarouselPreviewPrefetcher(private val scope: CoroutineScope,
             val variant=remote.cacheKeys["preview"] ?: return@mapNotNull null
             // GIFs/original fallbacks can be large. Warm only a distinct display rendition;
             // video thumbnails are fine, but playback/original files are never requested here.
-            if(variant==(remote.cacheKeys["original"] ?: "original")) null else "${remote.sourceId}:${item.id}:$variant" to item
+            if(variant==(remote.cacheKeys["original"] ?: "original")) null else PreviewKey(item.identityKey,variant) to item
         }
         val ids=wanted.map { it.first }.toSet()
         completed.retainAll(ids)

@@ -21,13 +21,13 @@ internal class PickerSequenceNavigator(private val source: MediaSource, private 
     private var work: Job? = null
     private var session: MediaSequence? = null
     private val seen = mutableSetOf<Pair<SequenceDirection, String>>()
-    var focusedId: String? = null
+    var focusedId: MediaIdentity? = null
         private set
-    fun focus(id: String?) { focusedId = id }
+    fun focus(id: MediaIdentity?) { focusedId = id }
     fun open(anchor: MediaItem, sourceId: String) {
         close()
         val start = SequenceState(UUID.randomUUID().toString(), sourceId, anchor)
-        focus(anchor.id); value.value = start
+        focus(anchor.identityKey); value.value = start
         work = scope.launch {
             var opened: MediaSequence? = null
             try {
@@ -35,14 +35,13 @@ internal class PickerSequenceNavigator(private val source: MediaSource, private 
                 ensureActive()
                 session = opened
                 val page = opened.initial()
-                val items = withContext(dispatchers.cpu) { page.items.distinctBy { it.remote?.assetId ?: it.id } }
+                val items = withContext(dispatchers.cpu) { page.items.distinctBy { it.identityKey } }
                 ensureActive()
                 check(items.isNotEmpty()) { "No Photos timeline neighbors" }
                 if (value.value?.id == start.id) {
-                    val anchorIdentity = anchor.remote?.assetId ?: anchor.id
-                    val exactAnchor = items.firstOrNull { (it.remote?.assetId ?: it.id) == anchorIdentity }
+                    val exactAnchor = items.firstOrNull { it.identityKey == anchor.identityKey }
                     checkNotNull(exactAnchor) { "The held item is no longer available in the timeline" }
-                    focus(exactAnchor.id)
+                    focus(exactAnchor.identityKey)
                     value.value = start.copy(items = items, loading = false, newer = page.newer, older = page.older)
                 }
             } catch (cancelled: CancellationException) { opened?.close(); throw cancelled }
@@ -73,7 +72,7 @@ internal class PickerSequenceNavigator(private val source: MediaSource, private 
                 val page = active.page(direction, cursor)
                 val items = withContext(dispatchers.cpu) {
                     (if (direction == SequenceDirection.NEWER) page.items + current.items else current.items + page.items)
-                        .distinctBy { it.remote?.assetId ?: it.id }
+                        .distinctBy { it.identityKey }
                 }
                 ensureActive()
                 if (value.value?.id != current.id) return@launch
