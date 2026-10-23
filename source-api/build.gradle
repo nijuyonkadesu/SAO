@@ -1,0 +1,10 @@
+plugins { alias libs.plugins.android.library }
+android {
+    namespace 'one.njk.sao.source'
+    compileSdk 37
+    defaultConfig { minSdk 30; consumerProguardFiles 'consumer-rules.pro' }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+    buildFeatures { aidl true }
+}
+dependencies { api libs.coroutines; api libs.javax.inject; testImplementation libs.junit }
+apply from: rootProject.file('gradle/publish-source-sdk.gradle')

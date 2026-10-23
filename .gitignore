@@ -16,3 +16,10 @@
 local.properties
 /app/release/app-release.apk
 /app/release/output-metadata.json
+
+# Generated module outputs, private device evidence and local binaries
+**/build/
+/diagnostics/
+*.apk
+*.aab
+*.dex

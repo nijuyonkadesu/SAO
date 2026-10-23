@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no">
+    <com.google.android.material.card.MaterialCardView android:id="@+id/picker_panel"
+        android:layout_width="match_parent" android:layout_height="match_parent" app:cardCornerRadius="28dp"
+        app:cardElevation="0dp" app:strokeWidth="0dp" app:cardBackgroundColor="?attr/colorSurfaceContainerLow" android:clipToOutline="true">
+        <LinearLayout android:id="@+id/picker_content" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="12dp">
+            <LinearLayout android:id="@+id/picker_header" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+                <TextView android:id="@+id/target_label" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:minHeight="48dp" android:gravity="center_vertical" android:maxLines="2" android:ellipsize="end" android:text="@string/floating_pack_title" android:textAppearance="?attr/textAppearanceTitleMedium" />
+                <com.google.android.material.textfield.TextInputLayout android:id="@+id/search_field"
+                    android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:visibility="gone"
+                    android:hint="@string/floating_search_hint" app:endIconMode="clear_text" app:boxBackgroundMode="outline">
+                    <one.njk.sao.floating.emoji.EmojiSearchView android:id="@+id/search"
+                        style="@style/Widget.Material3.AutoCompleteTextView.OutlinedBox"
+                        android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="text" android:singleLine="true"
+                        android:completionThreshold="1" android:dropDownVerticalOffset="4dp" android:popupElevation="8dp"
+                        android:imeOptions="actionSearch|flagNoExtractUi" />
+                </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.button.MaterialButton android:id="@+id/source_toggle"
+                    style="@style/Widget.Material3.Button.TonalButton" android:layout_width="wrap_content" android:layout_height="48dp"
+                    android:minWidth="48dp" android:paddingHorizontal="8dp" android:singleLine="true" android:text="@string/picker_source_none"
+                    app:icon="@drawable/ic_picker_source" app:iconSize="20dp" app:iconPadding="4dp" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/search_toggle"
+                    style="@style/Widget.Material3.Button.TextButton" android:layout_width="48dp" android:layout_height="48dp"
+                    android:minWidth="0dp" android:padding="0dp" android:contentDescription="@string/floating_search_hint"
+                    app:icon="@drawable/ic_picker_search" app:iconGravity="textStart" app:iconPadding="0dp" app:iconSize="24dp" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/close"
+                    style="@style/Widget.Material3.Button.TextButton" android:layout_width="48dp" android:layout_height="48dp"
+                    android:minWidth="0dp" android:padding="0dp" android:contentDescription="@string/floating_close"
+                    app:icon="@drawable/ic_picker_close" app:iconGravity="textStart" app:iconPadding="0dp" app:iconSize="24dp" />
+            </LinearLayout>
+            <com.google.android.material.button.MaterialButton android:id="@+id/sequence_back"
+                style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="48dp"
+                android:text="@string/sequence_back" android:contentDescription="@string/sequence_back_description"
+                android:gravity="start|center_vertical" android:visibility="gone"
+                app:icon="@drawable/ic_picker_back" app:iconGravity="textStart" />
+            <HorizontalScrollView android:id="@+id/search_controls" android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none" android:visibility="gone">
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center_vertical">
+                <com.google.android.material.chip.Chip android:id="@+id/query_mode" style="@style/Widget.Material3.Chip.Assist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/search_mode_context" />
+                <com.google.android.material.chip.Chip android:id="@+id/search_filters" style="@style/Widget.Material3.Chip.Assist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="@string/search_filters" />
+                <com.google.android.material.chip.Chip android:id="@+id/search_lucky" style="@style/Widget.Material3.Chip.Assist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="@string/search_lucky_short" android:contentDescription="@string/search_lucky" app:chipIcon="@drawable/ic_picker_shuffle" app:chipIconTint="@color/picker_assist_icon_tint" app:chipIconVisible="true" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/clear_search_filters" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="48dp" android:minWidth="0dp" android:text="@string/search_reset" android:visibility="gone" />
+            </LinearLayout>
+            </HorizontalScrollView>
+            <HorizontalScrollView android:id="@+id/filter_row" android:visibility="gone" android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none">
+                <com.google.android.material.chip.ChipGroup android:id="@+id/filters" android:layout_width="wrap_content" android:layout_height="wrap_content" app:singleLine="true" app:singleSelection="true" />
+            </HorizontalScrollView>
+            <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/progress"
+                android:layout_width="match_parent" android:layout_height="wrap_content" android:indeterminate="true" android:visibility="gone" />
+            <FrameLayout android:id="@+id/carousel_area" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:minHeight="56dp">
+                <androidx.recyclerview.widget.RecyclerView android:id="@+id/media_grid" android:layout_width="match_parent" android:layout_height="match_parent" android:clipToPadding="false" android:paddingVertical="8dp" />
+                <androidx.recyclerview.widget.RecyclerView android:id="@+id/sequence_grid" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone" android:clipToPadding="false" android:paddingVertical="8dp" />
+                <androidx.recyclerview.widget.RecyclerView android:id="@+id/target_list" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone" />
+                <LinearLayout android:id="@+id/source_panel" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:visibility="gone" android:paddingVertical="8dp">
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+                        <com.google.android.material.button.MaterialButton android:id="@+id/source_back" style="@style/Widget.Material3.Button.TextButton" android:layout_width="48dp" android:layout_height="48dp" android:minWidth="0dp" android:padding="0dp" android:contentDescription="@string/source_back" app:icon="@drawable/ic_picker_back" app:iconGravity="textStart" app:iconPadding="0dp" />
+                        <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="@string/sources_title" android:textAppearance="?attr/textAppearanceTitleLarge" />
+                    </LinearLayout>
+                    <androidx.recyclerview.widget.RecyclerView android:id="@+id/source_list" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/source_summary" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="8dp" android:text="@string/source_setup_storage_error" android:visibility="gone" android:textAppearance="?attr/textAppearanceBodyMedium" />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/source_configure" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="48dp" android:text="@string/source_add" />
+                </LinearLayout>
+                <include android:id="@+id/search_options_panel" layout="@layout/view_picker_search_options" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone" />
+                <LinearLayout android:id="@+id/no_source" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center" android:padding="20dp" android:visibility="gone">
+                    <TextView android:id="@+id/no_source_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="@string/source_empty_title" android:textAppearance="?attr/textAppearanceTitleLarge" />
+                    <TextView android:id="@+id/no_source_message" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center" android:text="@string/source_empty_message" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/add_first_source" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/source_add" />
+                </LinearLayout>
+                <TextView android:id="@+id/message" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:padding="16dp" android:visibility="gone" android:accessibilityLiveRegion="polite" />
+            </FrameLayout>
+            <com.google.android.material.divider.MaterialDivider android:id="@+id/dock_divider" android:layout_width="match_parent" android:layout_height="wrap_content" />
+            <LinearLayout android:id="@+id/selection_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:baselineAligned="false">
+                <!-- Move 2 dp of existing padding between the lines without growing the row. -->
+                <LinearLayout android:id="@+id/selection_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingVertical="5dp" android:paddingStart="0dp" android:paddingEnd="12dp">
+                    <TextView android:id="@+id/selection_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:lines="1" android:singleLine="true" android:includeFontPadding="false" android:ellipsize="marquee" android:marqueeRepeatLimit="marquee_forever" android:text="@string/picker_choose" android:textAppearance="?attr/textAppearanceBodyMedium" />
+                    <TextView android:id="@+id/selection_message" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:lines="1" android:singleLine="true" android:includeFontPadding="false" android:ellipsize="marquee" android:marqueeRepeatLimit="marquee_forever" android:textAppearance="?attr/textAppearanceLabelMedium" android:textColor="?attr/colorOnSurfaceVariant" android:accessibilityLiveRegion="polite" />
+                </LinearLayout>
+                <com.google.android.material.chip.Chip android:id="@+id/prefer_stickers" style="@style/Widget.SAO.Chip.Filter"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content" android:checkable="true" android:text="@string/picker_sticker" android:contentDescription="@string/floating_prefer_stickers" />
+            </LinearLayout>
+            <com.google.android.material.dockedtoolbar.DockedToolbarLayout android:id="@+id/dock_surface" style="@style/Widget.Material3.DockedToolbar" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="0dp" android:paddingStart="0dp" android:paddingEnd="0dp" android:fitsSystemWindows="false" app:backgroundTint="@android:color/transparent" app:paddingTopSystemWindowInsets="false" app:paddingBottomSystemWindowInsets="false">
+            <LinearLayout android:id="@+id/action_dock" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <com.google.android.material.card.MaterialCardView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" app:cardCornerRadius="28dp" app:cardBackgroundColor="?attr/colorSecondaryContainer" app:strokeWidth="0dp" app:cardElevation="0dp">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                    <com.google.android.material.button.MaterialButton android:id="@+id/copy_action" style="@style/Widget.SAO.Picker.TonalAction" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minWidth="0dp" android:paddingHorizontal="2dp" android:text="@string/picker_copy" />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/paste_action" style="@style/Widget.SAO.Picker.TonalAction" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minWidth="0dp" android:paddingHorizontal="2dp" android:text="@string/picker_paste" />
+                </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
+                    <com.google.android.material.button.MaterialButton android:id="@+id/sticker_action" style="@style/Widget.Material3.Button.TextButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minWidth="0dp" android:paddingHorizontal="2dp" android:text="@string/picker_sticker" />
+                    <com.google.android.material.button.MaterialButton android:id="@+id/media_action" style="@style/Widget.Material3.Button.TextButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minWidth="0dp" android:paddingHorizontal="2dp" android:text="@string/picker_media" />
+                </LinearLayout>
+            </LinearLayout>
+            </com.google.android.material.dockedtoolbar.DockedToolbarLayout>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+</FrameLayout>

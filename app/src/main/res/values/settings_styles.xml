@@ -1,0 +1,9 @@
+<resources>
+    <!-- Actions showing a real status remain buttons, rather than pretending to be toggles. -->
+    <style name="Widget.SAO.Settings.StatusChip" parent="Widget.Material3.Chip.Assist">
+        <item name="chipBackgroundColor">@color/settings_chip_background</item>
+        <item name="android:textColor">@color/settings_chip_foreground</item>
+        <item name="chipIconTint">@color/settings_chip_foreground</item>
+        <item name="chipStrokeColor">@color/settings_chip_stroke</item>
+    </style>
+</resources>

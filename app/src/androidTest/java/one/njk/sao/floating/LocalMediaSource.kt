@@ -1,0 +1,56 @@
+package one.njk.sao.floating
+
+import one.njk.sao.source.*
+
+import android.content.Context
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.flowOf
+import org.json.JSONArray
+import java.io.InputStream
+
+/** Synthetic fixtures live only in the instrumentation APK. */
+class LocalMediaSource(private val context: Context,
+    private val dispatchers: FloatingDispatchers = FloatingDispatchers()) : MediaSource {
+    override val capabilities = flowOf(SourceCapabilities(random = true))
+    override val identity = flowOf(LOCAL_SOURCE_ID)
+    override suspend fun owns(item: MediaItem) = item.remote == null
+    private val catalog by lazy {
+        val json = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context.assets.open("floating/catalog.json").bufferedReader().use { JSONArray(it.readText()) }
+        List(json.length()) { index ->
+            val item = json.getJSONObject(index)
+            fun strings(key: String): List<String> = item.getJSONArray(key).let { values ->
+                List(values.length()) { values.getString(it) }
+            }
+            MediaItem(item.getString("id"), item.getString("title"), item.getString("asset"),
+                item.getString("mimeType"), strings("tags"), strings("emojis"), item.optBoolean("animated"))
+        }.also { items ->
+            require(items.map { it.id }.distinct().size == items.size) { "Duplicate media IDs" }
+            require(items.all { it.asset.startsWith("floating/") && ".." !in it.asset })
+        }
+    }
+
+    override suspend fun page(query: MediaQuery, cursor: String?): MediaPage {
+        if (cursor != null) return MediaPage(emptyList())
+        val items = all()
+        return MediaPage(withContext(dispatchers.cpu) {
+            val matches = MediaSearch.search(items, if (query.randomRequest == null) query else query.copy(text = ""))
+            if (query.randomRequest == null) matches else matches.shuffled()
+        })
+    }
+    suspend fun all(): List<MediaItem> = withContext(dispatchers.io) { catalog }
+    override suspend fun filters() = all().flatMap { it.emojis.take(1) }.distinct()
+    override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview)->T): T = block(Preview.Local(withContext(dispatchers.io) { copy(item) }))
+    override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
+        block: suspend (MediaHandle) -> T): T = when (kind) {
+        Rendition.ORIGINAL, Rendition.STILL -> block(MediaHandle.Local(withContext(dispatchers.io) { copy(item) }))
+        Rendition.PLAYBACK -> {
+            require(item.isVideo) { "Only a video has a playback rendition" }
+            block(MediaHandle.Local(withContext(dispatchers.io) { copy(item) }))
+        }
+    }
+    fun copy(item: MediaItem): java.io.File = java.io.File(context.cacheDir,"test-media/${item.asset}").apply {
+        parentFile?.mkdirs()
+        if(!exists()) openOriginal(item).use { input -> outputStream().use(input::copyTo) }
+    }
+    fun openOriginal(item: MediaItem): InputStream = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context.assets.open(item.asset)
+}

@@ -1,0 +1,37 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+<androidx.core.widget.NestedScrollView android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="24dp">
+        <com.google.android.material.button.MaterialButton android:id="@+id/back" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/source_back" app:icon="@drawable/ic_picker_back" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/home_categories_title" android:textAppearance="?attr/textAppearanceHeadlineMedium" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/home_categories_description" android:textAppearance="?attr/textAppearanceBodyLarge" />
+        <com.google.android.material.textfield.TextInputLayout style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:hint="@string/home_categories_profile">
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/profile" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="none" />
+        </com.google.android.material.textfield.TextInputLayout>
+        <TextView android:id="@+id/empty" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/source_empty_message" android:textAppearance="?attr/textAppearanceBodyMedium" android:visibility="gone" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/manage_sources" style="?attr/materialButtonOutlinedStyle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/source_manage" android:visibility="gone" />
+        <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:indeterminate="true" android:visibility="gone" />
+        <TextView android:id="@+id/error" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:textAppearance="?attr/textAppearanceBodyMedium" android:accessibilityLiveRegion="polite" android:visibility="gone" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/retry" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/picker_retry" android:visibility="gone" />
+        <com.google.android.material.chip.ChipGroup android:id="@+id/category_choices" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" app:chipSpacingVertical="4dp" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/add_category" style="?attr/materialButtonOutlinedStyle" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="@string/home_category_add" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/reset_categories" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/home_categories_reset" />
+        <com.google.android.material.card.MaterialCardView android:id="@+id/editor" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" app:cardCornerRadius="16dp" app:cardElevation="0dp" app:cardBackgroundColor="?attr/colorSurfaceContainer" android:visibility="gone">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/home_category_details" android:textAppearance="?attr/textAppearanceTitleMedium" />
+                <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:hint="@string/home_category_label">
+                    <com.google.android.material.textfield.TextInputEditText android:id="@+id/label" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textCapSentences" android:singleLine="true" android:maxLength="80" />
+                </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.textfield.TextInputLayout android:id="@+id/mode_box" style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:hint="@string/search_type">
+                    <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/mode" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="none" />
+                </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.textfield.TextInputLayout android:id="@+id/query_box" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:hint="@string/home_category_query" app:endIconMode="clear_text">
+                    <one.njk.sao.floating.search.SearchCompletionView android:id="@+id/query" style="@style/Widget.Material3.AutoCompleteTextView.OutlinedBox" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="text" android:singleLine="true" android:maxLength="1024" android:completionThreshold="1" android:dropDownVerticalOffset="4dp" android:imeOptions="actionDone|flagNoExtractUi" />
+                </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.button.MaterialButton android:id="@+id/save_category" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="@string/home_category_save" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/cancel_category" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@android:string/cancel" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>
+</FrameLayout>

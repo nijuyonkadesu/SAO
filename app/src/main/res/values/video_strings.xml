@@ -1,0 +1,5 @@
+<resources>
+    <string name="picker_video">Video</string>
+    <string name="picker_video_copied">Video copied</string>
+    <string name="picker_video_hint">Animation is kept as video. Use Media if your chat cannot paste it.</string>
+</resources>
