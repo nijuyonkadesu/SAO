@@ -11,7 +11,8 @@ import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-class ExtensionFailure(val code: String, val retryAfter: String? = null) : java.io.IOException("Source extension: $code")
+class ExtensionFailure(override val code: String, val retryAfter: String? = null) :
+    SourceException(code = code, message = "Source extension: $code")
 
 /** One bounded, cancellable request. No idle binding or automatic reconnect loop. */
 class ExtensionClient(private val context: Context, val component: ComponentName) {

@@ -42,10 +42,15 @@ class HomeCategoriesViewModel @Inject constructor(private val profiles: SourcePr
             if(client==null) { mutable.value=state.value.copy(error=R.string.source_extension_missing); return@collectLatest }
             source=client
             try {
-                client.searchModes()
-                combine(client.capabilities,profiles.snapshots) { caps,snapshot ->
+                combine(client.capabilitiesState,profiles.snapshots) { status,snapshot ->
                     val custom=snapshot.homeCategories[profile.id]
-                    state.value.copy(profile=profile,capabilities=caps,loaded=true,categories=custom ?: caps.categories,customized=custom!=null,error=null)
+                    when (status) {
+                        SourceCapabilitiesState.Loading -> state.value.copy(loaded=false,error=null)
+                        is SourceCapabilitiesState.Failed -> state.value.copy(loaded=false,
+                            error=(status.error as? SourceReadException)?.messageRes ?: R.string.source_extension_failed)
+                        is SourceCapabilitiesState.Ready -> state.value.copy(profile=profile,capabilities=status.value,
+                            loaded=true,categories=custom ?: status.value.categories,customized=custom!=null,error=null)
+                    }
                 }.collect { mutable.value=it }
             } catch(cancelled: CancellationException) { throw cancelled }
             catch(error: Exception) { mutable.value=state.value.copy(error=(error as? SourceReadException)?.messageRes ?: R.string.source_extension_failed) }
@@ -100,7 +105,8 @@ class HomeCategoriesViewModel @Inject constructor(private val profiles: SourcePr
         check(state.value.profile?.identity==context.sourceId)
         val client=checkNotNull(source)
         return suggestionRequests.run(context.sourceId,cursor) {
-            client.suggestions(context.query,cursor,context.sourceId).also { check(state.value.profile?.identity==context.sourceId) }
+            client.withSource(context.sourceId) { it.suggestions(context.query,cursor) }
+                .also { check(state.value.profile?.identity==context.sourceId) }
         }
     }
 }

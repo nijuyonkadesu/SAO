@@ -33,6 +33,48 @@ class HomeCategoriesDeviceTest {
     private val app=instrumentation.targetContext
     private val access get()=EntryPointAccessors.fromApplication(app,FloatingTestAccess::class.java)
     private fun profile(name: String)=SourceProfile(UUID.randomUUID().toString(),name,ExtensionConfig("fixture","fixture.Service",name,"1","Fixture"))
+    @Test fun capabilityFailureShowsRetryAndExplicitRetryRecovers(): Unit=runBlocking {
+        val profiles=access.sources(); val previous=profiles.snapshots.first()
+        val status=AtomicInteger(401); val requests=AtomicInteger()
+        val server=MockWebServer().apply {
+            dispatcher=object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse=when(request.requestUrl?.encodedPath) {
+                    "/api/server/features" -> {
+                        requests.incrementAndGet()
+                        MockResponse().setResponseCode(status.get()).setBody("""{"smartSearch":true,"ocr":true}""")
+                    }
+                    else -> MockResponse().setResponseCode(404)
+                }
+            }
+            start()
+        }
+        try {
+            profiles.restore(SourceCatalog())
+            val row=immichProfile("Capability retry",ImmichConfig(server.url("/").toString(),"synthetic-key"))
+            profiles.upsert(row,true)
+            ActivityScenario.launch<HomeCategoriesActivity>(android.content.Intent(app,HomeCategoriesActivity::class.java)).use { scenario ->
+                await(scenario,"Capability failure is visible") { model(it).state.value.error!=null }
+                scenario.onActivity {
+                    assertFalse(model(it).state.value.loaded)
+                    assertEquals(View.VISIBLE,it.findViewById<View>(R.id.retry).visibility)
+                    assertFalse(it.findViewById<View>(R.id.add_category).isEnabled)
+                }
+                val failedRequests=requests.get()
+                assertTrue(failedRequests>0)
+                delay(350)
+                assertEquals("No idle capability retry",failedRequests,requests.get())
+                status.set(200)
+                scenario.onActivity { it.findViewById<View>(R.id.retry).performClick() }
+                await(scenario,"Explicit retry loads capabilities") { model(it).state.value.let { state -> state.loaded && state.error==null } }
+                scenario.onActivity {
+                    assertEquals(View.GONE,it.findViewById<View>(R.id.retry).visibility)
+                    assertTrue(it.findViewById<View>(R.id.add_category).isEnabled)
+                }
+                assertTrue(requests.get()>failedRequests)
+            }
+        } finally { profiles.restore(previous); server.shutdown() }
+    }
+
     private suspend fun isolated(block: suspend (SourceProfiles,ContextWrapper)->Unit) {
         val dir=File(app.cacheDir,"home-categories-${UUID.randomUUID()}").apply { mkdirs() }
         val context=object : ContextWrapper(app) { override fun getNoBackupFilesDir()=dir }
@@ -63,9 +105,11 @@ class HomeCategoriesDeviceTest {
                     override val capabilities=flowOf(SourceCapabilities(setOf(SearchMode.DESCRIPTION),categories=defaults,defaultMode=SearchMode.DESCRIPTION))
                     override suspend fun page(query: MediaQuery,cursor: String?)=MediaPage(emptyList())
                     override suspend fun filters()=emptyList<String>()
-                    override suspend fun preview(item: MediaItem): Any=error("Unused")
-                    override suspend fun original(item: MediaItem)=error("Unused")
-                    override suspend fun raster(item: MediaItem)=error("Unused")
+                    override val identity=flowOf(profile.identity)
+                    override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
+                    override suspend fun preview(item: MediaItem): Preview=error("Unused")
+                    override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
+                        block: suspend (MediaHandle)->T): T=error("Unused")
                     override fun close() { }
                 }
             }

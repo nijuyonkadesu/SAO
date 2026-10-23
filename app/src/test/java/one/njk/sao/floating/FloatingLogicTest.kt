@@ -33,25 +33,25 @@ class FloatingLogicTest {
         } finally { Locale.setDefault(prior) }
     }
     @Test fun preferenceNeverFlattensAnimationIntoASticker() {
-        assertEquals(DeliveryChoice(Rendition.MEDIA, true), DeliveryPolicy.clipboard(gif, true, MessagingTarget.WHATSAPP))
-        assertEquals(DeliveryChoice(Rendition.MEDIA, false), DeliveryPolicy.clipboard(gif, false, MessagingTarget.WHATSAPP))
+        assertEquals(DeliveryChoice(ExportRendition.MEDIA, true), DeliveryPolicy.clipboard(gif, true, MessagingTarget.WHATSAPP))
+        assertEquals(DeliveryChoice(ExportRendition.MEDIA, false), DeliveryPolicy.clipboard(gif, false, MessagingTarget.WHATSAPP))
     }
     @Test fun videoAlwaysUsesOriginalMediaEvenWithoutAnExplicitAnimationFlag() {
         val video = love.copy(id = "video", mimeType = "video/mp4")
         assertTrue(video.hasMotion)
         for (target in MessagingTarget.entries) {
-            assertEquals(DeliveryChoice(Rendition.MEDIA, true), DeliveryPolicy.clipboard(video, true, target))
-            assertEquals(DeliveryChoice(Rendition.MEDIA, false), DeliveryPolicy.clipboard(video, false, target))
+            assertEquals(DeliveryChoice(ExportRendition.MEDIA, true), DeliveryPolicy.clipboard(video, true, target))
+            assertEquals(DeliveryChoice(ExportRendition.MEDIA, false), DeliveryPolicy.clipboard(video, false, target))
         }
     }
     @Test fun onlyTheSupportedDestinationGetsTheClipboardStickerPayload() {
-        assertEquals(Rendition.STICKER_PNG, DeliveryPolicy.clipboard(love, true, MessagingTarget.WHATSAPP).rendition)
-        assertEquals(Rendition.STICKER_PNG, DeliveryPolicy.clipboard(love, true, MessagingTarget.WHATSAPP_BUSINESS).rendition)
-        assertEquals(Rendition.MEDIA, DeliveryPolicy.clipboard(love, false, MessagingTarget.WHATSAPP).rendition)
-        assertEquals(DeliveryChoice(Rendition.STICKER_WEBP, false), DeliveryPolicy.clipboard(love, true, MessagingTarget.TELEGRAM))
-        assertEquals(Rendition.MEDIA, DeliveryPolicy.clipboard(love, false, MessagingTarget.TELEGRAM).rendition)
-        assertEquals(DeliveryChoice(Rendition.MEDIA, true), DeliveryPolicy.clipboard(gif, true, MessagingTarget.TELEGRAM))
-        assertEquals(DeliveryChoice(Rendition.MEDIA, true), DeliveryPolicy.clipboard(love, true, MessagingTarget.OTHER))
+        assertEquals(ExportRendition.STICKER_PNG, DeliveryPolicy.clipboard(love, true, MessagingTarget.WHATSAPP).rendition)
+        assertEquals(ExportRendition.STICKER_PNG, DeliveryPolicy.clipboard(love, true, MessagingTarget.WHATSAPP_BUSINESS).rendition)
+        assertEquals(ExportRendition.MEDIA, DeliveryPolicy.clipboard(love, false, MessagingTarget.WHATSAPP).rendition)
+        assertEquals(DeliveryChoice(ExportRendition.STICKER_WEBP, false), DeliveryPolicy.clipboard(love, true, MessagingTarget.TELEGRAM))
+        assertEquals(ExportRendition.MEDIA, DeliveryPolicy.clipboard(love, false, MessagingTarget.TELEGRAM).rendition)
+        assertEquals(DeliveryChoice(ExportRendition.MEDIA, true), DeliveryPolicy.clipboard(gif, true, MessagingTarget.TELEGRAM))
+        assertEquals(DeliveryChoice(ExportRendition.MEDIA, true), DeliveryPolicy.clipboard(love, true, MessagingTarget.OTHER))
         assertEquals(MessagingTarget.TELEGRAM, MessagingTarget.fromPackage("org.telegram.messenger.web"))
     }
     @Test fun telegramMappingsKeepTheExactForkAndProtectBuiltinFamilies() {
@@ -70,7 +70,7 @@ class FloatingLogicTest {
     @Test fun discordKeepsBinaryMediaAndCannotBeRemappedAsTelegram() {
         assertEquals(MessagingTarget.DISCORD, AppFamilyResolver.resolve("com.discord", setOf("com.discord")))
         assertTrue("com.discord" in AppFamilyResolver.supported(emptySet()))
-        assertEquals(Rendition.MEDIA, DeliveryPolicy.clipboard(gif, true, MessagingTarget.DISCORD).rendition)
+        assertEquals(ExportRendition.MEDIA, DeliveryPolicy.clipboard(gif, true, MessagingTarget.DISCORD).rendition)
         assertTrue(DeliveryPolicy.supportsPaste(love, MessagingTarget.DISCORD))
         assertTrue(DeliveryPolicy.supportsPaste(gif, MessagingTarget.DISCORD))
         assertFalse(DeliveryPolicy.supportsPaste(love.copy(mimeType = "video/webm"), MessagingTarget.DISCORD))
@@ -81,7 +81,7 @@ class FloatingLogicTest {
         assertEquals(MessagingTarget.OTHER, AppFamilyResolver.resolve("com.instagram.android.fake", emptySet()))
         assertTrue("com.instagram.android" in AppFamilyResolver.supported(emptySet()))
         for (item in listOf(love, gif, love.copy(mimeType = "video/mp4"), love.copy(mimeType = "video/webm"))) {
-            assertEquals(DeliveryChoice(Rendition.MEDIA, true), DeliveryPolicy.clipboard(item, true, MessagingTarget.INSTAGRAM))
+            assertEquals(DeliveryChoice(ExportRendition.MEDIA, true), DeliveryPolicy.clipboard(item, true, MessagingTarget.INSTAGRAM))
             assertFalse(DeliveryPolicy.supportsPaste(item, MessagingTarget.INSTAGRAM))
         }
     }

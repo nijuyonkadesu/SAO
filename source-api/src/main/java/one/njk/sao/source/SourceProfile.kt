@@ -21,7 +21,7 @@ data class SourceCatalog(val profiles: List<SourceProfile> = emptyList(), val se
         require(selectedId == null || profiles.any { it.id == selectedId })
     }
     val selected get() = profiles.firstOrNull { it.id == selectedId }
-    val identity get() = selected?.identity ?: "local"
+    val identity get() = selected?.identity ?: LOCAL_SOURCE_ID
 }
 
 interface SourceConfigurationCodec {
@@ -30,9 +30,6 @@ interface SourceConfigurationCodec {
 }
 
 interface MediaSourceFactory {
-    val advancedSearch: Boolean get() = false
-    val randomBrowse: Boolean get() = false
-    val sequenceBrowse: Boolean get() = false
     fun create(profile: SourceProfile): ManagedMediaSource
 }
 

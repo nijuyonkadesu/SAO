@@ -67,9 +67,11 @@ class IndependentSourcesDeviceTest {
                         return MediaPage(emptyList())
                     }
                     override suspend fun filters()=emptyList<String>()
-                    override suspend fun preview(item: MediaItem): Any=error("Unused")
-                    override suspend fun original(item: MediaItem)=error("Unused")
-                    override suspend fun raster(item: MediaItem)=error("Unused")
+                    override val identity=kotlinx.coroutines.flow.flowOf(profile.identity)
+                    override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
+                    override suspend fun preview(item: MediaItem): Preview=error("Unused")
+                    override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
+                        block: suspend (MediaHandle)->T): T=error("Unused")
                     override fun close() { }
                 }
             }

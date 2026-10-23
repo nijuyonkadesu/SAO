@@ -66,9 +66,11 @@ class FloatingSourcesDeviceTest {
                     remote=RemoteMedia(profile.identity,profile.id,false))))
             }
             override suspend fun filters()=emptyList<String>()
-            override suspend fun preview(item: MediaItem): Any=profile.name
-            override suspend fun original(item: MediaItem)=profile.name.byteInputStream()
-            override suspend fun raster(item: MediaItem)=original(item)
+            override val identity=flowOf(profile.identity)
+            override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
+            override suspend fun preview(item: MediaItem): Preview=textPreview(profile.name)
+            override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
+                block: suspend (MediaHandle)->T): T=block(MediaHandle.Stream(profile.name.byteInputStream()))
             override fun close() { }
         }
     }

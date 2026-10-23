@@ -21,15 +21,19 @@ class SourceUpdatesDeviceTest {
         val second=first.copy(id="second",title="Second")
         var rows=listOf(first,second)
         val source=object : MediaSource {
+            override val identity=flowOf(LOCAL_SOURCE_ID)
+            override suspend fun owns(item: MediaItem)=true
             override val changes=flow {
                 observers.incrementAndGet()
                 try { emit(Unit); emitAll(updates) } finally { observers.decrementAndGet() }
             }
             override suspend fun page(query: MediaQuery,cursor: String?): MediaPage { reads.incrementAndGet(); return MediaPage(rows) }
             override suspend fun filters()=emptyList<String>()
-            override suspend fun preview(item: MediaItem): Any=item.preview
-            override suspend fun original(item: MediaItem)=InstrumentationRegistry.getInstrumentation().context.assets.open(item.asset)
-            override suspend fun raster(item: MediaItem)=original(item)
+            override suspend fun preview(item: MediaItem): Preview=
+                Preview.Uri(android.net.Uri.parse("file:///android_asset/${item.asset}"))
+            override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
+                block: suspend (MediaHandle)->T): T=block(MediaHandle.Stream(
+                InstrumentationRegistry.getInstrumentation().context.assets.open(item.asset)))
         }
         lateinit var model: PickerViewModel
         val holder=ViewModelStore()

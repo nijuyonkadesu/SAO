@@ -461,7 +461,7 @@ class NativeBridgeDeviceTest {
     @Test fun rejectedAttemptDoesNotRevokeTheFileAccessOfAnEarlierAttachment() = runBlocking {
         val pkg = "com.discord"
         val uid = app.packageManager.getPackageUid(pkg, 0)
-        val media = MediaExports(app, LocalMediaSource(app)).prepare(LocalMediaSource(app).all().first { !it.hasMotion }, Rendition.MEDIA)
+        val media = MediaExports(app, LocalMediaSource(app)).prepare(LocalMediaSource(app).all().first { !it.hasMotion }, ExportRendition.MEDIA)
         val read = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
         val calls = AtomicInteger()
         NativeBridgeRegistry.register(pkg, object : INativeStickerClient.Stub() {
@@ -561,7 +561,7 @@ class NativeBridgeDeviceTest {
             }
         }
         NativeBridgeRegistry.register("com.instagram.android", client)
-        val media = MediaExports(app, LocalMediaSource(app)).prepare(LocalMediaSource(app).all().first { !it.hasMotion }, Rendition.MEDIA)
+        val media = MediaExports(app, LocalMediaSource(app)).prepare(LocalMediaSource(app).all().first { !it.hasMotion }, ExportRendition.MEDIA)
         assertFalse(NativeBridgeRegistry.insert(app, "com.instagram.android", media.uri, "image/gif", "fixture-session"))
         assertEquals(0, inserts.get())
         assertFalse(NativeBridgeRegistry.insert(app, "com.instagram.android", media.uri, media.mimeType, "fixture-session"))

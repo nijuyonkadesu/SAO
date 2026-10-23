@@ -3,6 +3,8 @@ package one.njk.sao.source
 import java.text.Normalizer
 import java.util.Locale
 
+const val LOCAL_SOURCE_ID = "local"
+
 data class MediaItem(
     val id: String,
     val title: String,
@@ -15,7 +17,6 @@ data class MediaItem(
     /** Original filename, independent of a user-edited title or description. */
     val filename: String? = null,
 ) {
-    val preview get() = "file:///android_asset/$asset"
     val isVideo get() = mimeType.startsWith("video/")
     val hasMotion get() = animated || isVideo
 }
@@ -28,11 +29,18 @@ data class MediaPage(val items: List<MediaItem>, val nextCursor: String? = null,
     val interrupted: Boolean = false)
 
 /** Stable across asset revisions and distinct across accounts/providers. */
-val MediaItem.identityKey get() = remote?.let { it.sourceId to it.assetId } ?: ("local" to id)
+val MediaItem.identityKey get() = remote?.let { it.sourceId to it.assetId } ?: (LOCAL_SOURCE_ID to id)
 
 enum class SearchMode { CONTEXT, FILENAME, DESCRIPTION, PATH, OCR }
 enum class SearchMedia { ALL, IMAGES, VIDEOS }
 enum class PlaceLevel { COUNTRY, STATE, CITY }
+
+data class PlaceScope(val level: PlaceLevel, val country: String? = null, val state: String? = null) {
+    init {
+        require(level != PlaceLevel.COUNTRY || country == null)
+        require(level != PlaceLevel.STATE || state == null)
+    }
+}
 data class SearchPerson(val id: String, val name: String, val sourceId: String? = null)
 data class PeoplePage(val people: List<SearchPerson>, val nextPage: Int? = null)
 data class SearchConstraints(val sourceId: String? = null, val people: List<SearchPerson> = emptyList(),

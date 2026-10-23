@@ -23,25 +23,24 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
     /** Home Share uses the displayed rendition, including animation/video; never fetch its original. */
     suspend fun displayed(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
         require(item.id.matches(Regex("[a-z0-9_-]+")))
-        if(item.isVideo) source.withPlaybackFile(item) { snapshot(item,it) } else snapshot(item,source.preview(item))
+        if(item.isVideo) source.withRendition(item, Rendition.PLAYBACK) { handle ->
+            snapshot(item, Preview.Local(handle.requireFile()))
+        } else snapshot(item, source.preview(item))
     }
 
-    private suspend fun snapshot(item: MediaItem, data: Any): ExportedMedia {
-        fun input(): java.io.InputStream = when(data) {
-            is File -> data.inputStream()
-            is Uri -> requireNotNull(context.contentResolver.openInputStream(data))
-            is String -> {
-                require(data.startsWith("file:///android_asset/"))
-                context.assets.open(data.removePrefix("file:///android_asset/"))
-            }
-            else -> error("Unsupported display media")
+    private suspend fun snapshot(item: MediaItem, preview: Preview): ExportedMedia {
+        fun input(): java.io.InputStream = when(preview) {
+            is Preview.Local -> preview.file.inputStream()
+            is Preview.Uri -> requireNotNull(context.contentResolver.openInputStream(preview.uri))
+            is Preview.Bytes -> java.io.ByteArrayInputStream(preview.buffer.remainingBytes())
+            is Preview.Decoded -> java.io.ByteArrayInputStream(preview.bitmap.toPng())
         }
         // A JPEG preview may represent a PNG/HEIC original. Advertise the actual displayed format.
         val mime=if(item.isVideo) {
+            val file=(preview as? Preview.Local)?.file ?: error("A video preview must be a local file")
             val retriever=android.media.MediaMetadataRetriever()
             try {
-                require(data is File)
-                retriever.setDataSource(data.absolutePath)
+                retriever.setDataSource(file.absolutePath)
                 retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_MIMETYPE) ?: item.mimeType
             } finally { retriever.release() }
         } else {
@@ -56,38 +55,51 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
         return store.exported(file,mime)
     }
 
-    suspend fun prepare(item: MediaItem, rendition: Rendition,
+    private fun java.nio.ByteBuffer.remainingBytes(): ByteArray {
+        val copy=duplicate()
+        return ByteArray(copy.remaining()).also { copy.get(it) }
+    }
+
+    private fun android.graphics.Bitmap.toPng(): ByteArray = java.io.ByteArrayOutputStream().use {
+        check(compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)); it.toByteArray()
+    }
+
+    suspend fun prepare(item: MediaItem, rendition: ExportRendition,
         sticker: StickerRequirements = StickerRequirements.WHATSAPP): ExportedMedia = withContext(dispatchers.io) {
-        require(!item.hasMotion || rendition == Rendition.MEDIA) { "Animated sticker conversion is unavailable" }
+        require(!item.hasMotion || rendition == ExportRendition.MEDIA) { "Animated sticker conversion is unavailable" }
         require(item.id.matches(Regex("[a-z0-9_-]+")))
         val (extension,mime) = when(rendition) {
-            Rendition.MEDIA -> (android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(item.mimeType) ?: "bin") to item.mimeType
-            Rendition.STICKER_WEBP -> "webp" to "image/webp"
-            Rendition.STICKER_PNG -> "png" to "image/png"
+            ExportRendition.MEDIA -> (android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(item.mimeType) ?: "bin") to item.mimeType
+            ExportRendition.STICKER_WEBP -> "webp" to "image/webp"
+            ExportRendition.STICKER_PNG -> "png" to "image/png"
         }
-        val budget=if(rendition==Rendition.STICKER_WEBP) "-${sticker.maxBytes}" else ""
+        val budget=if(rendition==ExportRendition.STICKER_WEBP) "-${sticker.maxBytes}" else ""
         val file=store.write("${item.id}-${rendition.name.lowercase()}$budget.$extension") { staging ->
-            if(rendition==Rendition.MEDIA) {
-                source.original(item).use { input -> staging.outputStream().use { MediaExportStore.copy(input,it) } }
-            } else source.raster(item).use { input ->
-                // Cached extension images already have a seekable FD. A pipe/SVG gets one
-                // temporary disk spool; neither path allocates the compressed file on the heap.
-                val seekable=input as? java.io.FileInputStream
-                if(seekable!=null && runCatching { seekable.channel.position(0) }.isSuccess)
-                    writeSticker(seekable,staging,rendition,sticker)
-                else {
-                    val scratch=File.createTempFile("raster-", ".pending",store.directory)
-                    try {
-                        scratch.outputStream().use { MediaExportStore.copy(input,it) }
-                        scratch.inputStream().use { writeSticker(it,staging,rendition,sticker) }
-                    } finally { scratch.delete() }
+            if(rendition==ExportRendition.MEDIA) {
+                source.withRendition(item, Rendition.ORIGINAL) { handle ->
+                    handle.openStream().use { input -> staging.outputStream().use { MediaExportStore.copy(input,it) } }
+                }
+            } else source.withRendition(item, Rendition.STILL) { handle ->
+                handle.openStream().use { input ->
+                    // Cached extension images already have a seekable FD. A pipe/SVG gets one
+                    // temporary disk spool; neither path allocates the compressed file on the heap.
+                    val seekable=input as? java.io.FileInputStream
+                    if(seekable!=null && runCatching { seekable.channel.position(0) }.isSuccess)
+                        writeSticker(seekable,staging,rendition,sticker)
+                    else {
+                        val scratch=File.createTempFile("raster-", ".pending",store.directory)
+                        try {
+                            scratch.outputStream().use { MediaExportStore.copy(input,it) }
+                            scratch.inputStream().use { writeSticker(it,staging,rendition,sticker) }
+                        } finally { scratch.delete() }
+                    }
                 }
             }
         }
         store.exported(file,mime)
     }
 
-    private suspend fun writeSticker(input: java.io.FileInputStream, staging: File, rendition: Rendition, requirements: StickerRequirements) {
+    private suspend fun writeSticker(input: java.io.FileInputStream, staging: File, rendition: ExportRendition, requirements: StickerRequirements) {
         val bytes=store.conversions.withPermit {
             withContext(dispatchers.conversion) { StaticStickerEncoder.encode(input,rendition,requirements) }
         }
@@ -101,8 +113,16 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
         require(item.mimeType=="video/webm")
         require(item.id.matches(Regex("[a-z0-9_-]+")))
         val file=store.write("${item.id}-compatible.mp4") { staging ->
-            source.withVideoFile(item) { input ->
-                store.conversions.withPermit { transcoder.mp4(input,staging) }
+            source.withRendition(item, Rendition.ORIGINAL) { handle ->
+                val input=handle.file ?: run {
+                    val scratch=File.createTempFile("original-", ".pending",store.directory)
+                    try {
+                        handle.openStream().use { from -> scratch.outputStream().use { MediaExportStore.copy(from,it) } }
+                        scratch
+                    } catch (error: Exception) { scratch.delete(); throw error }
+                }
+                try { store.conversions.withPermit { transcoder.mp4(input,staging) } }
+                finally { if (input !== handle.file) input.delete() }
             }
         }
         store.exported(file,"video/mp4")

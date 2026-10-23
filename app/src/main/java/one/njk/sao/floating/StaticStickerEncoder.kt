@@ -28,7 +28,7 @@ data class StickerRequirements(val maxBytes: Int = 100 * 1024) {
 internal object StaticStickerEncoder {
     internal data class Decoded(val bitmap: Bitmap, val reusable: Boolean)
 
-    internal fun decode(input: FileInputStream, rendition: Rendition, requirements: StickerRequirements): Decoded {
+    internal fun decode(input: FileInputStream, rendition: ExportRendition, requirements: StickerRequirements): Decoded {
         input.channel.position(0)
         val source = ImageDecoder.createSource(Callable {
             AssetFileDescriptor(ParcelFileDescriptor.dup(input.fd), 0, AssetFileDescriptor.UNKNOWN_LENGTH)
@@ -38,9 +38,9 @@ internal object StaticStickerEncoder {
         val bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
             require(!info.isAnimated) { "Animated sticker conversion is unavailable" }
             mime = info.mimeType
-            val formatMatches = info.mimeType == if (rendition == Rendition.STICKER_PNG) "image/png" else "image/webp"
+            val formatMatches = info.mimeType == if (rendition == ExportRendition.STICKER_PNG) "image/png" else "image/webp"
             reusable = formatMatches && info.size.width == 512 && info.size.height == 512 &&
-                (rendition == Rendition.STICKER_PNG || input.channel.size() <= requirements.maxBytes)
+                (rendition == ExportRendition.STICKER_PNG || input.channel.size() <= requirements.maxBytes)
             val edge = if (reusable) 512 else 496
             val scale = minOf(1.0, edge.toDouble() / maxOf(info.size.width, info.size.height))
             decoder.setTargetSize(maxOf(1, (info.size.width * scale).toInt()), maxOf(1, (info.size.height * scale).toInt()))
@@ -56,7 +56,7 @@ internal object StaticStickerEncoder {
     }
 
     /** Null means the original already satisfies the target and should be copied byte-for-byte. */
-    suspend fun encode(input: FileInputStream, rendition: Rendition, requirements: StickerRequirements): ByteArray? {
+    suspend fun encode(input: FileInputStream, rendition: ExportRendition, requirements: StickerRequirements): ByteArray? {
         currentCoroutineContext().ensureActive()
         val decoded = decode(input, rendition, requirements)
         val image = decoded.bitmap
@@ -80,7 +80,7 @@ internal object StaticStickerEncoder {
                     currentCoroutineContext().ensureActive()
                     return buffer.toByteArray()
                 }
-                if (rendition == Rendition.STICKER_PNG) return compress(Bitmap.CompressFormat.PNG, 100)
+                if (rendition == ExportRendition.STICKER_PNG) return compress(Bitmap.CompressFormat.PNG, 100)
                 // Lossless WebP's quality parameter controls encoding effort, not visual quality.
                 val lossless = compress(Bitmap.CompressFormat.WEBP_LOSSLESS, 40)
                 if (lossless.size <= requirements.maxBytes) return lossless

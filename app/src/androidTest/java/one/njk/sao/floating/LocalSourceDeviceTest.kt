@@ -34,15 +34,17 @@ class LocalSourceDeviceTest {
             assertTrue(all.any { it.mimeType=="image/png" }); assertTrue(all.any { it.mimeType=="image/gif" })
             for(mime in listOf("image/png","image/gif","video/mp4","video/webm")) {
                 val item=all.first { it.mimeType==mime }
-                val bytes=source.original(item).use { it.readBytes() }; assertTrue(bytes.isNotEmpty())
-                if(item.isVideo) assertArrayEquals(bytes,source.video(item)!!.readBytes())
-                else assertTrue((source.preview(item) as File).isFile)
+                val bytes=source.withRendition(item,Rendition.ORIGINAL) { handle -> handle.openStream().use { it.readBytes() } }
+                assertTrue(bytes.isNotEmpty())
+                if(item.isVideo) assertArrayEquals(bytes,
+                    source.withRendition(item,Rendition.PLAYBACK) { handle -> handle.requireFile().readBytes() })
+                else assertTrue((source.preview(item) as Preview.Local).file.isFile)
             }
             ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,null,null)).use { scenario ->
                 lateinit var picker: PickerViewModel
                 scenario.onActivity { picker=ViewModelProvider(it)[PickerViewModel::class.java] }
                 withTimeout(12_000) { while(picker.state.value.items.isEmpty() || picker.query.value.mode!=SearchMode.DESCRIPTION) delay(30) }
-                assertFalse(source.searchModes().contains(SearchMode.CONTEXT))
+                assertFalse(SearchMode.CONTEXT in source.capabilities.first { it.sourceId != null }.modes)
                 scenario.onActivity { it.findViewById<View>(one.njk.sao.R.id.search_toggle).performClick() }
                 pauseSourceVisual("local-picker")
                 scenario.onActivity { picker.searchMode(SearchMode.FILENAME); picker.search("preview-video.mp4") }

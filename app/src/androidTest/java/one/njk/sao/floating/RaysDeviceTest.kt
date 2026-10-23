@@ -5,6 +5,7 @@ import one.njk.sao.source.*
 import android.net.Uri
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import one.njk.sao.rays.*
 import org.json.JSONArray
@@ -44,9 +45,13 @@ class RaysDeviceTest {
             profiles.upsert(profile, true)
             val fresh = SourceProfiles(app, FloatingDispatchers(), mapOf("extension" to ExtensionConfigurationCodec(), "rays" to RaysConfigurationCodec()))
             assertEquals(profile, fresh.current().selected)
-            assertFalse(RaysSourceFactory(app, FloatingDispatchers()).advancedSearch)
-            assertFalse(RaysSourceFactory(app, FloatingDispatchers()).sequenceBrowse)
-            assertFalse(RaysSourceFactory(app, FloatingDispatchers()).randomBrowse)
+            val rays=RaysSourceFactory(app, FloatingDispatchers()).create(profile)
+            try {
+                val capabilities=rays.capabilities.first()
+                assertFalse(capabilities.searchOptions)
+                assertFalse(capabilities.random)
+                assertFalse(capabilities.sequence)
+            } finally { rays.close() }
         } finally { profiles.restore(previous) }
     }
 }

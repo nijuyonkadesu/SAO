@@ -39,25 +39,28 @@ class RaysLiveDeviceTest {
             val static = source.page(MediaQuery("api-fixture 062")).items.single { it.title == "api-fixture 062" }
             assertEquals("image/webp", static.mimeType)
             assertFalse(static.animated)
-            assertEquals("image/webp", MediaExports(app, source).prepare(static, Rendition.STICKER_WEBP).mimeType)
+            assertEquals("image/webp", MediaExports(app, source).prepare(static, ExportRendition.STICKER_WEBP).mimeType)
             val webp = source.page(MediaQuery("api-fixture 063")).items.single { it.title == "api-fixture 063" }
             assertTrue(webp.animated)
             assertEquals("image/webp", webp.mimeType)
-            val webpExport = MediaExports(app, source).prepare(webp, Rendition.MEDIA)
-            assertArrayEquals(source.original(webp).use { it.readBytes() }, webpExport.file.readBytes())
+            val webpExport = MediaExports(app, source).prepare(webp, ExportRendition.MEDIA)
+            assertArrayEquals(source.withRendition(webp,Rendition.ORIGINAL) { handle ->
+                handle.openStream().use { it.readBytes() } }, webpExport.file.readBytes())
             val svg = source.page(MediaQuery("api-fixture 061")).items.single { it.title == "api-fixture 061" }
             assertEquals("image/svg+xml", svg.mimeType)
-            assertTrue(source.preview(svg) is java.nio.ByteBuffer)
-            assertTrue(source.raster(svg).use { android.graphics.BitmapFactory.decodeStream(it) != null })
-            assertEquals("image/png", MediaExports(app, source).prepare(svg, Rendition.STICKER_PNG).mimeType)
+            assertTrue(source.preview(svg) is Preview.Bytes)
+            assertTrue(source.withRendition(svg,Rendition.STILL) { handle ->
+                handle.openStream().use { android.graphics.BitmapFactory.decodeStream(it) != null } })
+            assertEquals("image/png", MediaExports(app, source).prepare(svg, ExportRendition.STICKER_PNG).mimeType)
             val video = source.page(MediaQuery("api-fixture 060")).items.single { it.title == "api-fixture 060" }
             assertEquals("video/mp4", video.mimeType)
             assertTrue(video.isVideo)
-            assertTrue(source.preview(video) is android.graphics.Bitmap)
-            assertTrue(source.video(video)!!.isFile)
+            assertTrue(source.preview(video) is Preview.Decoded)
+            assertTrue(source.withRendition(video,Rendition.PLAYBACK) { handle -> handle.requireFile().isFile })
             val movie = source.page(MediaQuery("api-fixture 059")).items.single { it.title == "api-fixture 059" }
             assertEquals("video/webm", movie.mimeType)
-            val originalMovie = source.original(movie).use { it.readBytes() }
+            val originalMovie = source.withRendition(movie,Rendition.ORIGINAL) { handle ->
+                handle.openStream().use { it.readBytes() } }
             val ticks = java.util.concurrent.atomic.AtomicInteger()
             val heartbeat = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
                 while (isActive) { ticks.incrementAndGet(); kotlinx.coroutines.delay(16) }
@@ -73,16 +76,18 @@ class RaysLiveDeviceTest {
                     extractor.getTrackFormat(it).getString(android.media.MediaFormat.KEY_MIME) == "video/avc"
                 })
             } finally { extractor.release() }
-            assertArrayEquals(originalMovie, source.original(movie).use { it.readBytes() })
+            assertArrayEquals(originalMovie, source.withRendition(movie,Rendition.ORIGINAL) { handle ->
+                handle.openStream().use { it.readBytes() } })
             val emoji = source.page(MediaQuery("🧪"))
             assertEquals(1, emoji.items.size)
             val animated = emoji.items.single()
             assertTrue(animated.animated)
             assertEquals("image/gif", animated.mimeType)
-            assertTrue(source.preview(animated) is android.net.Uri)
-            val original = source.original(animated).use { it.readBytes() }
+            assertTrue(source.preview(animated) is Preview.Uri)
+            val original = source.withRendition(animated,Rendition.ORIGINAL) { handle ->
+                handle.openStream().use { it.readBytes() } }
             assertEquals("GIF", original.take(3).toByteArray().toString(Charsets.US_ASCII))
-            val export = MediaExports(app, source).prepare(animated, Rendition.MEDIA)
+            val export = MediaExports(app, source).prepare(animated, ExportRendition.MEDIA)
             assertEquals("image/gif", export.mimeType)
             assertArrayEquals(original, export.file.readBytes())
         } finally { source.close() }
@@ -100,18 +105,20 @@ class RaysLiveDeviceTest {
             images.forEach { item ->
                 assertEquals("image/webp", item.mimeType)
                 assertFalse(item.animated)
-                val export = MediaExports(app, source).prepare(item, Rendition.STICKER_PNG)
+                val export = MediaExports(app, source).prepare(item, ExportRendition.STICKER_PNG)
                 val bitmap = android.graphics.BitmapFactory.decodeFile(export.file.path)
                 assertNotNull(bitmap)
                 assertEquals(512, bitmap.width); assertEquals(512, bitmap.height)
                 bitmap.recycle()
             }
             val video = page.items.single { it.isVideo }
-            val original = source.original(video).use { it.readBytes() }
+            val original = source.withRendition(video,Rendition.ORIGINAL) { handle ->
+                handle.openStream().use { it.readBytes() } }
             val converted = kotlinx.coroutines.withTimeout(30_000) { MediaExports(app, source).mp4(video) }
             assertEquals("video/mp4", converted.mimeType)
             assertTrue(converted.file.length() > 0)
-            assertArrayEquals(original, source.original(video).use { it.readBytes() })
+            assertArrayEquals(original, source.withRendition(video,Rendition.ORIGINAL) { handle ->
+                handle.openStream().use { it.readBytes() } })
         } finally { source.close() }
     }
 }

@@ -19,17 +19,20 @@ class PlaybackExportDeviceTest {
         var originals=0
         var playbackLease=false
         val source=object : MediaSource {
+            override val identity=kotlinx.coroutines.flow.flowOf(LOCAL_SOURCE_ID)
+            override suspend fun owns(item: MediaItem)=true
             override suspend fun page(query: MediaQuery, cursor: String?)=MediaPage(emptyList(), null)
             override suspend fun filters()=emptyList<String>()
-            override suspend fun preview(item: MediaItem): Any=error("Video uses its playback rendition")
-            override suspend fun video(item: MediaItem)=playback
-            override suspend fun <T> withPlaybackFile(item: MediaItem, block: suspend (File)->T): T {
-                playbackLease=true
-                try { return block(playback) } finally { playbackLease=false }
+            override suspend fun preview(item: MediaItem): Preview=error("Video uses its playback rendition")
+            override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
+                block: suspend (MediaHandle)->T): T=when(kind) {
+                Rendition.PLAYBACK -> {
+                    playbackLease=true
+                    try { block(MediaHandle.Local(playback)) } finally { playbackLease=false }
+                }
+                Rendition.ORIGINAL -> { originals++; block(MediaHandle.Stream(original.inputStream())) }
+                Rendition.STILL -> error("Video is not rasterized")
             }
-            override suspend fun <T> withVideoFile(item: MediaItem, block: suspend (File)->T): T=error("Share must not fetch the original")
-            override suspend fun original(item: MediaItem)=original.inputStream().also { originals++ }
-            override suspend fun raster(item: MediaItem)=error("Video is not rasterized")
         }
         val item=MediaItem("playback_${UUID.randomUUID().toString().replace('-', '_')}", "huge.mkv", "fixture",
             "video/x-matroska", emptyList(), emptyList())
@@ -42,7 +45,7 @@ class PlaybackExportDeviceTest {
             assertEquals("video/mp4", shared.mimeType)
             assertTrue(shared.file.name.endsWith(".mp4"))
             assertArrayEquals(expected, shared.file.readBytes())
-            val copied=exports.prepare(item,Rendition.MEDIA); output+=copied.file
+            val copied=exports.prepare(item,ExportRendition.MEDIA); output+=copied.file
             assertEquals(1, originals)
             assertEquals("video/x-matroska", copied.mimeType)
             assertArrayEquals(original, copied.file.readBytes())

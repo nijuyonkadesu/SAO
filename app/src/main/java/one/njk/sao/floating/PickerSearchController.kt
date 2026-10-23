@@ -69,7 +69,6 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
         androidx.appcompat.widget.TooltipCompat.setTooltipText(binding.searchLucky, activity.getString(R.string.search_lucky))
         panel.optionsBack.setOnClickListener { close() }
         panel.optionsReset.setOnClickListener { picker.clearSearchConstraints() }
-        panel.typeRetry.setOnClickListener { options.modes(retry = true) }
         panel.optionsSections.setOnCheckedStateChangeListener { _, ids -> if (!updating) showSection(ids.firstOrNull() ?: R.id.section_type) }
         // Clicking the already checked mode also exits random browsing.
         modes.forEach { (id, mode) -> panel.root.findViewById<Chip>(id).setOnClickListener {
@@ -99,9 +98,8 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
                 if (panel.peopleName.text.toString() != state.peopleName) panel.peopleName.setText(state.peopleName)
                 people.submitList(state.people)
                 modes.forEach { (id, mode) -> panel.root.findViewById<Chip>(id).isEnabled = mode in state.modes }
-                panel.typeStatus.isVisible = state.supported && (state.modesError || SearchMode.CONTEXT !in state.modes)
-                panel.typeStatus.setText(if (state.modesError) R.string.search_options_error else R.string.search_context_unavailable)
-                panel.typeRetry.isVisible = state.supported && state.modesError
+                panel.typeStatus.isVisible = state.supported && SearchMode.CONTEXT !in state.modes
+                panel.typeStatus.setText(R.string.search_context_unavailable)
                 mapOf(R.id.section_people to SearchFacet.PEOPLE,R.id.section_places to SearchFacet.PLACES,R.id.section_media to SearchFacet.MEDIA)
                     .forEach { (id,facet) -> panel.root.findViewById<Chip>(id).isEnabled=facet in state.facets }
                 for (index in 0 until panel.mediaChoices.childCount) {
@@ -167,7 +165,6 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
     fun open(section: Int = R.id.section_type) {
         cancelGesture()
         if (!controlsAvailable) return
-        options.modes()
         panel.root.isVisible = true; visibilityChanged(true)
         showSection(if (supported) section else R.id.section_type); renderQuery(); hideKeyboard()
     }
@@ -256,7 +253,6 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
         panel.peopleNameField.isHintEnabled = availableDp >= 150
     }
     fun hideKeyboard() = WindowCompat.getInsetsController(activity.window, panel.root).hide(WindowInsetsCompat.Type.ime())
-    fun loadModes() = options.modes()
     fun cancelGesture(): Boolean {
         val mode = modeGesture.cancel(); val filters = filterGesture.cancel()
         return mode || filters

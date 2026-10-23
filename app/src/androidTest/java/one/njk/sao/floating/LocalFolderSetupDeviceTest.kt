@@ -116,8 +116,10 @@ class LocalFolderSetupDeviceTest {
             if(contextual) assertEquals(SearchMode.CONTEXT,capabilities.defaultMode)
             for((file,data) in contents) {
                 val item=results.items.single { it.title==file }
-                assertArrayEquals(data.second,source.original(item).use { it.readBytes() })
-                if(item.isVideo) assertArrayEquals(data.second,source.video(item)!!.readBytes())
+                assertArrayEquals(data.second,
+                    source.withRendition(item,Rendition.ORIGINAL) { handle -> handle.openStream().use { it.readBytes() } })
+                if(item.isVideo) assertArrayEquals(data.second,
+                    source.withRendition(item,Rendition.PLAYBACK) { handle -> handle.requireFile().readBytes() })
             }
             ExtensionForm(selected,extension).use { form ->
                 form.await("source_name") { it.text.toString()==name }

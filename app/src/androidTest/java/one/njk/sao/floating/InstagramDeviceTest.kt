@@ -48,8 +48,8 @@ class InstagramDeviceTest {
     @Test fun dmReceiverAndCrossUidGrantKeepJpegGifMp4AndWebmPayloads() = runBlocking {
         val local = LocalMediaSource(app)
         val exports = MediaExports(app, local)
-        val still = exports.prepare(local.all().first { !it.hasMotion }, Rendition.MEDIA)
-        val gif = exports.prepare(local.all().first { it.animated }, Rendition.MEDIA)
+        val still = exports.prepare(local.all().first { !it.hasMotion }, ExportRendition.MEDIA)
+        val gif = exports.prepare(local.all().first { it.animated }, ExportRendition.MEDIA)
         val videos = listOf("mp4", "webm").map { extension ->
             val file = File(app.filesDir, "floating_exports/v1/instagram-fixture.$extension")
             file.writeBytes(instrumentation.context.assets.open("preview-video.$extension").use { it.readBytes() })

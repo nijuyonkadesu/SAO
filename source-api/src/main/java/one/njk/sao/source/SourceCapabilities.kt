@@ -2,6 +2,13 @@ package one.njk.sao.source
 
 enum class SearchFacet { PEOPLE, PLACES, MEDIA, EMOJI_TAGS }
 
+/** An empty successful declaration is different from an unavailable provider. */
+sealed interface SourceCapabilitiesState {
+    data object Loading : SourceCapabilitiesState
+    data class Ready(val value: SourceCapabilities) : SourceCapabilitiesState
+    data class Failed(val error: Exception) : SourceCapabilitiesState
+}
+
 /** A small provider-authored home collection; the host submits its query without interpreting it. */
 data class SourceCategory(val id: String, val label: String, val query: MediaQuery = MediaQuery(), val adult: Boolean = false)
 

@@ -77,12 +77,12 @@ class VideoDeviceTest {
         assertEquals("/api/server/features", server.takeRequest()!!.path)
         val query = org.json.JSONObject(server.takeRequest()!!.body.readUtf8())
         assertEquals(1, query.getInt("page")); assertFalse(query.has("type")); assertFalse(query.has("filter"))
-        val export = MediaExports(app, source).prepare(item, Rendition.MEDIA)
+        val export = MediaExports(app, source).prepare(item, ExportRendition.MEDIA)
         assertTrue(export.file.name.endsWith(".mp4")); assertEquals("video/mp4", export.mimeType)
         assertEquals("video/mp4", app.contentResolver.getType(export.uri))
         assertTrue(bytes.contentEquals(export.file.readBytes()))
         assertTrue(bytes.contentEquals(app.contentResolver.openInputStream(export.uri)!!.use { it.readBytes() }))
-        for (kind in listOf(Rendition.STICKER_WEBP, Rendition.STICKER_PNG)) {
+        for (kind in listOf(ExportRendition.STICKER_WEBP, ExportRendition.STICKER_PNG)) {
             try { MediaExports(app, source).prepare(item, kind); fail("Video was flattened into a sticker") }
             catch (_: IllegalArgumentException) { }
         }

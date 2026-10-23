@@ -3,19 +3,17 @@ package one.njk.sao.floating
 import one.njk.sao.source.*
 
 import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.flowOf
 import org.json.JSONArray
 import java.io.InputStream
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /** Synthetic fixtures live only in the instrumentation APK. */
 class LocalMediaSource(private val context: Context,
     private val dispatchers: FloatingDispatchers = FloatingDispatchers()) : MediaSource {
     override val capabilities = flowOf(SourceCapabilities(random = true))
-    override val randomBrowse = flowOf(true)
+    override val identity = flowOf(LOCAL_SOURCE_ID)
+    override suspend fun owns(item: MediaItem) = item.remote == null
     private val catalog by lazy {
         val json = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context.assets.open("floating/catalog.json").bufferedReader().use { JSONArray(it.readText()) }
         List(json.length()) { index ->
@@ -41,13 +39,18 @@ class LocalMediaSource(private val context: Context,
     }
     suspend fun all(): List<MediaItem> = withContext(dispatchers.io) { catalog }
     override suspend fun filters() = all().flatMap { it.emojis.take(1) }.distinct()
-    override suspend fun preview(item: MediaItem): Any = withContext(dispatchers.io) {
-        java.io.File(context.cacheDir,"test-media/${item.asset}").apply {
-            parentFile?.mkdirs()
-            if(!exists()) openOriginal(item).use { input -> outputStream().use(input::copyTo) }
+    override suspend fun preview(item: MediaItem): Preview = Preview.Local(withContext(dispatchers.io) { copy(item) })
+    override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
+        block: suspend (MediaHandle) -> T): T = when (kind) {
+        Rendition.ORIGINAL, Rendition.STILL -> block(MediaHandle.Local(withContext(dispatchers.io) { copy(item) }))
+        Rendition.PLAYBACK -> {
+            require(item.isVideo) { "Only a video has a playback rendition" }
+            block(MediaHandle.Local(withContext(dispatchers.io) { copy(item) }))
         }
     }
-    override suspend fun original(item: MediaItem): InputStream = withContext(dispatchers.io) { openOriginal(item) }
-    override suspend fun raster(item: MediaItem): InputStream = original(item)
+    fun copy(item: MediaItem): java.io.File = java.io.File(context.cacheDir,"test-media/${item.asset}").apply {
+        parentFile?.mkdirs()
+        if(!exists()) openOriginal(item).use { input -> outputStream().use(input::copyTo) }
+    }
     fun openOriginal(item: MediaItem): InputStream = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context.assets.open(item.asset)
 }

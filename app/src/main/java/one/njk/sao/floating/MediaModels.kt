@@ -17,9 +17,9 @@ enum class MessagingTarget(val packages: List<String>) {
     }
 }
 
-enum class Rendition { MEDIA, STICKER_PNG, STICKER_WEBP }
+enum class ExportRendition { MEDIA, STICKER_PNG, STICKER_WEBP }
 
-data class DeliveryChoice(val rendition: Rendition, val mediaFallback: Boolean)
+data class DeliveryChoice(val rendition: ExportRendition, val mediaFallback: Boolean)
 
 object DeliveryPolicy {
     fun stickerRequirements(target: MessagingTarget) =
@@ -35,11 +35,11 @@ object DeliveryPolicy {
     }
     fun clipboard(item: MediaItem, preferStickers: Boolean, target: MessagingTarget): DeliveryChoice {
         val rendition = when {
-            !preferStickers || item.hasMotion -> Rendition.MEDIA
-            target.isWhatsapp -> Rendition.STICKER_PNG
-            target == MessagingTarget.TELEGRAM -> Rendition.STICKER_WEBP
-            else -> Rendition.MEDIA
+            !preferStickers || item.hasMotion -> ExportRendition.MEDIA
+            target.isWhatsapp -> ExportRendition.STICKER_PNG
+            target == MessagingTarget.TELEGRAM -> ExportRendition.STICKER_WEBP
+            else -> ExportRendition.MEDIA
         }
-        return DeliveryChoice(rendition, preferStickers && rendition == Rendition.MEDIA)
+        return DeliveryChoice(rendition, preferStickers && rendition == ExportRendition.MEDIA)
     }
 }

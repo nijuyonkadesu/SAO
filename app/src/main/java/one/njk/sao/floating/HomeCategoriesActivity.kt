@@ -89,7 +89,7 @@ class HomeCategoriesActivity : AppCompatActivity() {
                 binding.error.isVisible=state.error!=null; state.error?.let(binding.error::setText)
                 binding.retry.isVisible=state.error!=null
                 binding.categoryChoices.isVisible=state.loaded
-                binding.addCategory.isEnabled=state.loaded && state.categories.size<40 && !state.saving && draft==null
+                binding.addCategory.isEnabled=state.loaded && state.capabilities.modes.isNotEmpty() && state.categories.size<40 && !state.saving && draft==null
                 binding.resetCategories.isEnabled=state.loaded && state.customized && !state.saving && draft==null
                 val key=state.categories to draft?.id
                 if(rendered!=key) {

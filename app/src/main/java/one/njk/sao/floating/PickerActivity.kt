@@ -164,7 +164,11 @@ class PickerActivity : AppCompatActivity() {
             val query=model.query.value
             if(completionCapabilities.sourceId==catalog.identity && query.mode in completionCapabilities.suggestionModes)
                 one.njk.sao.floating.search.SourceCompletionContext(catalog.identity,query) else null
-        }) { context,cursor -> suggestionRequests.run(context.sourceId,cursor) { source.suggestions(context.query,cursor,context.sourceId) } }
+        }) { context,cursor -> suggestionRequests.run(context.sourceId,cursor) {
+            val answer = source.withSource(context.sourceId) { it.suggestions(context.query,cursor) }
+            check(catalog.identity==context.sourceId) { "Source changed" }
+            answer
+        } }
         binding.search.setText(model.query.value.text)
         binding.search.doAfterTextChanged {
             if (!syncingQuery) model.search(it?.toString().orEmpty())
@@ -189,9 +193,9 @@ class PickerActivity : AppCompatActivity() {
             } else if (model.prepareClipboard(target) { limitAttachment(item,it) } && PasteAssistService.requestPaste(pasteAnchor, targetPackage)) finish()
             else inlineFailure(R.string.floating_paste_unavailable)
         } } }
-        binding.mediaAction.setOnClickListener { withCenteredItem { item -> dispatch { share(item, Rendition.MEDIA) } } }
+        binding.mediaAction.setOnClickListener { withCenteredItem { item -> dispatch { share(item, ExportRendition.MEDIA) } } }
         binding.stickerAction.setOnClickListener { withCenteredItem { item -> dispatch {
-            if (target == MessagingTarget.TELEGRAM) share(item, Rendition.STICKER_WEBP) else nativeInsert(item)
+            if (target == MessagingTarget.TELEGRAM) share(item, ExportRendition.STICKER_WEBP) else nativeInsert(item)
         } } }
         binding.targetLabel.setOnClickListener {
             if (target == MessagingTarget.OTHER && appChoices.isNotEmpty()) {
@@ -373,7 +377,6 @@ class PickerActivity : AppCompatActivity() {
     }
     private fun expandSearch() {
         sourceGesture.cancel()
-        searchController.loadModes()
         showSource(false); showTargets(false); binding.sourceToggle.isVisible = false
         editing = true; binding.targetLabel.isVisible = false; binding.searchField.isVisible = true
         renderHeader(); resize(imeHeight)
@@ -453,13 +456,13 @@ class PickerActivity : AppCompatActivity() {
         })
         return getString(R.string.picker_native_diagnostic, status?.version.orEmpty().ifEmpty { "—" }, reason)
     }
-    private fun nativePasteRendition(item: MediaItem?): Rendition? {
+    private fun nativePasteRendition(item: MediaItem?): ExportRendition? {
         if (item == null) return null
         if (target.isWhatsapp && options.preferStickers && !item.hasMotion &&
-            NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")) return Rendition.STICKER_WEBP
+            NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")) return ExportRendition.STICKER_WEBP
         val mime = nativeMediaMime(item)
         return if ((target.isWhatsapp || target == MessagingTarget.INSTAGRAM || target == MessagingTarget.DISCORD) &&
-            NativeBridgeRegistry.supports(targetPackage, nativeSession, mime)) Rendition.MEDIA else null
+            NativeBridgeRegistry.supports(targetPackage, nativeSession, mime)) ExportRendition.MEDIA else null
     }
     private fun nativeMediaMime(item: MediaItem): String {
         val original = item.mimeType
@@ -493,7 +496,7 @@ class PickerActivity : AppCompatActivity() {
         val hint = when {
             nativePaste && target == MessagingTarget.INSTAGRAM && item?.isVideo == true -> getString(R.string.picker_instagram_native_video_hint)
             nativePhoto -> getString(R.string.picker_instagram_native_hint)
-            target.isWhatsapp && nativeRendition == Rendition.STICKER_WEBP -> getString(R.string.picker_whatsapp_native_paste_hint)
+            target.isWhatsapp && nativeRendition == ExportRendition.STICKER_WEBP -> getString(R.string.picker_whatsapp_native_paste_hint)
             nativePaste && target == MessagingTarget.DISCORD -> getString(R.string.picker_discord_native_hint)
             nativePaste -> getString(R.string.picker_native_image_hint)
             target == MessagingTarget.INSTAGRAM && item?.isVideo == true && NativeBridgeRegistry.available(targetPackage) -> nativeUnavailableHint(video = true)
@@ -708,12 +711,12 @@ class PickerActivity : AppCompatActivity() {
         }
     }
     private fun inlineFailure(message: Int) { model.copyStatus.value = message }
-    private suspend fun share(item: MediaItem, rendition: Rendition) {
+    private suspend fun share(item: MediaItem, rendition: ExportRendition) {
         val receivingPackage = targetPackage
         val receivingTarget = target
-        if (rendition == Rendition.MEDIA && receivingTarget in setOf(MessagingTarget.INSTAGRAM, MessagingTarget.DISCORD) &&
+        if (rendition == ExportRendition.MEDIA && receivingTarget in setOf(MessagingTarget.INSTAGRAM, MessagingTarget.DISCORD) &&
             nativePasteRendition(item) != null) {
-            nativeInsert(item, Rendition.MEDIA)
+            nativeInsert(item, ExportRendition.MEDIA)
             return
         }
         var media = exports.prepare(item, rendition, DeliveryPolicy.stickerRequirements(receivingTarget))
@@ -727,7 +730,7 @@ class PickerActivity : AppCompatActivity() {
             }
             if (compatibleMime == "video/mp4") media = exports.mp4(item)
         }
-        if(rendition==Rendition.MEDIA) media=limitAttachment(item,media)
+        if(rendition==ExportRendition.MEDIA) media=limitAttachment(item,media)
         if (receivingTarget == MessagingTarget.INSTAGRAM) {
             val receiver = withContext(dispatchers.io) { InstagramDelivery.receiver(packageManager, media.mimeType) }
             if (receiver == null) {
@@ -737,22 +740,22 @@ class PickerActivity : AppCompatActivity() {
             startActivity(InstagramDelivery.intent(media, receiver, item.title))
             finish(); return
         }
-        if (receivingTarget == MessagingTarget.TELEGRAM && rendition == Rendition.STICKER_WEBP) {
+        if (receivingTarget == MessagingTarget.TELEGRAM && rendition == ExportRendition.STICKER_WEBP) {
             startActivity(TelegramDelivery.stickerIntent(media, requireNotNull(receivingPackage), item.title))
             finish(); return
         }
         val send = MediaDelivery.intent(media, receivingPackage.takeIf { receivingTarget != MessagingTarget.OTHER }, item.title)
         startActivity(if (send.`package` == null) Intent.createChooser(send, getString(R.string.floating_share)) else send); finish()
     }
-    private suspend fun nativeInsert(item: MediaItem, rendition: Rendition = Rendition.STICKER_WEBP) {
+    private suspend fun nativeInsert(item: MediaItem, rendition: ExportRendition = ExportRendition.STICKER_WEBP) {
         val pkg = targetPackage ?: return; val session = nativeSession ?: return
-        var mime = if (rendition == Rendition.STICKER_WEBP) "image/webp.wasticker" else nativeMediaMime(item)
+        var mime = if (rendition == ExportRendition.STICKER_WEBP) "image/webp.wasticker" else nativeMediaMime(item)
         if (!NativeBridgeRegistry.supports(pkg, session, mime)) { inlineFailure(R.string.floating_native_rejected); return }
         val instagram = target == MessagingTarget.INSTAGRAM
         val discord = target == MessagingTarget.DISCORD
         var media = if (item.mimeType == "video/webm" && mime == "video/mp4") exports.mp4(item)
             else exports.prepare(item, rendition, DeliveryPolicy.stickerRequirements(target))
-        if(rendition==Rendition.MEDIA) {
+        if(rendition==ExportRendition.MEDIA) {
             media=limitAttachment(item,media)
             mime=media.mimeType
             if(!NativeBridgeRegistry.supports(pkg,session,mime)) { inlineFailure(R.string.floating_native_rejected); return }
@@ -766,7 +769,7 @@ class PickerActivity : AppCompatActivity() {
                 instagram && item.isVideo -> R.string.picker_instagram_native_video_accepted
                 instagram -> R.string.picker_instagram_native_accepted
                 discord -> R.string.picker_discord_native_accepted
-                rendition == Rendition.STICKER_WEBP -> R.string.floating_native_accepted
+                rendition == ExportRendition.STICKER_WEBP -> R.string.floating_native_accepted
                 else -> R.string.picker_native_media_accepted
             }, Toast.LENGTH_LONG).show()
         }

@@ -45,6 +45,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     private var videoHolder: Holder? = null
     private var videoId: String? = null
     private var videoLoading: Job? = null
+    private var videoRelease: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     private var videoVersion = 0L
     private var closed = false
     private var furthestBound = -1
@@ -122,7 +123,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         } else holder.binding.preview.setImageDrawable(null)
         holder.loading = scope.launch {
             try {
-                val data = source.preview(item)
+                val data = source.preview(item).data
                 if (holder.item?.id != item.id) return@launch
                 holder.request = loader.enqueue(ImageRequest.Builder(holder.binding.preview.context).data(data).size(1024, 1024)
                     .apply { if (home) { placeholder(one.njk.sao.R.drawable.eager); error(one.njk.sao.R.drawable.eager) } }
@@ -163,39 +164,47 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
             try {
                 // Scrolling has settled; allow any final layout/focus adjustment to finish.
                 delay(200)
-                val file = source.video(item) ?: return@launch
-                if (version != videoVersion || !playing || scrolling || holder !in attached || holder.item?.id != item.id) return@launch
-                val created = ExoPlayer.Builder(holder.binding.root.context)
-                    .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(1000, 5000, 250, 500)
-                        .setTargetBufferBytes(8 * 1024 * 1024).build()).build().apply {
-                    volume = 0f
-                    repeatMode = Player.REPEAT_MODE_ONE
-                    trackSelectionParameters = trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
-                    addListener(object : Player.Listener {
-                        override fun onRenderedFirstFrame() {
-                            if (version == videoVersion && videoHolder === holder) holder.binding.videoPreview.alpha = 1f
-                        }
-                        override fun onPlayerError(error: PlaybackException) {
-                            if (version == videoVersion) stopVideo()
-                        }
-                    })
+                source.withRendition(item, Rendition.PLAYBACK) { handle ->
+                    val file = handle.requireFile()
+                    if (version != videoVersion || !playing || scrolling || holder !in attached || holder.item?.id != item.id) return@withRendition
+                    val created = ExoPlayer.Builder(holder.binding.root.context)
+                        .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(1000, 5000, 250, 500)
+                            .setTargetBufferBytes(8 * 1024 * 1024).build()).build().apply {
+                        volume = 0f
+                        repeatMode = Player.REPEAT_MODE_ONE
+                        trackSelectionParameters = trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
+                        addListener(object : Player.Listener {
+                            override fun onRenderedFirstFrame() {
+                                if (version == videoVersion && videoHolder === holder) holder.binding.videoPreview.alpha = 1f
+                            }
+                            override fun onPlayerError(error: PlaybackException) {
+                                if (version == videoVersion) stopVideo()
+                            }
+                        })
+                    }
+                    player = created
+                    holder.binding.videoPreview.alpha = 0f
+                    holder.binding.videoPreview.isVisible = true
+                    holder.binding.videoPreview.player = created
+                    // The source's playback rendition may use a different container from the original.
+                    created.setMediaItem(PlayerMediaItem.fromUri(Uri.fromFile(file)))
+                    created.prepare(); created.play()
+                    val released = kotlinx.coroutines.CompletableDeferred<Unit>()
+                    videoRelease = released
+                    released.await()
                 }
-                player = created
-                holder.binding.videoPreview.alpha = 0f
-                holder.binding.videoPreview.isVisible = true
-                holder.binding.videoPreview.player = created
-                // The source's playback rendition may use a different container from the original.
-                created.setMediaItem(PlayerMediaItem.fromUri(Uri.fromFile(file)))
-                created.prepare(); created.play()
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (version == videoVersion) stopVideo() }
+            finally { if (version == videoVersion) stopVideo() }
         }
     }
     private fun stopVideo() {
-        videoVersion++; videoLoading?.cancel(); videoLoading = null
+        videoVersion++
         videoHolder?.binding?.videoPreview?.let { it.player = null; it.isVisible = false }
         videoHolder = null; videoId = null
         val old = player; player = null; old?.release()
+        videoRelease?.complete(Unit); videoRelease = null
+        videoLoading?.cancel(); videoLoading = null
     }
     private fun uploadCaption(view: android.view.View, item: MediaItem): String {
         val date = item.remote?.uploadedAt?.let { raw -> runCatching {

@@ -77,8 +77,6 @@ internal class AllMediaSource(private val profile: SourceProfile,
             }
         }
     }.toTypedArray())
-    override suspend fun searchModes() = capabilities.first().modes
-
     override suspend fun page(query: MediaQuery, cursor: String?): MediaPage = withContext(dispatchers.cpu) {
         check(!closed)
         val signature = digest(profile.identity + SourceWire.query(query).toString())
@@ -126,13 +124,13 @@ internal class AllMediaSource(private val profile: SourceProfile,
         MediaPage(items.distinctBy { it.identityKey }.shuffled(Random(state.getLong("seed") xor turn.toLong())),
             state.toString().takeIf { more }, interrupted)
     }
-    override suspend fun filters(): List<String> = emptyList()
-    override suspend fun preview(item: MediaItem) = child(item).preview(item)
-    override suspend fun video(item: MediaItem) = child(item).video(item)
-    override suspend fun <T> withPlaybackFile(item: MediaItem, block: suspend (java.io.File) -> T): T = child(item).withPlaybackFile(item, block)
-    override suspend fun <T> withVideoFile(item: MediaItem, block: suspend (java.io.File) -> T): T = child(item).withVideoFile(item, block)
-    override suspend fun original(item: MediaItem) = child(item).original(item)
-    override suspend fun raster(item: MediaItem) = child(item).raster(item)
+    override suspend fun filters(): List<String> {
+        if (SearchFacet.EMOJI_TAGS !in capabilities.first().facets) throw SourceUnsupportedException(SourceFeature.FILTERS)
+        return members.flatMap { member -> child(member.identity).filters() }.distinct()
+    }
+    override suspend fun preview(item: MediaItem): Preview = child(item).preview(item)
+    override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
+        block: suspend (MediaHandle) -> T): T = child(item).withRendition(item, kind, block)
     override suspend fun openSequence(anchor: MediaItem) = child(anchor).openSequence(anchor)
     override fun close() {
         closed = true

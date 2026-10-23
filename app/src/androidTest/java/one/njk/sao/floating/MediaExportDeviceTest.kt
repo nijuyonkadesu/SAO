@@ -42,19 +42,27 @@ class MediaExportDeviceTest {
     }
     private fun item(mime: String) = MediaItem(name(),"Synthetic export","",mime,emptyList(),emptyList())
     private class Files(private val file: File) : MediaSource {
-        val originals=AtomicInteger(); val videos=AtomicInteger(); val rasters=AtomicInteger()
+        val originals=AtomicInteger(); val playbacks=AtomicInteger(); val stills=AtomicInteger()
+        override val identity=kotlinx.coroutines.flow.flowOf(LOCAL_SOURCE_ID)
+        override suspend fun owns(item: MediaItem)=true
         override suspend fun page(query: MediaQuery,cursor: String?)=MediaPage(emptyList())
         override suspend fun filters()=emptyList<String>()
-        override suspend fun preview(item: MediaItem): Any=file
-        override suspend fun original(item: MediaItem)=file.inputStream().also { originals.incrementAndGet() }
-        override suspend fun raster(item: MediaItem)=file.inputStream().also { rasters.incrementAndGet() }
-        override suspend fun video(item: MediaItem)=file.also { videos.incrementAndGet() }
+        override suspend fun preview(item: MediaItem): Preview=Preview.Local(file)
+        override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
+            block: suspend (MediaHandle)->T): T {
+            when(kind) {
+                Rendition.ORIGINAL -> originals.incrementAndGet()
+                Rendition.PLAYBACK -> playbacks.incrementAndGet()
+                Rendition.STILL -> stills.incrementAndGet()
+            }
+            return block(MediaHandle.Local(file))
+        }
     }
 
     @Test fun largeStillUsesTargetSizedSoftwareDecode(): Unit=runBlocking(dispatchers.conversion) {
         val file=picture(4096,4096)
         try { file.inputStream().use { input ->
-            val decoded=StaticStickerEncoder.decode(input,Rendition.STICKER_WEBP,StickerRequirements.WHATSAPP)
+            val decoded=StaticStickerEncoder.decode(input,ExportRendition.STICKER_WEBP,StickerRequirements.WHATSAPP)
             try {
                 assertTrue(decoded.bitmap.width<=496 && decoded.bitmap.height<=496)
                 assertTrue(decoded.bitmap.allocationByteCount<=496*496*8)
@@ -72,7 +80,7 @@ class MediaExportDeviceTest {
                 val original=input.readBytes()
                 val source=Files(input); val exports=MediaExports(app,source)
                 val media=item("image/jpeg")
-                val sticker=exports.prepare(media,Rendition.STICKER_PNG)
+                val sticker=exports.prepare(media,ExportRendition.STICKER_PNG)
                 val bitmap=BitmapFactory.decodeFile(sticker.file.path)
                 try {
                     assertEquals(512,bitmap.width); assertEquals(512,bitmap.height)
@@ -84,25 +92,25 @@ class MediaExportDeviceTest {
                         assertTrue(Color.red(bitmap.getPixel(384,256))>220)
                     }
                     assertEquals(0,Color.alpha(bitmap.getPixel(0,0)))
-                    assertArrayEquals(original,exports.prepare(media,Rendition.MEDIA).file.readBytes())
+                    assertArrayEquals(original,exports.prepare(media,ExportRendition.MEDIA).file.readBytes())
                 } finally { bitmap.recycle(); sticker.file.delete() }
             } finally { input.delete() }
         }
     }
 
     @Test fun compliantPngAndWebpAreReusedAndSimpleGraphicsStayLossless(): Unit=runBlocking {
-        for(rendition in listOf(Rendition.STICKER_PNG,Rendition.STICKER_WEBP)) {
-            val input=picture(512,512,if(rendition==Rendition.STICKER_PNG) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.WEBP_LOSSLESS)
+        for(rendition in listOf(ExportRendition.STICKER_PNG,ExportRendition.STICKER_WEBP)) {
+            val input=picture(512,512,if(rendition==ExportRendition.STICKER_PNG) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.WEBP_LOSSLESS)
             try {
                 val source=Files(input)
-                val export=MediaExports(app,source).prepare(item(if(rendition==Rendition.STICKER_PNG) "image/png" else "image/webp"),rendition)
+                val export=MediaExports(app,source).prepare(item(if(rendition==ExportRendition.STICKER_PNG) "image/png" else "image/webp"),rendition)
                 assertArrayEquals(input.readBytes(),export.file.readBytes())
                 export.file.delete()
             } finally { input.delete() }
         }
         val input=picture()
         try {
-            val export=MediaExports(app,Files(input)).prepare(item("image/png"),Rendition.STICKER_WEBP)
+            val export=MediaExports(app,Files(input)).prepare(item("image/png"),ExportRendition.STICKER_WEBP)
             val bitmap=BitmapFactory.decodeFile(export.file.path)
             try {
                 assertEquals(Color.RED,bitmap.getPixel(128,256))
@@ -121,14 +129,14 @@ class MediaExportDeviceTest {
             bitmap.setPixels(IntArray(512*512) { Color.rgb(random.nextInt(256),random.nextInt(256),random.nextInt(256)) },0,512,0,0,512,512)
             input.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG,100,it)) }
             val exports=MediaExports(app,Files(input)); val media=item("image/png")
-            val small=exports.prepare(media,Rendition.STICKER_WEBP,StickerRequirements.WHATSAPP)
-            val large=exports.prepare(media,Rendition.STICKER_WEBP,StickerRequirements.TELEGRAM)
+            val small=exports.prepare(media,ExportRendition.STICKER_WEBP,StickerRequirements.WHATSAPP)
+            val large=exports.prepare(media,ExportRendition.STICKER_WEBP,StickerRequirements.TELEGRAM)
             try {
                 assertTrue(small.file.length()<=100*1024)
                 assertTrue(large.file.length()<=512*1024)
                 assertNotEquals(small.uri,large.uri)
                 assertTrue(large.file.length()>=small.file.length())
-                assertArrayEquals(input.readBytes(),exports.prepare(media,Rendition.MEDIA).file.readBytes())
+                assertArrayEquals(input.readBytes(),exports.prepare(media,ExportRendition.MEDIA).file.readBytes())
             } finally { small.file.delete(); large.file.delete() }
         } finally { bitmap.recycle(); input.delete() }
     }
@@ -136,7 +144,7 @@ class MediaExportDeviceTest {
     @Test fun actualAnimationCannotBeFlattenedByAnIncorrectSourceFlag(): Unit=runBlocking {
         val input=fixture("floating/hello.gif")
         try {
-            try { MediaExports(app,Files(input)).prepare(item("image/png"),Rendition.STICKER_WEBP); fail("Must reject an actual animated input") }
+            try { MediaExports(app,Files(input)).prepare(item("image/png"),ExportRendition.STICKER_WEBP); fail("Must reject an actual animated input") }
             catch(_: IllegalArgumentException) { }
         } finally { input.delete() }
     }
@@ -150,7 +158,7 @@ class MediaExportDeviceTest {
             val input=picture(); val source=Files(input); val media=item("image/png")
             try {
                 val exports=MediaExports(app,source,dispatchers,VideoTranscoder(app,dispatchers),store)
-                val copies=withTimeout(3000) { awaitAll(async { exports.prepare(media,Rendition.MEDIA) },async { exports.prepare(media,Rendition.MEDIA) }) }
+                val copies=withTimeout(3000) { awaitAll(async { exports.prepare(media,ExportRendition.MEDIA) },async { exports.prepare(media,ExportRendition.MEDIA) }) }
                 assertEquals(copies[0].file,copies[1].file)
                 assertEquals(1,source.originals.get())
                 assertArrayEquals(input.readBytes(),copies[0].file.readBytes())
@@ -200,7 +208,7 @@ class MediaExportDeviceTest {
         } finally { store.clipboard(null); kept.delete(); handoff.delete(); old.delete() }
     }
 
-    @Test fun webmCompatibilityReadsCachedVideoOnceWithoutMakingAnOriginalCopy(): Unit=runBlocking {
+    @Test fun webmCompatibilityReadsTheOriginalOnceWithoutCopyingIt(): Unit=runBlocking {
         val input=fixture("export/sdr.webm"); val original=input.readBytes()
         try {
             val source=Files(input); val exports=MediaExports(app,source); val media=item("video/webm")
@@ -208,8 +216,8 @@ class MediaExportDeviceTest {
             try {
                 val result=VideoTranscoder(app,dispatchers).inspect(converted.file)
                 assertEquals("video/avc",result.mime); assertEquals("audio/mp4a-latm",result.audioMime)
-                assertEquals(0,source.originals.get()); assertEquals(1,source.videos.get())
-                assertEquals(converted.uri,exports.mp4(media).uri); assertEquals(1,source.videos.get())
+                assertEquals(1,source.originals.get()); assertEquals(0,source.playbacks.get())
+                assertEquals(converted.uri,exports.mp4(media).uri); assertEquals(1,source.originals.get())
                 assertArrayEquals(original,input.readBytes())
             } finally { converted.file.delete() }
         } finally { input.delete() }
@@ -239,7 +247,7 @@ class MediaExportDeviceTest {
         val input=fixture("export/hdr.webm"); val original=input.readBytes()
         try {
             val source=Files(input); val exports=MediaExports(app,source); val media=item("video/webm")
-            val originalExport=exports.prepare(media,Rendition.MEDIA)
+            val originalExport=exports.prepare(media,ExportRendition.MEDIA)
             try {
                 assertArrayEquals(original,originalExport.file.readBytes())
                 assertTrue(VideoTranscoder(app,dispatchers).inspect(originalExport.file).hdr)
@@ -266,7 +274,7 @@ class MediaExportDeviceTest {
         try {
             file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.JPEG,100,it)) }
             val original=file.readBytes(); val source=Files(file); val exports=MediaExports(app,source)
-            val media=item("image/jpeg"); val exported=exports.prepare(media,Rendition.MEDIA)
+            val media=item("image/jpeg"); val exported=exports.prepare(media,ExportRendition.MEDIA)
             val budget=original.size/2L
             val smaller=exports.smaller(media,exported,budget)
             try {
@@ -285,7 +293,7 @@ class MediaExportDeviceTest {
         val original=input.readBytes()
         try {
             val media=item("video/webm"); val exports=MediaExports(app,Files(input))
-            val untouched=exports.prepare(media,Rendition.MEDIA)
+            val untouched=exports.prepare(media,ExportRendition.MEDIA)
             try {
                 assertTrue(original.size>150_000)
                 val reduced=withTimeout(30_000) { exports.smaller(media,untouched,150_000) }
@@ -308,7 +316,7 @@ class MediaExportDeviceTest {
         try {
             input.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
             val original=input.readBytes(); val media=item("image/png"); val exports=MediaExports(app,Files(input))
-            val untouched=exports.prepare(media,Rendition.MEDIA)
+            val untouched=exports.prepare(media,ExportRendition.MEDIA)
             try {
                 try { exports.smaller(media,untouched,1024); fail("Must not flatten alpha or reduce dimensions") }
                 catch(error: MediaExportException) { assertEquals(R.string.media_export_size_unavailable,error.messageRes) }

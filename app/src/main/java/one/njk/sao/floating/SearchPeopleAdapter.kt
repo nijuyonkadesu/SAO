@@ -46,7 +46,7 @@ internal class SearchPeopleAdapter(private val source: MediaSource, private val 
         holder.binding.portrait.setImageResource(R.drawable.ic_picker_person)
         holder.job = scope.launch {
             try {
-                val data = source.personPreview(person) ?: return@launch
+                val data = source.personPreview(person)?.data ?: return@launch
                 if (holder.person != person) return@launch
                 holder.request = loader.enqueue(ImageRequest.Builder(holder.binding.root.context).data(data)
                     .size(128, 128).target(holder.binding.portrait).build())

@@ -11,10 +11,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import javax.inject.Inject
 
-data class SearchOptionsState(val sourceId: String = "local", val loaded: Boolean = false, val supported: Boolean = false,
+data class SearchOptionsState(val sourceId: String = LOCAL_SOURCE_ID, val loaded: Boolean = false, val supported: Boolean = false,
     val randomSupported: Boolean = false,
     val facets: Set<SearchFacet> = emptySet(),
-    val defaultMode: SearchMode = SearchMode.CONTEXT, val modes: Set<SearchMode> = emptySet(), val modesError: Boolean = false,
+    val defaultMode: SearchMode = SearchMode.CONTEXT, val modes: Set<SearchMode> = emptySet(),
     val peopleName: String = "", val people: List<SearchPerson> = emptyList(), val nextPeoplePage: Int? = null,
     val peopleLoading: Boolean = false, val peopleError: Boolean = false,
     val countries: List<String> = emptyList(), val states: List<String> = emptyList(), val cities: List<String> = emptyList(),
@@ -28,8 +28,6 @@ class SearchOptionsViewModel @Inject constructor(private val source: MediaSource
     val state = mutable.asStateFlow()
     private var peopleJob: Job? = null
     private var placesJob: Job? = null
-    private var modesJob: Job? = null
-    private var modesRequested = false
     private var peopleKey: Pair<String, String>? = null
     private var failedPeoplePage: Int? = null
     private var placesKey: Triple<String, String?, String?>? = null
@@ -43,7 +41,6 @@ class SearchOptionsViewModel @Inject constructor(private val source: MediaSource
                 if (mutable.value.sourceId != id) {
                     peopleJob?.cancel(); placesJob?.cancel(); peopleKey = null; placesKey = null
                     failedPeoplePage = null
-                    modesJob?.cancel(); modesRequested = false
                     countriesLoaded = false; statesLoaded = false; statesKey = null; citiesKey = null
                     mutable.value = SearchOptionsState(sourceId = id)
                 }
@@ -56,19 +53,6 @@ class SearchOptionsViewModel @Inject constructor(private val source: MediaSource
         }
     }
 
-    fun modes(retry: Boolean = false) {
-        if (!mutable.value.supported || (modesRequested && !retry)) return
-        val id = mutable.value.sourceId
-        modesRequested = true; modesJob?.cancel()
-        mutable.value = mutable.value.copy(modesError = false)
-        modesJob = viewModelScope.launch {
-            try {
-                val values = withContext(dispatchers.io) { source.searchModes() }
-                if (mutable.value.sourceId == id) mutable.value = mutable.value.copy(modes = values)
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (mutable.value.sourceId == id) mutable.value = mutable.value.copy(modesError = true) }
-        }
-    }
     fun people(name: String = mutable.value.peopleName, more: Boolean = false, retry: Boolean = false) {
         if (SearchFacet.PEOPLE !in mutable.value.facets) return
         val id = mutable.value.sourceId
@@ -83,7 +67,7 @@ class SearchOptionsViewModel @Inject constructor(private val source: MediaSource
         peopleJob = viewModelScope.launch {
             try {
                 if (!more && !retry && name.isNotBlank()) delay(300)
-                val result = withContext(dispatchers.io) { source.people(name, page, id) }
+                val result = withContext(dispatchers.io) { source.withSource(id) { it.people(name, page) } }
                 if (mutable.value.sourceId == id) mutable.value = mutable.value.copy(
                     people = (previous + result.people).distinctBy { it.id }, nextPeoplePage = result.nextPage, peopleLoading = false)
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -102,12 +86,12 @@ class SearchOptionsViewModel @Inject constructor(private val source: MediaSource
         mutable.value = mutable.value.copy(placesLoading = true, placesError = false)
         placesJob = viewModelScope.launch {
             try {
-                val result = withContext(dispatchers.io) { coroutineScope {
-                    val countries = async { if (countriesLoaded) mutable.value.countries else source.places(PlaceLevel.COUNTRY, expectedSourceId = id) }
-                    val states = async { if (statesLoaded && statesKey == country) mutable.value.states else source.places(PlaceLevel.STATE, country, expectedSourceId = id) }
-                    val cities = async { if (citiesKey == (country to state)) mutable.value.cities else source.places(PlaceLevel.CITY, country, state, id) }
+                val result = withContext(dispatchers.io) { source.withSource(id) { owned -> coroutineScope {
+                    val countries = async { if (countriesLoaded) mutable.value.countries else owned.places(PlaceScope(PlaceLevel.COUNTRY)) }
+                    val states = async { if (statesLoaded && statesKey == country) mutable.value.states else owned.places(PlaceScope(PlaceLevel.STATE, country = country)) }
+                    val cities = async { if (citiesKey == (country to state)) mutable.value.cities else owned.places(PlaceScope(PlaceLevel.CITY, country = country, state = state)) }
                     Triple(countries.await(), states.await(), cities.await())
-                } }
+                } } }
                 if (mutable.value.sourceId == id) {
                     countriesLoaded = true; statesLoaded = true; statesKey = country; citiesKey = country to state
                     mutable.value = mutable.value.copy(countries = result.first, states = result.second, cities = result.third, placesLoading = false)

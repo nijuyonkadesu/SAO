@@ -83,15 +83,17 @@ class ImmichDeviceTest {
         val second=immichProfile("Work",profile.testConnection().copy(apiKey="work-key")); profiles.upsert(second)
         assertEquals(0,calls.size)
         val first=source.page(MediaQuery("😂 amazing")).items.single()
-        assertEquals("GIF89a-synthetic-animation",source.original(first).bufferedReader().use { it.readText() })
+        assertEquals("GIF89a-synthetic-animation",
+            source.withRendition(first,Rendition.ORIGINAL) { handle -> handle.openStream().bufferedReader().use { it.readText() } })
         assertTrue(calls.all { it.getHeader("x-api-key")=="fixture-secret" })
         val before=calls.size
-        source.original(first).close(); assertEquals(before,calls.size)
+        source.withRendition(first,Rendition.ORIGINAL) { handle -> handle.openStream().close() }; assertEquals(before,calls.size)
         profiles.select(second.id)
-        try { source.original(first); fail("Accepted old source selection") } catch(_: IllegalStateException) { }
+        try { source.withRendition(first,Rendition.ORIGINAL) { }; fail("Accepted old source selection") } catch(_: IllegalStateException) { }
         mediaBytes="work-only".toByteArray()
         val work=source.page(MediaQuery()).items.single()
-        assertEquals("work-only",source.original(work).bufferedReader().use { it.readText() })
+        assertEquals("work-only",
+            source.withRendition(work,Rendition.ORIGINAL) { handle -> handle.openStream().bufferedReader().use { it.readText() } })
         assertNotEquals(first.id,work.id)
         assertTrue(calls.drop(before).all { it.getHeader("x-api-key")=="work-key" })
     }
@@ -101,31 +103,34 @@ class ImmichDeviceTest {
             profile=profile.changeConnection(profile.testConnection().copy(apiKey="key-$mime")); profiles.upsert(profile,true)
             val item=source.page(MediaQuery()).items.single()
             mediaBytes=ByteArray(4096) { (it%251).toByte() }
-            val file=if(item.isVideo) source.video(item)!! else source.preview(item) as File
+            val file=if(item.isVideo) source.withRendition(item,Rendition.PLAYBACK) { handle -> handle.requireFile() }
+                else (source.preview(item) as Preview.Local).file
             assertArrayEquals(mediaBytes,file.readBytes())
             assertTrue(file.canonicalPath.startsWith(File(app.cacheDir,"source-media").canonicalPath))
             val count=calls.size
-            if(item.isVideo) source.video(item) else source.preview(item)
+            if(item.isVideo) source.withRendition(item,Rendition.PLAYBACK) { } else source.preview(item)
             assertEquals(count,calls.size)
         }
         profile=profile.changeConnection(profile.testConnection().copy(apiKey="bad-stream")); profiles.upsert(profile,true)
         val item=source.page(MediaQuery()).items.single(); mediaStatus.set(401)
-        try { source.original(item); fail("Committed failed stream") } catch(error: SourceReadException) { assertEquals(one.njk.sao.R.string.source_extension_auth,error.messageRes) }
+        try { source.withRendition(item,Rendition.ORIGINAL) { }; fail("Committed failed stream") }
+        catch(error: SourceReadException) { assertEquals(one.njk.sao.R.string.source_extension_auth,error.messageRes) }
         val folder=File(app.cacheDir,"source-media/${digest(profile.identity).take(32)}")
         assertTrue(folder.listFiles().orEmpty().isEmpty())
         assertEquals(1,calls.count { it.requestUrl!!.encodedPath.endsWith("/original") && it.getHeader("x-api-key")=="bad-stream" })
     }
     @Test fun identicalPreviewAndOriginalShareOneHostCacheEntry() = runBlocking {
         val item=source.page(MediaQuery()).items.single()
-        val preview=source.preview(item) as File
+        val preview=(source.preview(item) as Preview.Local).file
         val before=calls.size
-        assertArrayEquals(preview.readBytes(),source.original(item).use { it.readBytes() })
+        assertArrayEquals(preview.readBytes(),
+            source.withRendition(item,Rendition.ORIGINAL) { handle -> handle.openStream().use { it.readBytes() } })
         assertEquals(before,calls.size)
         val folder=File(app.cacheDir,"source-media/${digest(profile.identity).take(32)}")
         assertEquals(1,folder.listFiles().orEmpty().size)
     }
     @Test fun retryBudgetIsBoundedAndAuthenticationCooldownAndIdleDoNotRetry() = runBlocking {
-        source.searchModes(); calls.clear()
+        source.capabilities.first { it.sourceId != null }; calls.clear()
         searchStatus.set(503)
         try { source.page(MediaQuery()); fail("Expected server error") } catch(_: SourceReadException) { }
         // Long server cooldown wins over automatic retry.
@@ -136,7 +141,7 @@ class ImmichDeviceTest {
     }
     @Test fun switchingCancelsBlockedStreamWithoutRetryOrPartialFile() = runBlocking {
         kind="video/mp4"; val item=source.page(MediaQuery()).items.single(); slowMedia=true
-        val download=launch(Dispatchers.IO) { source.video(item) }
+        val download=launch(Dispatchers.IO) { source.withRendition(item,Rendition.PLAYBACK) { } }
         withTimeout(5000) { while(calls.none { it.requestUrl!!.encodedPath.endsWith("/original") }) delay(20) }
         profiles.select(null); withTimeout(5000) { download.join() }; assertTrue(download.isCancelled)
         val count=calls.size; delay(1100); assertEquals(count,calls.size)

@@ -208,9 +208,9 @@ class DiscordDeviceTest {
         val videos = remote.page(MediaQuery()).items
         assertEquals(listOf("video/webm", "video/mp4"), videos.map { it.mimeType })
         val cases = listOf(
-            Triple(MediaExports(app, local).prepare(gif, Rendition.MEDIA), InstrumentationRegistry.getInstrumentation().context.assets.open(gif.asset).use { it.readBytes() }, "gif"),
-            Triple(MediaExports(app, remote).prepare(videos[0], Rendition.MEDIA), webm, "webm"),
-            Triple(MediaExports(app, remote).prepare(videos[1], Rendition.MEDIA), mp4, "mp4"),
+            Triple(MediaExports(app, local).prepare(gif, ExportRendition.MEDIA), InstrumentationRegistry.getInstrumentation().context.assets.open(gif.asset).use { it.readBytes() }, "gif"),
+            Triple(MediaExports(app, remote).prepare(videos[0], ExportRendition.MEDIA), webm, "webm"),
+            Triple(MediaExports(app, remote).prepare(videos[1], ExportRendition.MEDIA), mp4, "mp4"),
         )
         for ((exported, bytes, extension) in cases) {
             assertTrue(exported.file.name.endsWith(".$extension"))

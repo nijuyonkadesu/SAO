@@ -116,7 +116,8 @@ class LocalPickedSetupDeviceTest {
             val expected=contents.values.associate { it.first to it.second }
             assertEquals(expected.keys,results.items.map { it.mimeType }.toSet())
             // The photo picker may deliberately expose provider IDs instead of original filenames.
-            results.items.forEach { assertArrayEquals(expected.getValue(it.mimeType),source.original(it).use { stream -> stream.readBytes() }) }
+            results.items.forEach { assertArrayEquals(expected.getValue(it.mimeType),
+                source.withRendition(it,Rendition.ORIGINAL) { handle -> handle.openStream().use { stream -> stream.readBytes() } }) }
             ExtensionForm(created,extension).use { form ->
                 form.await("name") { it.text.toString()=="Chosen reactions" }
                 form.await("intake_title") { it.text.toString()=="Adding files to collections" }

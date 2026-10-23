@@ -20,8 +20,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.InputStream
 import javax.inject.Provider
 
 /** One active provider session. Factory lookup is lazy and configurations remain plain values. */
@@ -57,9 +55,6 @@ class SwitchingMediaSource(private val profiles: SourceProfiles,
             emitAll(effective.map { it.copy(sourceId = id) })
         }.catch { error -> if (error is CancellationException) throw error; emit(SourceCapabilities(sourceId = id)) } }
         .stateIn(scope, SharingStarted.WhileSubscribed(0),SourceCapabilities())
-    override val advancedSearch = capabilities.map { it.searchOptions }.distinctUntilChanged()
-    override val randomBrowse = capabilities.map { it.random }.distinctUntilChanged()
-    override val sequenceBrowse = capabilities.map { it.sequence }.distinctUntilChanged()
 
     private suspend fun session(): Session = withContext(dispatchers.io) { mutex.withLock {
         if (!watching) {
@@ -84,19 +79,21 @@ class SwitchingMediaSource(private val profiles: SourceProfiles,
         }
     } }
     private suspend fun belongs(session: Session, item: MediaItem) =
-        if(session.source is AllMediaSource) session.source.owns(item) else (item.remote?.sourceId ?: "local") == session.identity
+        if(session.source is AllMediaSource) session.source.owns(item) else (item.remote?.sourceId ?: LOCAL_SOURCE_ID) == session.identity
     override suspend fun owns(item: MediaItem): Boolean {
         val session = session()
         return belongs(session, item) && current().identity == session.identity
     }
-    private suspend fun <T> read(item: MediaItem? = null, expectedSourceId: String? = null, block: suspend (MediaSource) -> T): T {
+    private suspend fun <T> read(item: MediaItem? = null, expectedIdentity: String? = null, block: suspend (MediaSource) -> T): T {
         val session = session()
-        if (expectedSourceId != null) check(expectedSourceId == session.identity) { "Filter belongs to a different source" }
+        if (expectedIdentity != null && session.identity != expectedIdentity) throw CancellationException("Source changed")
         if (item != null) check(belongs(session, item)) { "Media belongs to a different source" }
         val result = session.read(block)
         if (current().identity != session.identity) throw CancellationException("Source changed")
         return result
     }
+    override suspend fun <T> withSource(expectedIdentity: String, block: suspend (MediaSource) -> T): T =
+        read(expectedIdentity=expectedIdentity,block=block)
     internal suspend fun shutdown() = mutex.withLock { scope.cancel(); active?.close(); active = null }
     override suspend fun page(query: MediaQuery, cursor: String?) = read { it.page(query, cursor) }
     override suspend fun openSequence(anchor: MediaItem): MediaSequence {
@@ -119,16 +116,11 @@ class SwitchingMediaSource(private val profiles: SourceProfiles,
         }
     }
     override suspend fun filters() = read { it.filters() }
-    override suspend fun searchModes() = read { it.searchModes() }
-    override suspend fun suggestions(query: MediaQuery, cursor: Int, expectedSourceId: String?) =
-        read(expectedSourceId=expectedSourceId) { it.suggestions(query,cursor,expectedSourceId) }
-    override suspend fun people(name: String, page: Int, expectedSourceId: String?) = read(expectedSourceId = expectedSourceId) { it.people(name, page, expectedSourceId) }
-    override suspend fun personPreview(person: SearchPerson) = read(expectedSourceId = person.sourceId) { it.personPreview(person) }
-    override suspend fun places(level: PlaceLevel, country: String?, state: String?, expectedSourceId: String?) = read(expectedSourceId = expectedSourceId) { it.places(level, country, state, expectedSourceId) }
-    override suspend fun preview(item: MediaItem): Any = read(item) { it.preview(item) }
-    override suspend fun video(item: MediaItem): File? = read(item) { it.video(item) }
-    override suspend fun <T> withPlaybackFile(item: MediaItem, block: suspend (File) -> T): T = read(item) { it.withPlaybackFile(item, block) }
-    override suspend fun <T> withVideoFile(item: MediaItem, block: suspend (File) -> T): T = read(item) { it.withVideoFile(item, block) }
-    override suspend fun original(item: MediaItem): InputStream = read(item) { it.original(item) }
-    override suspend fun raster(item: MediaItem): InputStream = read(item) { it.raster(item) }
+    override suspend fun suggestions(query: MediaQuery, cursor: Int) = read { it.suggestions(query,cursor) }
+    override suspend fun people(name: String, page: Int) = read { it.people(name, page) }
+    override suspend fun personPreview(person: SearchPerson) = read(expectedIdentity=person.sourceId) { it.personPreview(person) }
+    override suspend fun places(scope: PlaceScope) = read { it.places(scope) }
+    override suspend fun preview(item: MediaItem): Preview = read(item) { it.preview(item) }
+    override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
+        block: suspend (MediaHandle) -> T): T = read(item) { it.withRendition(item, kind, block) }
 }

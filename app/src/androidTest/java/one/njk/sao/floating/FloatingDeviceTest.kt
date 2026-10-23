@@ -58,27 +58,27 @@ class FloatingDeviceTest {
         assertEquals(1, items.count { it.animated })
         val exports = MediaExports(app, source)
         for (item in items.filterNot { it.animated }) {
-            val png = exports.prepare(item, Rendition.STICKER_PNG)
+            val png = exports.prepare(item, ExportRendition.STICKER_PNG)
             assertEquals("${app.packageName}.fileprovider", png.uri.authority)
             assertEquals("image/png", app.contentResolver.getType(png.uri))
             BitmapFactory.decodeFile(png.file.path).also { bitmap ->
                 assertEquals(512, bitmap.width); assertEquals(512, bitmap.height)
                 assertEquals(0, Color.alpha(bitmap.getPixel(0, 0))); bitmap.recycle()
             }
-            val sticker = exports.prepare(item, Rendition.STICKER_WEBP)
+            val sticker = exports.prepare(item, ExportRendition.STICKER_WEBP)
             assertEquals("image/webp", app.contentResolver.getType(sticker.uri))
             assertTrue(sticker.file.length() <= 100 * 1024)
-            val media = exports.prepare(item, Rendition.MEDIA)
+            val media = exports.prepare(item, ExportRendition.MEDIA)
             assertEquals(item.mimeType, app.contentResolver.getType(media.uri))
             assertArrayEquals(source.openOriginal(item).use { it.readBytes() }, media.file.readBytes())
             assertTrue(media.file.length() > 0)
             assertArrayEquals(media.file.readBytes(), app.contentResolver.openInputStream(media.uri)!!.use { it.readBytes() })
         }
         val gif = items.single { it.animated }
-        val exported = exports.prepare(gif, Rendition.MEDIA)
+        val exported = exports.prepare(gif, ExportRendition.MEDIA)
         assertEquals("image/gif", app.contentResolver.getType(exported.uri))
         assertArrayEquals(source.openOriginal(gif).use { it.readBytes() }, exported.file.readBytes())
-        try { exports.prepare(gif, Rendition.STICKER_PNG); fail("GIF must not silently become a still sticker") }
+        try { exports.prepare(gif, ExportRendition.STICKER_PNG); fail("GIF must not silently become a still sticker") }
         catch (_: IllegalArgumentException) { }
     }
 
@@ -718,7 +718,7 @@ class FloatingDeviceTest {
 
     @Test fun obsoleteClipboardRequestCannotPublish() = runBlocking {
         val source = LocalMediaSource(app); val item = source.all().first()
-        val exported = MediaExports(app, source).prepare(item, Rendition.MEDIA)
+        val exported = MediaExports(app, source).prepare(item, ExportRendition.MEDIA)
         val request = ClipboardRequest(); val obsolete = request.next(); request.next()
         assertFalse(ClipboardPublisher(app, FloatingDispatchers()).publish(item, exported, request, obsolete))
     }
@@ -767,19 +767,19 @@ class FloatingDeviceTest {
         val local = LocalMediaSource(app); val items = local.all()
         val entered = CountDownLatch(1); val release = CountDownLatch(1)
         val slow = object : MediaSource by local {
-            override suspend fun original(item: MediaItem): java.io.InputStream {
+            override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
+                block: suspend (MediaHandle) -> T): T {
                 if (item.id == items[0].id) { entered.countDown(); release.await(5, TimeUnit.SECONDS) }
-                return local.openOriginal(item)
+                return block(MediaHandle.Stream(local.openOriginal(item)))
             }
-            override suspend fun raster(item: MediaItem) = original(item)
         }
         // Use fresh immutable export IDs so cached files cannot bypass the slow reader.
         val first = items[0].copy(id = "slow_" + UUID.randomUUID().toString().replace("-", ""))
         val last = items[1].copy(id = "latest_" + UUID.randomUUID().toString().replace("-", ""))
         val wrapper = object : MediaSource by slow {
-            override suspend fun original(item: MediaItem): java.io.InputStream = slow.original(
-                if (item.id == first.id) items[0] else items[1])
-            override suspend fun raster(item: MediaItem) = original(item)
+            override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
+                block: suspend (MediaHandle) -> T): T = slow.withRendition(
+                if (item.id == first.id) items[0] else items[1], kind, block)
         }
         val dispatchers = FloatingDispatchers()
         lateinit var model: PickerViewModel
@@ -808,7 +808,7 @@ class FloatingDeviceTest {
 
     @Test fun aReceiverUnderAnotherUidCanReadOnlyWhenGivenARealUriGrant() = runBlocking {
         val source = LocalMediaSource(app)
-        val exported = MediaExports(app, source).prepare(source.all().first(), Rendition.STICKER_PNG)
+        val exported = MediaExports(app, source).prepare(source.all().first(), ExportRendition.STICKER_PNG)
         for (grantRead in listOf(false, true)) verifyReceiverAccess(exported, grantRead)
     }
 

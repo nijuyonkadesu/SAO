@@ -51,12 +51,17 @@ class RaysMediaSource(private val context: Context, private val config: RaysConf
     @Volatile private var closed = false
     private val videoFiles = Mutex()
     private val videoReaders = mutableMapOf<File,Int>()
+    override val identity = kotlinx.coroutines.flow.flowOf(sourceId)
+    override suspend fun owns(item: MediaItem) = item.remote?.sourceId == sourceId
     private fun videoFile(item: MediaItem) = File(File(context.cacheDir,"rays/videos"),
         item.id + if(item.mimeType=="video/webm") ".webm" else ".mp4")
-    override suspend fun <T> withVideoFile(item: MediaItem, block: suspend (File) -> T): T {
-        val file=videoFile(item)
-        videoFiles.withLock { videoReaders[file]=(videoReaders[file] ?: 0)+1 }
-        try { return block(requireNotNull(video(item))) }
+    private suspend fun <T> withVideoFile(item: MediaItem, block: suspend (File) -> T): T {
+        val file = withContext(dispatchers.io) { videoFiles.withLock {
+            val file = ensureVideo(item)
+            videoReaders[file]=(videoReaders[file] ?: 0)+1
+            file
+        } }
+        try { return block(file) }
         finally { withContext(kotlinx.coroutines.NonCancellable) { videoFiles.withLock {
             val remaining=videoReaders.getValue(file)-1
             if(remaining==0) videoReaders.remove(file) else videoReaders[file]=remaining
@@ -88,65 +93,62 @@ class RaysMediaSource(private val context: Context, private val config: RaysConf
         check(!closed)
         MediaPage(items, page.nextIndex?.toString())
     }
-    override suspend fun filters() = emptyList<String>()
     private fun uri(item: MediaItem): Uri {
         check(!closed && item.remote?.sourceId == sourceId)
         return item.asset.toUri().also {
             require(it.scheme == "content" && it.authority == "${config.packageName}.fileprovider")
         }
     }
-    override suspend fun preview(item: MediaItem): Any = when {
-        item.isVideo -> withContext(dispatchers.io) {
+    override suspend fun preview(item: MediaItem): Preview = when {
+        item.isVideo -> Preview.Decoded(withContext(dispatchers.io) {
             val retriever = MediaMetadataRetriever()
             try {
                 retriever.setDataSource(context, uri(item))
                 requireNotNull(retriever.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 512, 512))
             } finally { retriever.release() }
-        }
-        item.mimeType == "image/svg+xml" -> withContext(dispatchers.io) {
+        })
+        item.mimeType == "image/svg+xml" -> Preview.Bytes(withContext(dispatchers.io) {
             raster(item).use { java.nio.ByteBuffer.wrap(it.readBytes()) }
-        }
-        else -> uri(item)
+        })
+        else -> Preview.Uri(uri(item))
     }
-    override suspend fun video(item: MediaItem): File? = withContext(dispatchers.io) {
-        if (!item.isVideo) return@withContext null
-        videoFiles.withLock {
-            val input = uri(item)
-            val directory = File(context.cacheDir, "rays/videos").apply { mkdirs() }
-            val file = videoFile(item)
-            if (!file.isFile) {
-                val staging = File(directory, file.name + ".pending")
-                try {
-                    context.contentResolver.openInputStream(input)!!.use { source -> staging.outputStream().use { output ->
-                        val buffer = ByteArray(32 * 1024)
-                        var total = 0L
-                        while (true) {
-                            coroutineContext.ensureActive()
-                            val count = source.read(buffer)
-                            if (count < 0) break
-                            total += count
-                            require(total <= 64L * 1024 * 1024) { "Video exceeds 64 MiB" }
-                            output.write(buffer, 0, count)
-                        }
-                    } }
-                    check(!closed && staging.renameTo(file))
-                } finally { staging.delete() }
-                var total = directory.listFiles().orEmpty().filter { it.isFile }.sumOf { it.length() }
-                directory.listFiles().orEmpty().filter { it.isFile && it != file && it !in videoReaders && !it.name.endsWith(".pending") }
-                    .sortedBy { it.lastModified() }.forEach {
-                        val length = it.length()
-                        if (total > 128L * 1024 * 1024 && it.delete()) total -= length
+    private suspend fun ensureVideo(item: MediaItem): File {
+        if (!item.isVideo) error("Rays item is not a video")
+        val input = uri(item)
+        val directory = File(context.cacheDir, "rays/videos").apply { mkdirs() }
+        val file = videoFile(item)
+        if (!file.isFile) {
+            val staging = File(directory, file.name + ".pending")
+            try {
+                context.contentResolver.openInputStream(input)!!.use { source -> staging.outputStream().use { output ->
+                    val buffer = ByteArray(32 * 1024)
+                    var total = 0L
+                    while (true) {
+                        coroutineContext.ensureActive()
+                        val count = source.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= 64L * 1024 * 1024) { "Video exceeds 64 MiB" }
+                        output.write(buffer, 0, count)
                     }
-            }
-            file
+                } }
+                check(!closed && staging.renameTo(file))
+            } finally { staging.delete() }
         }
+        var total = directory.listFiles().orEmpty().filter { it.isFile }.sumOf { it.length() }
+        directory.listFiles().orEmpty().filter { it.isFile && it != file && it !in videoReaders && !it.name.endsWith(".pending") }
+            .sortedBy { it.lastModified() }.forEach {
+            val length = it.length()
+            if (total > 128L * 1024 * 1024 && it.delete()) total -= length
+        }
+        return file
     }
-    @SuppressLint("Recycle") // MediaSource transfers stream ownership to the caller.
-    override suspend fun original(item: MediaItem): InputStream = withContext(dispatchers.io) {
-        if (item.isVideo) requireNotNull(video(item)).inputStream()
+    @SuppressLint("Recycle")
+    private suspend fun original(item: MediaItem): InputStream = withContext(dispatchers.io) {
+        if (item.isVideo) error("Rays video has no stream original")
         else context.contentResolver.openInputStream(uri(item)) ?: error("Rays image is unavailable")
     }
-    override suspend fun raster(item: MediaItem): InputStream {
+    private suspend fun raster(item: MediaItem): InputStream {
         if (item.mimeType != "image/svg+xml") return original(item)
         return withContext(dispatchers.conversion) {
             val svg = original(item).use { SVG.getFromInputStream(it) }
@@ -159,6 +161,17 @@ class RaysMediaSource(private val context: Context, private val config: RaysConf
                 })
             } finally { bitmap.recycle() }
         }
+    }
+    private suspend fun <T> withStream(open: suspend () -> InputStream, block: suspend (InputStream) -> T): T {
+        val stream = open()
+        return try { block(stream) } finally { stream.close() }
+    }
+    override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
+        block: suspend (MediaHandle) -> T): T = when (kind) {
+        Rendition.ORIGINAL -> if (item.isVideo) withVideoFile(item) { file -> block(MediaHandle.Local(file)) }
+            else withStream({ original(item) }) { stream -> block(MediaHandle.Stream(stream)) }
+        Rendition.PLAYBACK -> { require(item.isVideo); withVideoFile(item) { file -> block(MediaHandle.Local(file)) } }
+        Rendition.STILL -> withStream({ raster(item) }) { stream -> block(MediaHandle.Stream(stream)) }
     }
     override fun close() { closed = true }
 }

@@ -33,8 +33,10 @@ class LocalContextSourceDeviceTest {
             assertTrue(before.isNotEmpty())
             for(mime in listOf("image/png","image/gif","video/mp4","video/webm")) {
                 val item=before.first { it.mimeType==mime }
-                val bytes=source.original(item).use { it.readBytes() }; assertTrue(bytes.isNotEmpty())
-                if(item.isVideo) assertArrayEquals(bytes,source.video(item)!!.readBytes())
+                val bytes=source.withRendition(item,Rendition.ORIGINAL) { handle -> handle.openStream().use { it.readBytes() } }
+                assertTrue(bytes.isNotEmpty())
+                if(item.isVideo) assertArrayEquals(bytes,
+                    source.withRendition(item,Rendition.PLAYBACK) { handle -> handle.requireFile().readBytes() })
             }
             assertEquals(before.size,source.page(MediaQuery("👩🏽‍💻")).items.size)
             ExtensionForm(profile,extension).use { form ->

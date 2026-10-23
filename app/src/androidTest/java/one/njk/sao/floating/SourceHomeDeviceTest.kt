@@ -51,12 +51,17 @@ class SourceHomeDeviceTest {
         var originalReads=0
         var videoReads=0
         val source=object: MediaSource {
+            override val identity=kotlinx.coroutines.flow.flowOf(LOCAL_SOURCE_ID)
+            override suspend fun owns(item: MediaItem)=true
             override suspend fun page(query: MediaQuery,cursor: String?)=MediaPage(emptyList())
             override suspend fun filters()=emptyList<String>()
-            override suspend fun preview(item: MediaItem): Any=preview
-            override suspend fun video(item: MediaItem)=preview.also { videoReads++ }
-            override suspend fun original(item: MediaItem)=jpeg.inputStream().also { originalReads++ }
-            override suspend fun raster(item: MediaItem)=error("Share must not flatten the displayed rendition")
+            override suspend fun preview(item: MediaItem): Preview=Preview.Local(preview)
+            override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
+                block: suspend (MediaHandle)->T): T = when(kind) {
+                Rendition.PLAYBACK -> block(MediaHandle.Local(preview).also { videoReads++ })
+                Rendition.ORIGINAL -> block(MediaHandle.Stream(jpeg.inputStream().also { originalReads++ }))
+                Rendition.STILL -> error("Share must not flatten the displayed rendition")
+            }
         }
         val exports=MediaExports(app,source)
         try {
@@ -70,7 +75,7 @@ class SourceHomeDeviceTest {
                     assertArrayEquals(bytes,app.contentResolver.openInputStream(shared.uri)!!.use { it.readBytes() })
                     assertEquals("Share must never request the original",0,originalReads)
                     if(!item.isVideo) assertEquals(0,videoReads)
-                    val download=exports.prepare(item,Rendition.MEDIA)
+                    val download=exports.prepare(item,ExportRendition.MEDIA)
                     try { assertEquals(1,originalReads); assertArrayEquals(jpeg,download.file.readBytes()) }
                     finally { download.file.delete(); originalReads=0 }
                 } finally { shared.file.delete() }
@@ -93,14 +98,20 @@ class SourceHomeDeviceTest {
                 filename="003889-photo_1075@08-08-2023_20-38-02.${if(mime=="image/png") "png" else "jpg"}")
             var rasters = 0
             val source = object : MediaSource {
+                override val identity = kotlinx.coroutines.flow.flowOf(LOCAL_SOURCE_ID)
+                override suspend fun owns(item: MediaItem) = true
                 override suspend fun page(query: MediaQuery,cursor: String?) = MediaPage(listOf(item))
                 override suspend fun filters() = emptyList<String>()
-                override suspend fun preview(item: MediaItem): Any = error("Preview cannot be used for an export")
-                override suspend fun original(item: MediaItem) = bytes.inputStream()
-                override suspend fun raster(item: MediaItem) = bytes.inputStream().also { rasters++ }
+                override suspend fun preview(item: MediaItem): Preview = error("Preview cannot be used for an export")
+                override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
+                    block: suspend (MediaHandle) -> T): T = when (kind) {
+                    Rendition.ORIGINAL -> block(MediaHandle.Stream(bytes.inputStream()))
+                    Rendition.STILL -> block(MediaHandle.Stream(bytes.inputStream().also { rasters++ }))
+                    Rendition.PLAYBACK -> error("A still photo has no playback rendition")
+                }
             }
             val exports = MediaExports(app,source)
-            val media = exports.prepare(item,Rendition.MEDIA)
+            val media = exports.prepare(item,ExportRendition.MEDIA)
             try {
                 assertEquals(mime,media.mimeType); assertEquals(mime,app.contentResolver.getType(media.uri))
                 assertEquals(0,rasters)
@@ -109,7 +120,7 @@ class SourceHomeDeviceTest {
                 assertEquals(3000,decoded.width); assertEquals(1800,decoded.height)
                 if(mime=="image/png") assertEquals(0,Color.alpha(decoded.getPixel(0,0)))
                 decoded.recycle()
-                val sticker = exports.prepare(item,Rendition.STICKER_PNG)
+                val sticker = exports.prepare(item,ExportRendition.STICKER_PNG)
                 try {
                     assertEquals(1,rasters)
                     BitmapFactory.decodeFile(sticker.file.path).also {
@@ -150,9 +161,11 @@ class SourceHomeDeviceTest {
                     } finally { active.decrementAndGet() }
                 }
                 override suspend fun filters()=emptyList<String>()
-                override suspend fun preview(item: MediaItem): Any=profile.name
-                override suspend fun original(item: MediaItem)=profile.name.byteInputStream()
-                override suspend fun raster(item: MediaItem)=original(item)
+                override val identity=flowOf(profile.identity)
+                override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
+                override suspend fun preview(item: MediaItem): Preview=textPreview(profile.name)
+                override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
+                    block: suspend (MediaHandle)->T): T=block(MediaHandle.Stream(profile.name.byteInputStream()))
                 override fun close() { closed+=profile.id }
             }
         }
@@ -169,8 +182,9 @@ class SourceHomeDeviceTest {
             assertEquals(7,calls.size); assertTrue(calls.values.all { it==3 }); assertTrue(peak.get()<=3)
             for(member in members) {
                 val item=items.first { it.remote?.sourceId==member.identity }
-                assertTrue(all.owns(item)); assertEquals(member.name,all.preview(item))
-                assertEquals(member.name,all.original(item).use { it.readBytes().toString(Charsets.UTF_8) })
+                assertTrue(all.owns(item)); assertEquals(member.name,all.preview(item).text())
+                assertEquals(member.name,all.withRendition(item,Rendition.ORIGINAL) { handle ->
+                    handle.openStream().use { it.readBytes().toString(Charsets.UTF_8) } })
             }
             assertFalse(all.owns(items.first().copy(remote=RemoteMedia("other","0",false))))
         } finally { all.close() }
@@ -189,9 +203,11 @@ class SourceHomeDeviceTest {
                         remote=RemoteMedia(profile.identity,"same-asset-id",false))))
                 }
                 override suspend fun filters()=emptyList<String>()
-                override suspend fun preview(item: MediaItem): Any=profile.name
-                override suspend fun original(item: MediaItem)=profile.name.byteInputStream()
-                override suspend fun raster(item: MediaItem)=original(item)
+                override val identity=flowOf(profile.identity)
+                override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
+                override suspend fun preview(item: MediaItem): Preview=textPreview(profile.name)
+                override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
+                    block: suspend (MediaHandle)->T): T=block(MediaHandle.Stream(profile.name.byteInputStream()))
                 override fun close() { }
             }
         }
@@ -232,9 +248,11 @@ class SourceHomeDeviceTest {
                 override val changes=flow { load(); observers.incrementAndGet(); emit(Unit); awaitCancellation() }
                 override suspend fun page(query: MediaQuery,cursor: String?): MediaPage { load(); return MediaPage(emptyList()) }
                 override suspend fun filters()=emptyList<String>()
-                override suspend fun preview(item: MediaItem): Any=error("Unused")
-                override suspend fun original(item: MediaItem)=error("Unused")
-                override suspend fun raster(item: MediaItem)=error("Unused")
+                override val identity=flowOf(profile.identity)
+                override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
+                override suspend fun preview(item: MediaItem): Preview=error("Unused")
+                override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
+                    block: suspend (MediaHandle)->T): T=error("Unused")
                 override fun close() { }
             }
         }
@@ -255,9 +273,11 @@ class SourceHomeDeviceTest {
                     MediaItem("item_${cursor ?: "0"}","Cursor fixture","","image/png",emptyList(),emptyList())),
                     when(cursor) { null -> "2"; "2" -> "3"; else -> "2" })
                 override suspend fun filters()=emptyList<String>()
-                override suspend fun preview(item: MediaItem): Any=error("Unused")
-                override suspend fun original(item: MediaItem)=error("Unused")
-                override suspend fun raster(item: MediaItem)=error("Unused")
+                override val identity=flowOf(profile.identity)
+                override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
+                override suspend fun preview(item: MediaItem): Preview=error("Unused")
+                override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
+                    block: suspend (MediaHandle)->T): T=error("Unused")
                 override fun close() { }
             }
         }
@@ -281,9 +301,11 @@ class SourceHomeDeviceTest {
                     MediaItem("fixture_${digest(profile.id).take(8)}",profile.name,"","image/png",emptyList(),emptyList(),
                         remote=RemoteMedia(profile.identity,"same",false))))
                 override suspend fun filters()=emptyList<String>()
-                override suspend fun preview(item: MediaItem): Any=profile.name
-                override suspend fun original(item: MediaItem)=profile.name.byteInputStream()
-                override suspend fun raster(item: MediaItem)=original(item)
+                override val identity=flowOf(profile.identity)
+                override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
+                override suspend fun preview(item: MediaItem): Preview=textPreview(profile.name)
+                override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
+                    block: suspend (MediaHandle)->T): T=block(MediaHandle.Stream(profile.name.byteInputStream()))
                 override fun close() { }
             }
         }
@@ -296,11 +318,13 @@ class SourceHomeDeviceTest {
             assertFalse(SearchFacet.PEOPLE in caps.facets)
             val items=router.page(MediaQuery()).items
             assertEquals(2,items.size)
-            for(item in items) { assertTrue(router.owns(item)); assertEquals(item.title,router.original(item).use { it.readBytes().toString(Charsets.UTF_8) }) }
+            for(item in items) { assertTrue(router.owns(item)); assertEquals(item.title,
+                router.withRendition(item,Rendition.ORIGINAL) { handle ->
+                    handle.openStream().use { it.readBytes().toString(Charsets.UTF_8) } }) }
             val first=items.first { it.remote?.sourceId==members.first().identity }
             profiles.select(members.last().id)
             assertFalse(router.owns(first))
-            try { router.original(first); fail("Old All item must not route into the newly selected profile") }
+            try { router.withRendition(first,Rendition.ORIGINAL) { }; fail("Old All item must not route into the newly selected profile") }
             catch(_: IllegalStateException) { }
         } finally { router.shutdown(); profiles.restore(previous) }
     }

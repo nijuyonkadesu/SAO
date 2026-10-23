@@ -97,7 +97,7 @@ class CarouselFragment : Fragment(), MenuProvider {
             val item = carousel.centeredItem ?: return@setOnMenuItemClickListener false
             when(menu.itemId) {
                 R.id.bookmark -> { model.bookmark(item); Snackbar.make(binding.root,R.string.home_bookmarked,Snackbar.LENGTH_SHORT).show(); true }
-                R.id.download -> { action { downloads.save(item,exports.prepare(item,Rendition.MEDIA)); Snackbar.make(binding.root,R.string.home_saved,Snackbar.LENGTH_SHORT).show() }; true }
+                R.id.download -> { action { downloads.save(item,exports.prepare(item,ExportRendition.MEDIA)); Snackbar.make(binding.root,R.string.home_saved,Snackbar.LENGTH_SHORT).show() }; true }
                 else -> false
             }
         }

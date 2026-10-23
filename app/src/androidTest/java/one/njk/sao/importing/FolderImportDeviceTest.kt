@@ -121,7 +121,8 @@ class FolderImportDeviceTest {
                     assertEquals(2,results.items.size)
                     val copied=results.items.single { it.filename!="12345.png" }
                     assertTrue(copied.filename!!.startsWith("12345 (") && copied.filename!!.endsWith(".png"))
-                    assertArrayEquals(original.second,media.original(copied).use { it.readBytes() })
+                    assertArrayEquals(original.second,
+                        media.withRendition(copied,Rendition.ORIGINAL) { handle -> handle.openStream().use { it.readBytes() } })
                     repository.store.writableDatabase.execSQL("UPDATE tasks SET status='pending' WHERE source=?",arrayOf(selected.id))
                     repository.transfer(false,network=false)
                     assertEquals(2,media.page(MediaQuery(mode=SearchMode.FILENAME)).items.size)

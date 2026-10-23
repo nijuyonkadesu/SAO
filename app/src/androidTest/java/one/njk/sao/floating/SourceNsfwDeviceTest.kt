@@ -87,9 +87,11 @@ class SourceNsfwDeviceTest {
                         }
                         override fun close() { if(profile.nsfw) closed.complete(Unit) }
                         override suspend fun filters()=emptyList<String>()
-                        override suspend fun preview(item: MediaItem): Any=error("unused")
-                        override suspend fun original(item: MediaItem): java.io.InputStream=error("unused")
-                        override suspend fun raster(item: MediaItem): java.io.InputStream=error("unused")
+                        override val identity=kotlinx.coroutines.flow.flowOf(profile.identity)
+                        override suspend fun owns(item: MediaItem)=item.remote?.sourceId==profile.identity
+                        override suspend fun preview(item: MediaItem): Preview=error("unused")
+                        override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,
+                            block: suspend (MediaHandle)->T): T=error("unused")
                     }
                 }
                 val router=SwitchingMediaSource(profiles,mapOf("extension" to Provider<MediaSourceFactory> { factory }),FloatingDispatchers(),floating)

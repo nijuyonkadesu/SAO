@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.FlowPreview
@@ -31,7 +32,7 @@ import javax.inject.Inject
 
 data class PickerState(val items: List<MediaItem> = emptyList(), val loading: Boolean = true,
     val error: Boolean = false, val query: MediaQuery = MediaQuery(), val loadingMore: Boolean = false,
-    val hasMore: Boolean = false, val sourceId: String = "local", val sequenceId: String? = null, val errorMessage: Int? = null)
+    val hasMore: Boolean = false, val sourceId: String = LOCAL_SOURCE_ID, val sequenceId: String? = null, val errorMessage: Int? = null)
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
@@ -61,7 +62,8 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
     val focusedId: String? get() = if (sequence.state.value == null) searchFocusedId else sequence.focusedId
     private var rememberedQuery: MediaQuery? = null
     private val sequence = session.acquireSequence(visibilityOwner, source, dispatchers, initial.query)
-    val canBrowseSequence = source.sequenceBrowse.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val canBrowseSequence = source.capabilities.map { it.sequence }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     init { rememberBrowsing() }
 
@@ -116,8 +118,8 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
                     item.isVideo -> one.njk.sao.R.string.picker_video_copied
                     item.animated -> one.njk.sao.R.string.picker_gif_copied
                     choice.mediaFallback -> one.njk.sao.R.string.picker_media_fallback
-                    choice.rendition == Rendition.STICKER_PNG -> one.njk.sao.R.string.picker_sticker_copied
-                    choice.rendition == Rendition.STICKER_WEBP -> one.njk.sao.R.string.picker_telegram_sticker_copied
+                    choice.rendition == ExportRendition.STICKER_PNG -> one.njk.sao.R.string.picker_sticker_copied
+                    choice.rendition == ExportRendition.STICKER_WEBP -> one.njk.sao.R.string.picker_telegram_sticker_copied
                     else -> one.njk.sao.R.string.picker_copied
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
