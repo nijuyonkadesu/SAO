@@ -48,3 +48,5 @@ The release APK passes Android signature verification using our existing release
 ## Future releases
 
 An accepted appeal has no documented blanket guarantee for future versions. Google says developers may be asked to send each new version for review. Test each signed release with Play Protect enabled and submit a new appeal if that build is blocked; do not assume an appeal is mandatory for every release or that keeping the certificate guarantees acceptance. [Google Play Protect developer information](https://support.google.com/googleplay/answer/2812853?hl=en).
+
+For a possible Play Store release, see the separate [publication policy review](play-store-policy-review.md). An accepted Play Protect appeal does not replace the Store's permission, content, privacy or distribution review.
