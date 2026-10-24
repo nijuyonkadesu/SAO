@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import one.njk.sao.R
 import javax.inject.Inject
 
@@ -25,6 +27,7 @@ class SourceProfilesViewModel @Inject constructor(private val profiles: SourcePr
     private val mutable = MutableStateFlow(SourcesState())
     val state = mutable.asStateFlow()
     private val available = MutableStateFlow<Set<String>?>(null)
+    private val preferenceChanges = Mutex()
     private fun installed(profile: one.njk.sao.source.SourceProfile, keys: Set<String>) = when(val config=profile.configuration) {
         is ExtensionConfig -> config.component.flattenToString() in keys
         is RaysConfig -> config.packageName in keys
@@ -81,35 +84,28 @@ class SourceProfilesViewModel @Inject constructor(private val profiles: SourcePr
         }
     }
     fun enableAll(enabled: Boolean) {
-        if (!state.value.loaded || state.value.saving || state.value.allEnabled == enabled) return
-        mutable.value = mutable.value.copy(saving = true)
-        viewModelScope.launch {
-            try { profiles.enableAll(enabled); mutable.value = mutable.value.copy(saving = false, error = false) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { mutable.value = mutable.value.copy(saving = false, error = true) }
-        }
+        if (!state.value.loaded || state.value.saving) return
+        changePreference { profiles.enableAll(enabled) }
     }
     fun select(id: String?) = select(id, floating = false)
     fun selectFloating(id: String?) = select(id, floating = true)
     private fun select(id: String?, floating: Boolean) {
         val catalog = if (floating) state.value.floatingCatalog else state.value.browsingCatalog
-        if (!state.value.loaded || state.value.saving || catalog.selectedId == id || id != null && catalog.profiles.none { it.id == id }) return
-        mutable.value = mutable.value.copy(saving = true)
-        viewModelScope.launch {
-            try { if (floating) profiles.selectFloating(id) else profiles.select(id); mutable.value = mutable.value.copy(saving = false, error = false) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { mutable.value = mutable.value.copy(saving = false, error = true) }
-        }
+        if (!state.value.loaded || state.value.saving || id != null && catalog.profiles.none { it.id == id }) return
+        changePreference { if (floating) profiles.selectFloating(id) else profiles.select(id) }
     }
     fun enableInFloating(id: String, enabled: Boolean) {
-        if (!state.value.loaded || state.value.saving || (id !in state.value.floatingDisabled) == enabled ||
+        if (!state.value.loaded || state.value.saving ||
             enabled && !state.value.nsfwAllowed && state.value.catalog.profiles.any { it.id == id && it.nsfw }) return
-        mutable.value = mutable.value.copy(saving = true)
-        viewModelScope.launch {
-            try { profiles.enableInFloating(id, enabled); mutable.value = mutable.value.copy(saving = false, error = false) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { mutable.value = mutable.value.copy(saving = false, error = true) }
-        }
+        changePreference { profiles.enableInFloating(id, enabled) }
+    }
+    /** Local preference writes are serialized without invalidating every row's enabled state. */
+    private fun changePreference(action: suspend ()->Unit) {
+        viewModelScope.launch { preferenceChanges.withLock {
+            try { action(); mutable.value=mutable.value.copy(error=false) }
+            catch(cancelled: CancellationException) { throw cancelled }
+            catch(_: Exception) { mutable.value=mutable.value.copy(error=true) }
+        } }
     }
 }
 

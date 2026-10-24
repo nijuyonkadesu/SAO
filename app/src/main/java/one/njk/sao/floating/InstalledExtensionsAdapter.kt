@@ -17,10 +17,12 @@ internal class InstalledExtensionsAdapter(private val info: (String) -> Unit, pr
     ListAdapter<InstalledExtensionsAdapter.Row, RecyclerView.ViewHolder>(object : DiffUtil.ItemCallback<Row>() {
         override fun areItemsTheSame(old: Row, new: Row) = old.app?.packageName == new.app?.packageName
         override fun areContentsTheSame(old: Row, new: Row) = old == new
+        override fun getChangePayload(old: Row,new: Row): Any? =
+            if(old.app!=null && old.app==new.app && old.interactive==new.interactive) Unit else null
     }) {
-    data class Row(val app: InstalledExtensionApp? = null, val empty: Boolean = false, val interactive: Boolean = true,val catalog: CatalogState=CatalogState())
+    data class Row(val app: InstalledExtensionApp? = null, val empty: Boolean = false, val interactive: Boolean = true,val entry: CatalogExtension?=null,val installState: InstallRowState=InstallRowState())
     fun submitApps(apps: List<InstalledExtensionApp>, loaded: Boolean, saving: Boolean = false,catalog: CatalogState=CatalogState()) {
-        submitList(listOf(Row(empty = loaded && apps.isEmpty())) + apps.map { Row(it,interactive=loaded && !saving,catalog=catalog) })
+        submitList(listOf(Row(empty = loaded && apps.isEmpty())) + apps.map { Row(it,interactive=loaded && !saving,entry=catalog.entries.firstOrNull { entry -> entry.packageName==it.packageName },installState=catalog.installRow(it.packageName)) })
     }
     override fun getItemViewType(position: Int) = if (getItem(position).app == null) 0 else 1
     override fun onCreateViewHolder(parent: ViewGroup, type: Int): RecyclerView.ViewHolder {
@@ -51,9 +53,13 @@ internal class InstalledExtensionsAdapter(private val info: (String) -> Unit, pr
                 holder.binding.uninstall.contentDescription = context.getString(R.string.source_extension_uninstall_name,app.name)
                 holder.binding.appInfo.setOnClickListener { info(app.packageName) }
                 holder.binding.uninstall.setOnClickListener { uninstall(app.packageName) }
-                bindInstall(holder.binding,row.catalog.entries.firstOrNull { it.packageName==app.packageName },app,row.catalog,row.interactive,install,cancel)
+                bindInstall(holder.binding,row.entry,app,row.installState,row.interactive,install,cancel)
             }
         }
+    }
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder,position: Int,payloads: MutableList<Any>) {
+        if(payloads.isEmpty() || holder !is App) onBindViewHolder(holder,position)
+        else getItem(position).let { row -> bindInstall(holder.binding,row.entry,row.app,row.installState,row.interactive,install,cancel) }
     }
     private class Heading(val binding: ItemInstalledExtensionsHeadingBinding) : RecyclerView.ViewHolder(binding.root)
     private class App(val binding: ItemInstalledExtensionBinding) : RecyclerView.ViewHolder(binding.root)

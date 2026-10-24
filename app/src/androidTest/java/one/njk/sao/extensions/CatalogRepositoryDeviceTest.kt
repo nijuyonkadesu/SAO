@@ -65,7 +65,7 @@ class CatalogRepositoryDeviceTest {
     }
     @Test fun downloadedApkMustMatchHashPackageVersionSigningCertificateAndProtocol(): Unit=runBlocking {
         requireUpgradableFixture()
-        val bytes=file.readBytes(); val row=entry(bytes); val repository=CatalogRepository(app,http(MockWebServer()))
+        val bytes=file.readBytes(); val row=entry(bytes); val repository=CatalogRepository(app,http(MockWebServer()),ExtensionRepositories(one.njk.sao.database.SettingsDataStore(app)))
         repository.validate(row,row.artifacts.single(),file)
         failure(CatalogIssue.DOWNLOAD) { repository.validate(row,row.artifacts.single().copy(sha256="0".repeat(64)),file) }
         failure(CatalogIssue.INVALID) { repository.validate(row.copy(packageName="one.njk.sao.extension.moeview"),row.artifacts.single(),file) }
@@ -76,7 +76,7 @@ class CatalogRepositoryDeviceTest {
     @Test fun failedDownloadsDoNotPoisonRetryAndNeverRetryThemselves(): Unit=runBlocking {
         requireUpgradableFixture()
         val bytes=file.readBytes(); val row=entry(bytes); val server=MockWebServer().apply { start() }
-        val repository=CatalogRepository(app,http(server))
+        val repository=CatalogRepository(app,http(server),ExtensionRepositories(one.njk.sao.database.SettingsDataStore(app)))
         try {
             server.enqueue(MockResponse().setResponseCode(503))
             failure(CatalogIssue.NETWORK) { repository.download(row) {} }
@@ -94,7 +94,7 @@ class CatalogRepositoryDeviceTest {
         val before=folder.listFiles().orEmpty().map { it.name }.toSet()
         try {
             server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
-            val task=launch(Dispatchers.IO) { CatalogRepository(app,http(server)).download(row) {} }
+            val task=launch(Dispatchers.IO) { CatalogRepository(app,http(server),ExtensionRepositories(one.njk.sao.database.SettingsDataStore(app))).download(row) {} }
             withContext(Dispatchers.IO) { assertNotNull(server.takeRequest(5,java.util.concurrent.TimeUnit.SECONDS)) }
             withTimeout(3000) { task.cancelAndJoin() }
             assertEquals(before,folder.listFiles().orEmpty().map { it.name }.toSet())

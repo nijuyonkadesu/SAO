@@ -59,10 +59,13 @@ class SourceChipDesignDeviceTest {
     }
     @Test fun homeSelectionAndFloatingVisibilityRemainIndependent(): Unit=runBlocking {
         val profiles=EntryPointAccessors.fromApplication(app,SourceExtensionAccess::class.java).sources()
+        val repositories=one.njk.sao.extensions.ExtensionRepositories(one.njk.sao.database.SettingsDataStore(app))
+        val previousRepositories=repositories.urls.first()
         val previous=profiles.snapshots.first()
         val first=immichProfile("Home reactions",ImmichConfig("https://first.example.invalid","synthetic-key"))
         val second=immichProfile("Other reactions",ImmichConfig("https://second.example.invalid","synthetic-key"))
         try {
+            previousRepositories.forEach { repositories.remove(it) }
             profiles.upsert(first,true); profiles.upsert(second); profiles.selectFloating(second.id)
             ActivityScenario.launch<SourceSettingsActivity>(android.content.Intent(app,SourceSettingsActivity::class.java)).use { scenario ->
                 var ready=false
@@ -73,8 +76,15 @@ class SourceChipDesignDeviceTest {
                             .any { it.binding.name.text.toString()==first.name }
                     }; ready
                 }
+                val notifications=java.util.concurrent.CopyOnWriteArrayList<Pair<androidx.recyclerview.widget.RecyclerView.Adapter<*>,Any?>>()
                 scenario.onActivity { activity ->
                     val list=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.source_list)
+                    (list.adapter as androidx.recyclerview.widget.ConcatAdapter).adapters.forEach { child ->
+                        child.registerAdapterDataObserver(object: androidx.recyclerview.widget.RecyclerView.AdapterDataObserver() {
+                            override fun onChanged() { notifications.add(child to null) }
+                            override fun onItemRangeChanged(start: Int,count: Int,payload: Any?) { notifications.add(child to payload) }
+                        })
+                    }
                     val holder=(0 until list.childCount).mapNotNull { list.getChildViewHolder(list.getChildAt(it)) as? SourceListAdapter.Holder }
                         .first { it.binding.name.text.toString()==first.name }
                     assertTrue(holder.binding.useSource.isChecked); assertTrue(holder.binding.floatingEnabled.isChecked)
@@ -82,11 +92,16 @@ class SourceChipDesignDeviceTest {
                     holder.binding.floatingEnabled.performClick()
                 }
                 await("Floating chip did not persist") { runBlocking { first.id in profiles.snapshots.first().floatingDisabled } }
+                await("Selection update did not reach the row") { notifications.any { it.first is SourceListAdapter } }
+                instrumentation.waitForIdleSync()
+                assertTrue("A source toggle must not rebind unrelated adapters",notifications.all { it.first is SourceListAdapter })
+                assertEquals("Only the changed profile must be rebound",1,notifications.size)
+                assertNotNull("Selection updates must use an in-place payload",notifications.single().second)
                 assertEquals(first.id,profiles.current().selectedId)
                 assertEquals(second.id,profiles.snapshots.first().floatingSelectedId)
                 capture("manage")
             }
-        } finally { profiles.restore(previous) }
+        } finally { profiles.restore(previous); previousRepositories.forEach { repositories.add(it) } }
     }
     private fun node(pkg: String,id: String): AccessibilityNodeInfo? = instrumentation.uiAutomation.rootInActiveWindow
         ?.findAccessibilityNodeInfosByViewId("$pkg:id/$id")?.firstOrNull()

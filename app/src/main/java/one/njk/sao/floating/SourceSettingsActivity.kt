@@ -63,7 +63,10 @@ class SourceSettingsActivity : AppCompatActivity() {
                 else if(supportFragmentManager.findFragmentByTag(ExtensionTrustDialog.RESULT)==null)
                     ExtensionTrustDialog.create(app.name,app.packageName,app.signer).show(supportFragmentManager,ExtensionTrustDialog.RESULT)
             },::requestExtensionInstall,catalog::cancel)
-        val available=AvailableExtensionsAdapter(catalog::refresh,::requestExtensionInstall,catalog::cancel,imageLoader)
+        val available=AvailableExtensionsAdapter(catalog::refresh,::requestExtensionInstall,catalog::cancel,imageLoader,{
+            if(supportFragmentManager.findFragmentByTag(ExtensionRepositoryDialog.TAG)==null)
+                ExtensionRepositoryDialog().show(supportFragmentManager,ExtensionRepositoryDialog.TAG)
+        },catalog::removeRepository)
         binding.sourceList.layoutManager = LinearLayoutManager(this)
         binding.sourceList.adapter = ConcatAdapter(header,adapter,extensions,available)
         var initialProfilesShown = savedInstanceState != null
@@ -74,6 +77,7 @@ class SourceSettingsActivity : AppCompatActivity() {
             }
         })
         var inventoryRevision=0
+        var repositoryErrorShown=false
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { combine(model.state,catalog.state) { state,distribution -> state to distribution }.collect { (state,distribution) ->
             header.update(state.allEnabled,state.loaded && !state.saving)
             adapter.submitList(sourceRows(state.catalog, state.floatingDisabled, state.saving, state.nsfwAllowed)) {
@@ -86,6 +90,9 @@ class SourceSettingsActivity : AppCompatActivity() {
             }
             extensions.submitApps(state.installedExtensions,state.loaded,state.saving,distribution)
             available.update(distribution,state.installedExtensions,state.loaded && !state.saving)
+            if(distribution.repositorySaveError && !repositoryErrorShown)
+                com.google.android.material.snackbar.Snackbar.make(binding.root,R.string.extension_repository_save_failed,com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show()
+            repositoryErrorShown=distribution.repositorySaveError
             if(inventoryRevision!=distribution.inventoryRevision) { inventoryRevision=distribution.inventoryRevision; model.refreshExtensions() }
             if(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) catalog.installReady()
             binding.status.isVisible = state.error

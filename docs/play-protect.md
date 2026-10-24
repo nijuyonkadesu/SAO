@@ -44,3 +44,7 @@ Please review the sensitive-permission installation block for SAO 1.1.0, an open
 Its optional Paste assistance uses AccessibilityService to locate a chat editor and invoke focus/Paste only after the user presses Paste. The preference defaults off and Android requires the user to enable the service. Discovery is limited to supported chat packages and is inactive outside floating mode or when the preference is off. Password editors are excluded. This service does not inspect conversation text, collect credentials, persist or transmit chat content, or press Send. It does not claim to be a disability accessibility tool. SAO requests no SMS or notification-listener access.
 
 The release APK passes Android signature verification using our existing release certificate. We request review of the reported “App blocked to protect your device” sensitive-permissions classification for this APK.
+
+## Future releases
+
+An accepted appeal has no documented blanket guarantee for future versions. Google says developers may be asked to send each new version for review. Test each signed release with Play Protect enabled and submit a new appeal if that build is blocked; do not assume an appeal is mandatory for every release or that keeping the certificate guarantees acceptance. [Google Play Protect developer information](https://support.google.com/googleplay/answer/2812853?hl=en).

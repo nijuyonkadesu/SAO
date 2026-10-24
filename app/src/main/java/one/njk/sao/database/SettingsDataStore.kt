@@ -14,6 +14,7 @@ class SettingsDataStore(private val context: Context) {
         private val NSFW_MODE = booleanPreferencesKey("MODE")
         private val SOURCE_APPROVALS = stringSetPreferencesKey("source_extension_approvals")
         private val UPLOADS_WIFI_ONLY = booleanPreferencesKey("uploads_wifi_only")
+        private val EXTENSION_REPOSITORIES = stringSetPreferencesKey("extension_repositories")
     }
 
     suspend fun toggleMode(){
@@ -28,6 +29,11 @@ class SettingsDataStore(private val context: Context) {
     }
     fun uploadsWifiOnlyFlow(): Flow<Boolean> = context.rolesDataStore.data.map { it[UPLOADS_WIFI_ONLY] ?: false }
     suspend fun uploadsWifiOnly(value: Boolean) { context.rolesDataStore.edit { it[UPLOADS_WIFI_ONLY]=value } }
+    fun extensionRepositoriesFlow(): Flow<Set<String>?> = context.rolesDataStore.data.map { it[EXTENSION_REPOSITORIES] }
+    suspend fun extensionRepository(url: String, add: Boolean, defaults: Set<String>) { context.rolesDataStore.edit {
+        val current=it[EXTENSION_REPOSITORIES] ?: defaults
+        it[EXTENSION_REPOSITORIES]=if(add) current+url else current-url
+    } }
     fun extensionApprovalsFlow(): Flow<Set<String>> = context.rolesDataStore.data.map { it[SOURCE_APPROVALS].orEmpty() }
     suspend fun extensionApproval(packageName: String, signer: String?) { context.rolesDataStore.edit {
         val remaining=it[SOURCE_APPROVALS].orEmpty().filterNot { entry -> entry.startsWith("$packageName|") }.toSet()

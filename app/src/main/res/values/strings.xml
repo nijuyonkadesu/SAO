@@ -1,4 +1,16 @@
 <resources>
+    <string name="extension_repository_add">Add repository</string>
+    <string name="extension_repository_remove">Remove</string>
+    <string name="extension_repository_remove_name">Remove repository %1$s</string>
+    <string name="extension_repository_url">Repository URL</string>
+    <string name="extension_repository_help">HTTPS URL to a SAO index.json catalog. GitHub repository links use the repo branch. Add only repositories you trust; their extensions still need installation and access approval.</string>
+    <string name="extension_repository_invalid">Enter a valid HTTPS catalog URL or GitHub repository link.</string>
+    <string name="extension_repository_duplicate">This repository is already added.</string>
+    <string name="extension_repository_save_failed">Could not save repositories. Try again.</string>
+    <string name="extension_repositories_empty">Add a repository to discover extensions. Installed sources remain available.</string>
+    <string name="extension_repository_removed">This repository was removed. Add it again before installing this extension.</string>
+    <string name="extension_repository_origin">%1$s · %2$s</string>
+    <string name="extension_repository_unverified">Independent publisher · access requires your approval after installation.</string>
     <string name="app_name">SAO</string>
     <string name="action_settings">Settings</string>
     <!-- Strings used for fragments for navigation -->

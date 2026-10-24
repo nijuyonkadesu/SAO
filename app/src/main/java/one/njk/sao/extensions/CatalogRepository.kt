@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import one.njk.sao.source.ExtensionProtocol
@@ -40,16 +41,17 @@ class CatalogHttp internal constructor(private val client: OkHttpClient) {
 internal data class VerifiedExtension(val entry: CatalogExtension,val artifact: ExtensionArtifact,val file: File)
 
 @Singleton
-class CatalogRepository @Inject constructor(@ApplicationContext private val context: Context,private val http: CatalogHttp) {
+class CatalogRepository @Inject constructor(@ApplicationContext private val context: Context,private val http: CatalogHttp,
+    private val repositories: ExtensionRepositories) {
     private val cleanup=CoroutineScope(SupervisorJob()+Dispatchers.IO.limitedParallelism(1))
     internal fun discard(file: File) { cleanup.launch { file.delete() } }
-    internal suspend fun catalog(): List<CatalogExtension> = withContext(Dispatchers.IO) {
+    internal suspend fun catalog(url: String): List<CatalogExtension> = withContext(Dispatchers.IO) {
         try {
-            http.receive(ExtensionCatalog.URL) { input,length ->
+            http.receive(url) { input,length ->
                 require(length<=512*1024)
                 val output=java.io.ByteArrayOutputStream()
                 copy(input,output,512*1024L) {}
-                ExtensionCatalog.decode(String(output.toByteArray(),Charsets.UTF_8),SourceSignatures.identity(context,context.packageName))
+                ExtensionCatalog.decode(String(output.toByteArray(),Charsets.UTF_8),SourceSignatures.identity(context,context.packageName),url)
             }
         } catch(cancelled: CancellationException) { throw cancelled }
         catch(error: CatalogFailure) { throw error }
@@ -59,6 +61,7 @@ class CatalogRepository @Inject constructor(@ApplicationContext private val cont
     internal suspend fun download(entry: CatalogExtension,progress: (Int)->Unit): VerifiedExtension {
         var created: File?=null
         try { return withContext(Dispatchers.IO) {
+            requireConfigured(entry)
             val artifact=entry.artifact(Build.SUPPORTED_ABIS.toList()) ?: throw CatalogFailure(CatalogIssue.INCOMPATIBLE)
             val directory=File(context.cacheDir,"extension-install").apply { mkdirs() }
             directory.listFiles().orEmpty().filter { System.currentTimeMillis()-it.lastModified()>24L*60*60*1000 }.forEach(File::delete)
@@ -81,6 +84,7 @@ class CatalogRepository @Inject constructor(@ApplicationContext private val cont
         } catch(error: Exception) { withContext(NonCancellable+Dispatchers.IO) { created?.delete() }; throw error }
     }
     internal suspend fun validate(entry: CatalogExtension,artifact: ExtensionArtifact,file: File) = withContext(Dispatchers.IO) {
+        requireConfigured(entry)
         if(file.length()!=artifact.size) throw CatalogFailure(CatalogIssue.DOWNLOAD)
         val hash=MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->
@@ -92,7 +96,7 @@ class CatalogRepository @Inject constructor(@ApplicationContext private val cont
         val archive=manager.getPackageArchiveInfo(file.path,PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SERVICES or PackageManager.GET_META_DATA)
             ?: throw CatalogFailure(CatalogIssue.INVALID)
         val signer=archive.signingInfo?.apkContentsSigners?.map { MessageDigest.getInstance("SHA-256").digest(it.toByteArray()).hex() }?.sorted()?.joinToString(",")
-        if(signer!=entry.signerSha256 || signer!=SourceSignatures.identity(context,context.packageName)) throw CatalogFailure(CatalogIssue.SIGNATURE)
+        if(signer!=entry.signerSha256 || entry.repositoryUrl==ExtensionCatalog.URL && signer!=SourceSignatures.identity(context,context.packageName)) throw CatalogFailure(CatalogIssue.SIGNATURE)
         if(archive.packageName!=entry.packageName || archive.longVersionCode!=entry.versionCode || archive.versionName!=entry.versionName)
             throw CatalogFailure(CatalogIssue.INVALID)
         val services=archive.services.orEmpty()
@@ -102,6 +106,9 @@ class CatalogRepository @Inject constructor(@ApplicationContext private val cont
         val installed=try { manager.getPackageInfo(entry.packageName,0) } catch(_: PackageManager.NameNotFoundException) { null }
         if(installed!=null && SourceSignatures.identity(context,entry.packageName)!=signer) throw CatalogFailure(CatalogIssue.SIGNATURE)
         if(installed!=null && installed.longVersionCode>=entry.versionCode) throw CatalogFailure(CatalogIssue.INCOMPATIBLE)
+    }
+    private suspend fun requireConfigured(entry: CatalogExtension) {
+        if(entry.repositoryUrl !in repositories.urls.first()) throw CatalogFailure(CatalogIssue.REMOVED)
     }
     private fun ByteArray.hex()=joinToString("") { "%02x".format(it.toInt() and 255) }
     private suspend fun copy(input: InputStream,output: java.io.OutputStream,maximum: Long,progress: (Long)->Unit) {

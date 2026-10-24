@@ -16,6 +16,8 @@ class SourceListAdapter(private val select: (String?) -> Unit,
     ListAdapter<SourceListAdapter.Row, SourceListAdapter.Holder>(object : DiffUtil.ItemCallback<Row>() {
         override fun areItemsTheSame(a: Row, b: Row) = a.id == b.id
         override fun areContentsTheSame(a: Row, b: Row) = a == b
+        override fun getChangePayload(a: Row,b: Row): Any? =
+            if(a.copy(selected=b.selected,floatingEnabled=b.floatingEnabled,interactive=b.interactive)==b) Unit else null
     }) {
     data class Row(val id: String?, val name: String, val description: String, val selected: Boolean,
         val floatingEnabled: Boolean = true, val interactive: Boolean = true, val blocked: Boolean = false)
@@ -27,6 +29,14 @@ class SourceListAdapter(private val select: (String?) -> Unit,
         holder.binding.apply {
             name.text = row.name; description.text = row.description
             description.maxLines = if(row.blocked) 4 else 2
+        }
+        bindControls(holder,row)
+    }
+    override fun onBindViewHolder(holder: Holder, position: Int, payloads: MutableList<Any>) {
+        if(payloads.isEmpty()) onBindViewHolder(holder,position) else bindControls(holder,getItem(position))
+    }
+    private fun bindControls(holder: Holder,row: Row) {
+        holder.binding.apply {
             root.isSelected = row.selected
             root.strokeWidth = if (row.selected) (2 * root.resources.displayMetrics.density).toInt() else 0
             root.strokeColor = MaterialColors.getColor(root, androidx.appcompat.R.attr.colorPrimary)
@@ -47,7 +57,11 @@ class SourceListAdapter(private val select: (String?) -> Unit,
             floatingEnabled.isChecked = row.floatingEnabled && !row.blocked
             floatingEnabled.isEnabled = row.interactive && !row.blocked
             floatingEnabled.contentDescription = root.context.getString(R.string.source_floating_enabled, row.name)
-            floatingEnabled.setOnCheckedChangeListener { _, checked -> row.id?.let { setFloatingEnabled?.invoke(it, checked) } }
+            floatingEnabled.setOnClickListener {
+                val checked=floatingEnabled.isChecked
+                floatingEnabled.isChecked=row.floatingEnabled && !row.blocked
+                row.id?.let { setFloatingEnabled?.invoke(it, checked) }
+            }
         }
     }
 }

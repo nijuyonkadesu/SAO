@@ -13,11 +13,11 @@ internal class SourceSettingsHeaderAdapter(private val enableAll: (Boolean) -> U
     private var uploadsEnabled=false
     fun updateUploads(checked: Boolean,enabled: Boolean) {
         if(wifiOnly==checked && uploadsEnabled==enabled) return
-        wifiOnly=checked; uploadsEnabled=enabled; notifyItemChanged(0)
+        wifiOnly=checked; uploadsEnabled=enabled; notifyItemChanged(0,Unit)
     }
     fun update(checked: Boolean, enabled: Boolean) {
         if (this.checked == checked && this.enabled == enabled) return
-        this.checked = checked; this.enabled = enabled; notifyItemChanged(0)
+        this.checked = checked; this.enabled = enabled; notifyItemChanged(0,Unit)
     }
     override fun getItemCount() = 1
     override fun onCreateViewHolder(parent: ViewGroup, type: Int) = Holder(ItemSourceSettingsHeaderBinding.inflate(LayoutInflater.from(parent.context),parent,false))
@@ -25,13 +25,14 @@ internal class SourceSettingsHeaderAdapter(private val enableAll: (Boolean) -> U
         holder.binding.allSources.apply {
             setOnCheckedChangeListener(null)
             isChecked = checked; isEnabled = enabled
-            setOnCheckedChangeListener { _, value -> enableAll(value) }
+            setOnClickListener { val value=isChecked; isChecked=checked; enableAll(value) }
         }
         holder.binding.uploadsWifiOnly.apply {
             setOnCheckedChangeListener(null)
             isChecked=wifiOnly; isEnabled=uploadsEnabled
-            setOnCheckedChangeListener { _,value -> uploadsWifiOnly(value) }
+            setOnClickListener { val value=isChecked; isChecked=wifiOnly; uploadsWifiOnly(value) }
         }
     }
+    override fun onBindViewHolder(holder: Holder,position: Int,payloads: MutableList<Any>) = onBindViewHolder(holder,position)
     class Holder(val binding: ItemSourceSettingsHeaderBinding) : RecyclerView.ViewHolder(binding.root)
 }

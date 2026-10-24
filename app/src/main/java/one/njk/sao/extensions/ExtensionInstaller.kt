@@ -33,7 +33,7 @@ class ExtensionInstallReceiver: BroadcastReceiver() {
     override fun onReceive(context: Context,intent: Intent) {
         val pkg=intent.getStringExtra("extension_package") ?: return
         val session=intent.getIntExtra("extension_session",-1)
-        if(session<0 || !pkg.startsWith("one.njk.sao.extension.")) return
+        if(session<0 || !ExtensionCatalog.validPackage(pkg)) return
         val event=InstallEvent(session,pkg,intent.getIntExtra(PackageInstaller.EXTRA_STATUS,PackageInstaller.STATUS_FAILURE),
             androidx.core.content.IntentCompat.getParcelableExtra(intent,Intent.EXTRA_INTENT,Intent::class.java))
         EntryPointAccessors.fromApplication(context.applicationContext,ExtensionInstallerAccess::class.java).installEvents().receive(event)
