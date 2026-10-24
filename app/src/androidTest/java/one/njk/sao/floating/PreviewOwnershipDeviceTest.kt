@@ -9,6 +9,9 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.android.material.carousel.CarouselLayoutManager
+import com.google.android.material.carousel.HeroCarouselStrategy
+import coil3.gif.AnimatedImageDecoder
 import coil3.ImageLoader
 import coil3.request.CachePolicy
 import coil3.request.allowHardware
@@ -27,13 +30,17 @@ class PreviewOwnershipDeviceTest {
     private val instrumentation=InstrumentationRegistry.getInstrumentation()
     private val app=instrumentation.targetContext
     private val directory=File(app.cacheDir,"preview-ownership-${UUID.randomUUID()}").apply { mkdirs() }
-    private class Source(private val directory: File) : MediaSource {
+    private class Source(private val directory: File,private val playback: File?=null) : MediaSource {
         val leases=ConcurrentHashMap<String,AtomicInteger>()
         val reads=AtomicInteger()
+        val playbackReads=AtomicInteger()
         override val identity=flowOf("fixture")
         override suspend fun owns(item: MediaItem)=true
         override suspend fun page(query: MediaQuery,cursor: String?)=MediaPage(emptyList())
-        override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,block: suspend (MediaHandle)->T): T=error("Unused")
+        override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,block: suspend (MediaHandle)->T): T {
+            check(kind==Rendition.PLAYBACK); playbackReads.incrementAndGet()
+            return block(MediaHandle.Local(requireNotNull(playback)))
+        }
         override suspend fun <T> withPreview(item: MediaItem,block: suspend (Preview)->T): T {
             reads.incrementAndGet()
             val lease=leases.getOrPut(item.id) { AtomicInteger() }; lease.incrementAndGet()
@@ -62,6 +69,167 @@ class PreviewOwnershipDeviceTest {
 
     @Test fun detachedAndRecycledCardsNeverRestartAnUnleasedPreview(): Unit {
         for(home in listOf(false,true)) exercise(home)
+    }
+
+    @Test fun loadedCardSurvivesTemporaryDetachAndMetadataRebindWithoutBlanking(): Unit {
+        val source=Source(directory)
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
+        val loader=ImageLoader.Builder(app).allowHardware(false).build()
+        val item=media("retained",Color.GREEN)
+        val adapter=MediaCarouselAdapter(loader,scope,source,select={})
+        try { ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,null,null)).use { scenario ->
+            lateinit var parent: FrameLayout
+            lateinit var holder: MediaCarouselAdapter.Holder
+            scenario.onActivity { activity ->
+                parent=FrameLayout(activity); activity.setContentView(parent)
+                holder=adapter.onCreateViewHolder(parent,0)
+                adapter.submitList(listOf(item)); adapter.onBindViewHolder(holder,0)
+                parent.addView(holder.binding.root); adapter.onViewAttachedToWindow(holder)
+            }
+            await(scenario,"Initial image did not render") { color(holder)==Color.GREEN }
+            val initial=source.reads.get()
+            repeat(10) {
+                scenario.onActivity {
+                    val drawn=holder.binding.preview.drawable
+                    adapter.onViewDetachedFromWindow(holder); parent.removeView(holder.binding.root)
+                    assertSame("A temporary detach discarded an already decoded image",drawn,holder.binding.preview.drawable)
+                    parent.addView(holder.binding.root); adapter.onViewAttachedToWindow(holder)
+                    assertSame("Reattachment flashed a placeholder",drawn,holder.binding.preview.drawable)
+                }
+            }
+            val committed=CompletableDeferred<Unit>()
+            scenario.onActivity { adapter.submitList(listOf(item.copy(title="Metadata changed"))) { committed.complete(Unit) } }
+            runBlocking { withTimeout(5000) { committed.await() } }
+            scenario.onActivity {
+                val drawn=holder.binding.preview.drawable
+                adapter.onBindViewHolder(holder,0)
+                assertSame("Metadata-only refresh flashed a placeholder",drawn,holder.binding.preview.drawable)
+                assertEquals(Color.GREEN,color(holder))
+            }
+            assertEquals("Unchanged image was fetched again",initial,source.reads.get())
+            scenario.onActivity { adapter.onViewDetachedFromWindow(holder); parent.removeView(holder.binding.root); adapter.onViewRecycled(holder) }
+        } } finally {
+            instrumentation.runOnMainSync { adapter.close(); scope.cancel(); loader.shutdown() }
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test fun materialCarouselKeepsLoadedImagesAcrossEveryDrawnScrollFrame(): Unit {
+        val source=Source(directory)
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
+        val loader=ImageLoader.Builder(app).allowHardware(false).build()
+        val colors=List(30) { Color.rgb((it*31)%256,(it*67)%256,(it*127)%256) }
+        val items=colors.mapIndexed { index,value -> media("frame-$index",value) }
+        val expected=items.mapIndexed { index,item -> item.id to colors[index] }.toMap()
+        val adapter=MediaCarouselAdapter(loader,scope,source,select={})
+        var frames=0; var blanks=0; var mismatches=0
+        val seen=java.util.WeakHashMap<MediaCarouselAdapter.Holder,String>()
+        val shown=mutableSetOf<String>()
+        try { ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,null,null)).use { scenario ->
+            lateinit var view: RecyclerView
+            scenario.onActivity { activity ->
+                view=RecyclerView(activity).apply {
+                    layoutManager=CarouselLayoutManager(HeroCarouselStrategy()).apply { carouselAlignment=CarouselLayoutManager.ALIGNMENT_CENTER }
+                    this.adapter=adapter; itemAnimator=null
+                }
+                activity.setContentView(view); adapter.submitList(items)
+            }
+            await(scenario,"Material carousel did not render") {
+                view.childCount>0 && (0 until view.childCount).all {
+                    val card=view.getChildViewHolder(view.getChildAt(it)) as MediaCarouselAdapter.Holder
+                    color(card)==expected[card.item?.id]
+                }
+            }
+            scenario.onActivity {
+                view.viewTreeObserver.addOnPreDrawListener {
+                    frames++
+                    repeat(view.childCount) { index ->
+                        val card=view.getChildViewHolder(view.getChildAt(index)) as MediaCarouselAdapter.Holder
+                        val id=card.item!!.id
+                        val value=color(card)
+                        if(value==expected[id]) { seen[card]=id; shown+=id }
+                        else if(value==null) { if(seen[card]==id) blanks++ }
+                        else mismatches++
+                    }
+                    true
+                }
+            }
+            repeat(220) { step ->
+                scenario.onActivity {
+                    view.scrollBy(if(step<110) 24 else -24,0)
+                    if(step%40==0) adapter.submitList(items.map { it.copy(title="Metadata $step") })
+                }
+                SystemClock.sleep(16)
+            }
+            scenario.onActivity {
+                assertTrue("No real frames were sampled",frames>100)
+                assertTrue("The carousel did not move across cards",shown.size>=5)
+                assertEquals("A previously displayed card flashed blank while scrolling",0,blanks)
+                assertEquals("A drawn card showed another item's pixels",0,mismatches)
+                view.adapter=null
+            }
+            println("Material preview frames=$frames, distinctImages=${shown.size}, blankFrames=$blanks, wrongImages=$mismatches")
+        } } finally {
+            instrumentation.runOnMainSync { adapter.close(); scope.cancel(); loader.shutdown() }
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test fun gifAndVideoMetadataUpdatesKeepTheirCurrentDrawableAndPlayer(): Unit {
+        for(video in listOf(false,true)) {
+            directory.mkdirs()
+            val clip=if(video) File(directory,"playback.mp4").apply {
+                instrumentation.context.assets.open("preview-video.mp4").use { input -> outputStream().use { input.copyTo(it) } }
+            } else null
+            val source=Source(directory,clip)
+            val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
+            val loader=ImageLoader.Builder(app).components { add(AnimatedImageDecoder.Factory()) }.build()
+            val item=if(video) media("movie-poster",Color.GREEN).copy(mimeType="video/mp4") else {
+                File(directory,"animated").outputStream().use { output -> instrumentation.context.assets.open("floating/hello.gif").use { it.copyTo(output) } }
+                MediaItem("animated","GIF","animated","image/gif",emptyList(),emptyList(),animated=true)
+            }
+            val adapter=MediaCarouselAdapter(loader,scope,source,select={}).apply { focusedId=item.identityKey }
+            try { ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,null,null)).use { scenario ->
+                lateinit var parent: FrameLayout
+                lateinit var holder: MediaCarouselAdapter.Holder
+                scenario.onActivity { activity ->
+                    parent=FrameLayout(activity); activity.setContentView(parent)
+                    holder=adapter.onCreateViewHolder(parent,0)
+                    adapter.submitList(listOf(item)); adapter.onBindViewHolder(holder,0)
+                    parent.addView(holder.binding.root); adapter.onViewAttachedToWindow(holder)
+                }
+                await(scenario,"Motion media did not start") {
+                    if(video) holder.binding.videoPreview.player?.isPlaying==true && holder.binding.videoPreview.alpha==1f
+                    else (holder.binding.preview.drawable as? android.graphics.drawable.Animatable)?.isRunning==true
+                }
+                var drawable: android.graphics.drawable.Drawable?=null
+                var player: androidx.media3.common.Player?=null
+                scenario.onActivity { drawable=holder.binding.preview.drawable; player=holder.binding.videoPreview.player }
+                repeat(5) { index ->
+                    val committed=CompletableDeferred<Unit>()
+                    scenario.onActivity { adapter.submitList(listOf(item.copy(title="Updated title $index"))) { committed.complete(Unit) } }
+                    runBlocking { withTimeout(5000) { committed.await() } }
+                    scenario.onActivity {
+                        adapter.onBindViewHolder(holder,0)
+                        assertSame("Metadata changed the displayed preview",drawable,holder.binding.preview.drawable)
+                        if(video) assertSame("Metadata restarted video playback",player,holder.binding.videoPreview.player)
+                        else assertTrue((holder.binding.preview.drawable as android.graphics.drawable.Animatable).isRunning)
+                    }
+                }
+                assertEquals(1,source.reads.get())
+                if(video) assertEquals(1,source.playbackReads.get())
+                scenario.onActivity {
+                    adapter.onViewDetachedFromWindow(holder); parent.removeView(holder.binding.root)
+                    assertSame("Temporary detach cleared the motion poster",drawable,holder.binding.preview.drawable)
+                    parent.addView(holder.binding.root); adapter.onViewAttachedToWindow(holder)
+                    assertSame("Reattachment flashed the motion poster",drawable,holder.binding.preview.drawable)
+                    adapter.onViewDetachedFromWindow(holder); parent.removeView(holder.binding.root); adapter.onViewRecycled(holder)
+                }
+            } } finally {
+                instrumentation.runOnMainSync { adapter.close(); scope.cancel(); loader.shutdown() }
+                directory.deleteRecursively()
+            }
+        }
     }
 
     @Test fun rapidScrollKeepsEveryRenderedCardMatchedToItsCurrentMedia(): Unit {

@@ -73,6 +73,8 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         var item: MediaItem? = null
         var loading: Job? = null
         var previewVersion = 0L
+        var loadingItem: MediaItem? = null
+        var renderedItem: MediaItem? = null
     }
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = Holder(
         ItemFloatingMediaBinding.inflate(LayoutInflater.from(parent.context), parent, false)).also { holder ->
@@ -90,8 +92,9 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         holder.hold?.cancel()
         furthestBound = maxOf(furthestBound, position)
         prefetch(furthestBound)
-        if (videoHolder === holder) stopVideo()
-        val item = getItem(position); holder.item = item
+        val item = getItem(position)
+        if (videoHolder === holder && !samePreview(holder.item, item)) stopVideo()
+        holder.item = item
         val kind = when { item.isVideo -> one.njk.sao.R.string.picker_video; item.animated -> one.njk.sao.R.string.picker_gif; else -> null }
         holder.binding.gifBadge.isVisible = item.hasMotion
         if (kind != null) {
@@ -115,9 +118,16 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     private fun load(holder: Holder) {
         if (closed) return
         val item = holder.item ?: return
+        // Cached RecyclerView children detach without being recycled. Their decoded image
+        // stays valid, and metadata-only binds do not need another read or placeholder.
+        if (samePreview(holder.renderedItem, item)) return
+        if (holder.loading?.isActive == true && samePreview(holder.loadingItem, item)) return
         cancelPreview(holder)
+        holder.loadingItem = item
+        holder.renderedItem = null
         val version = holder.previewVersion
         val context = holder.binding.preview.context
+        (holder.binding.preview.drawable as? Animatable)?.stop()
         if (home) {
             holder.binding.preview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
             holder.binding.preview.setImageResource(one.njk.sao.R.drawable.eager)
@@ -130,22 +140,28 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
                     loader.execute(ImageRequest.Builder(context).data(preview.data).size(1024, 1024).build())
                 }
                 currentCoroutineContext().ensureActive()
-                if (holder.previewVersion != version || holder.item != item || closed) return@launch
+                if (holder.previewVersion != version || !samePreview(holder.item, item) || closed) return@launch
                 if (result is SuccessResult) {
                     holder.binding.preview.setImageDrawable(result.image.asDrawable(context.resources))
+                    holder.renderedItem = item
                     if (home) holder.binding.preview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
                     decorate(holder)
                 } else holder.binding.preview.setImageResource(
                     if (home) one.njk.sao.R.drawable.eager else one.njk.sao.R.drawable.ic_picker_media)
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (holder.previewVersion == version && holder.item == item && !closed) holder.binding.preview.setImageResource(
+            catch (_: Exception) { if (holder.previewVersion == version && samePreview(holder.item, item) && !closed) holder.binding.preview.setImageResource(
                 if (home) one.njk.sao.R.drawable.eager else one.njk.sao.R.drawable.ic_picker_media) }
         }
     }
     private fun cancelPreview(holder: Holder) {
         holder.previewVersion++
         holder.loading?.cancel(); holder.loading = null
+        holder.loadingItem = null
     }
+    private fun samePreview(first: MediaItem?, second: MediaItem) = first != null &&
+        first.identityKey == second.identityKey && first.id == second.id && first.asset == second.asset &&
+        first.mimeType == second.mimeType && first.animated == second.animated &&
+        first.remote?.edited == second.remote?.edited && first.remote?.cacheKeys == second.remote?.cacheKeys
     private fun decorate(holder: Holder) {
         val item = holder.item ?: return
         holder.binding.apply {
@@ -176,7 +192,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
                 delay(200)
                 source.withRendition(item, Rendition.PLAYBACK) { handle ->
                     val file = handle.requireFile()
-                    if (version != videoVersion || !playing || scrolling || holder !in attached || holder.item != item) return@withRendition
+                    if (version != videoVersion || !playing || scrolling || holder !in attached || !samePreview(holder.item, item)) return@withRendition
                     val created = ExoPlayer.Builder(holder.binding.root.context)
                         .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(1000, 5000, 250, 500)
                             .setTargetBufferBytes(8 * 1024 * 1024).build()).build().apply {
@@ -238,7 +254,6 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         attached -= holder; (holder.binding.preview.drawable as? Animatable)?.stop()
         if (videoHolder === holder) stopVideo()
         cancelPreview(holder)
-        holder.binding.preview.setImageDrawable(null)
         syncVideo()
     }
     override fun onViewRecycled(holder: Holder) {
@@ -246,6 +261,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         if (videoHolder === holder) stopVideo()
         attached -= holder; holder.item = null
         cancelPreview(holder)
+        holder.renderedItem = null
         holder.binding.preview.setImageDrawable(null)
         holder.binding.videoPreview.player = null; holder.binding.videoPreview.isVisible = false
     }
