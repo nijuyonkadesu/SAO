@@ -82,6 +82,7 @@ androidComponents {
 
 dependencies {
     implementation project(':source-api')
+    implementation project(':source-settings')
     implementation libs.work.runtime
     // Independent reference client used only by cross-process tests, never the host APK.
     androidTestImplementation('one.njk.sao.extensions:immich-provider:1.0.0') {

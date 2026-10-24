@@ -78,4 +78,12 @@
     <string name="emoji_shortcuts_edit">Choose emoji</string>
     <string name="emoji_shortcuts_input">Emoji in display order</string>
     <string name="emoji_shortcuts_edit_help">Enter up to 32 emoji. Spaces and commas are optional; repeated emoji appear once.</string>
+    <string name="source_home_chip">Home</string>
+    <string name="source_picker_chip">Use source</string>
+    <string name="source_floating_chip">Floating</string>
+    <string name="source_edit_chip">Edit</string>
+    <string name="source_all_chip">All sources</string>
+    <string name="source_wifi_chip">Wi-Fi only</string>
+    <string name="source_profiles_heading">Your sources</string>
+    <string name="source_profiles_description">Home selects the source for the main screen. Floating controls whether the source appears in the floating picker; its selected source stays independent.</string>
 </resources>

@@ -1,7 +1,6 @@
 package one.njk.sao.floating
 
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
@@ -28,11 +27,15 @@ class SourceListAdapter(private val select: (String?) -> Unit,
         holder.binding.apply {
             name.text = row.name; description.text = row.description
             description.maxLines = if(row.blocked) 4 else 2
-            check.visibility = if (row.selected) View.VISIBLE else View.INVISIBLE
             root.isSelected = row.selected
             root.strokeWidth = if (row.selected) (2 * root.resources.displayMetrics.density).toInt() else 0
             root.strokeColor = MaterialColors.getColor(root, androidx.appcompat.R.attr.colorPrimary)
             root.contentDescription = if (row.selected) root.context.getString(R.string.source_selected, row.name) else row.name
+            useSource.setText(if(setFloatingEnabled==null) R.string.source_picker_chip else R.string.source_home_chip)
+            useSource.isChecked=row.selected
+            useSource.isEnabled=row.interactive && !row.blocked
+            useSource.contentDescription=root.contentDescription
+            useSource.setOnClickListener { useSource.isChecked=row.selected; select(row.id) }
             root.setOnClickListener { select(row.id) }
             root.isEnabled = row.interactive && !row.blocked
             edit.isVisible = row.id != null && row.id != ALL_SOURCE_ID
@@ -41,7 +44,7 @@ class SourceListAdapter(private val select: (String?) -> Unit,
             edit.isEnabled = row.interactive
             floatingEnabled.isVisible = setFloatingEnabled != null && row.id != null && row.id != ALL_SOURCE_ID
             floatingEnabled.setOnCheckedChangeListener(null)
-            floatingEnabled.isChecked = row.floatingEnabled
+            floatingEnabled.isChecked = row.floatingEnabled && !row.blocked
             floatingEnabled.isEnabled = row.interactive && !row.blocked
             floatingEnabled.contentDescription = root.context.getString(R.string.source_floating_enabled, row.name)
             floatingEnabled.setOnCheckedChangeListener { _, checked -> row.id?.let { setFloatingEnabled?.invoke(it, checked) } }

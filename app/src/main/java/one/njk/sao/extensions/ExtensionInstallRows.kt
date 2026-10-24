@@ -19,6 +19,7 @@ import one.njk.sao.databinding.ItemExtensionCatalogHeadingBinding
 import one.njk.sao.databinding.ItemInstalledExtensionBinding
 import one.njk.sao.floating.InstalledExtensionApp
 import one.njk.sao.source.ExtensionProtocol
+import one.njk.sao.source.settings.R as SettingsR
 
 internal fun extensionIconPlaceholder(view: android.view.View): android.graphics.drawable.Drawable =
     requireNotNull(androidx.appcompat.content.res.AppCompatResources.getDrawable(view.context,R.drawable.ic_picker_source)).mutate().apply {
@@ -63,6 +64,7 @@ internal fun bindInstall(binding: ItemInstalledExtensionBinding,entry: CatalogEx
     binding.installStatus.isVisible=entry!=null
     val cancellable=active && state.phase in setOf(InstallPhase.DOWNLOADING,InstallPhase.READY)
     binding.installExtension.isVisible=cancellable || action in setOf(CatalogAction.INSTALL,CatalogAction.UPDATE)
+    binding.installExtension.setChipIconResource(if(cancellable) SettingsR.drawable.source_chip_cancel else SettingsR.drawable.source_chip_download)
     binding.installExtension.setText(if(cancellable) android.R.string.cancel else if(action==CatalogAction.UPDATE) R.string.extension_update else R.string.extension_install)
     binding.installExtension.isEnabled=interactive && (state.activePackage==null || cancellable)
     binding.installExtension.contentDescription=context.getString(if(cancellable) R.string.extension_cancel_name else if(action==CatalogAction.UPDATE) R.string.extension_update_name else R.string.extension_install_name,entry?.name.orEmpty())

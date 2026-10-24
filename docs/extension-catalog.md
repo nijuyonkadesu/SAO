@@ -28,7 +28,7 @@ Only one transfer is active. Downloads survive rotation in a ViewModel, can be c
 
 ## Shared SDK and standalone builds
 
-SAO maintains `source-api` and `source-settings`, published as versioned AARs with sources and standard Ivy descriptors in [SDK Releases](https://github.com/nijuyonkadesu/SAO/releases/tag/source-sdk-1.0.0). Extension Gradle builds resolve these public assets without a sibling checkout or GitHub token. Host instrumentation uses separately published reference-client test libraries; production SAO has no extension implementation dependencies.
+SAO maintains `source-api` and `source-settings`, published as versioned AARs with sources and standard Ivy descriptors in [SDK Releases](https://github.com/nijuyonkadesu/SAO/releases/tag/source-sdk-1.0.0). Published SDKs resolve without a sibling checkout or GitHub token. The chip redesign uses `source-api` 1.0.0 and locally staged `source-settings` 1.0.1; the latter has not been published. For review builds, run `./gradlew :source-settings:publishSourceSdkPublicationToSourceSdkRepository` here and use the extension checkout’s documented `saoSdkRepo` override if the checkouts are not siblings. Host instrumentation uses separately published reference-client test libraries; production SAO has no extension implementation dependencies.
 
 To publish a new SDK from SAO, update the publication version and run:
 

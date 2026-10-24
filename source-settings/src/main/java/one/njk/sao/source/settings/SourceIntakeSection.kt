@@ -10,7 +10,7 @@ import androidx.core.view.isVisible
 import androidx.core.view.doOnLayout
 import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.*
-import com.google.android.material.button.MaterialButton
+import com.google.android.material.chip.Chip
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 import one.njk.sao.source.*
@@ -90,6 +90,8 @@ class SourceIntakeSection(private val activity: AppCompatActivity,container: and
         binding.intakeStatus.isVisible=counts.isNotEmpty() || snapshot?.paused==true
         binding.intakeStatus.text=if(snapshot?.paused==true) activity.getString(R.string.source_intake_paused,counts) else counts
         binding.intakeQueueActions.isVisible=snapshot!=null && (snapshot.pending+snapshot.blocked>0 || snapshot.paused)
+        binding.intakePause.isActivated=snapshot?.paused==true
+        binding.intakePause.setChipIconResource(if(snapshot?.paused==true) R.drawable.source_chip_play_arrow else R.drawable.source_chip_pause)
         binding.intakePause.setText(if(snapshot?.paused==true) R.string.source_intake_resume else R.string.source_intake_pause)
         binding.intakeRetry.isVisible=(snapshot?.blocked ?: 0)>0
         binding.intakeClear.isVisible=(snapshot?.pending ?: 0)+(snapshot?.blocked ?: 0)>0
@@ -109,7 +111,7 @@ class SourceIntakeSection(private val activity: AppCompatActivity,container: and
                         else activity.getString(R.string.source_intake_checked,android.text.format.DateUtils.getRelativeTimeSpanString(route.checked,System.currentTimeMillis(),60_000))
                     setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
                 })
-                row.addView((activity.layoutInflater.inflate(R.layout.source_intake_disconnect,row,false) as MaterialButton).apply {
+                row.addView((activity.layoutInflater.inflate(R.layout.source_intake_disconnect,row,false) as Chip).apply {
                     isEnabled=enabled
                     setOnClickListener { confirm(R.string.source_intake_disconnect,R.string.source_intake_disconnect_help) { model.action(ImportSettings.DISCONNECT,route.id) } }
                 }); binding.intakeFolders.addView(row)
@@ -121,7 +123,7 @@ class SourceIntakeSection(private val activity: AppCompatActivity,container: and
             scroll.doOnLayout { scroll.post { scroll.scrollTo(0,position) } }
         }
         for(index in 0 until binding.intakeFolders.childCount) (binding.intakeFolders.getChildAt(index) as? LinearLayout)?.let { row ->
-            (row.getChildAt(row.childCount-1) as? MaterialButton)?.isEnabled=enabled
+            (row.getChildAt(row.childCount-1) as? Chip)?.isEnabled=enabled
         }
     }
     private fun confirm(title: Int,message: Int,action: ()->Unit) {
