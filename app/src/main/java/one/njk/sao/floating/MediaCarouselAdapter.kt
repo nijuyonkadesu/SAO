@@ -11,15 +11,16 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil3.ImageLoader
+import coil3.asDrawable
 import coil3.request.ImageRequest
-import coil3.request.target
-import coil3.request.placeholder
-import coil3.request.error
+import coil3.request.SuccessResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import androidx.media3.common.Player
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
@@ -71,6 +72,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         var description: String = ""
         var item: MediaItem? = null
         var loading: Job? = null
+        var previewVersion = 0L
     }
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = Holder(
         ItemFloatingMediaBinding.inflate(LayoutInflater.from(parent.context), parent, false)).also { holder ->
@@ -89,7 +91,6 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         furthestBound = maxOf(furthestBound, position)
         prefetch(furthestBound)
         if (videoHolder === holder) stopVideo()
-        holder.loading?.cancel()
         val item = getItem(position); holder.item = item
         val kind = when { item.isVideo -> one.njk.sao.R.string.picker_video; item.animated -> one.njk.sao.R.string.picker_gif; else -> null }
         holder.binding.gifBadge.isVisible = item.hasMotion
@@ -112,27 +113,38 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         if (furthestBound >= 0) prefetch(furthestBound)
     }
     private fun load(holder: Holder) {
+        if (closed) return
         val item = holder.item ?: return
-        holder.loading?.cancel()
+        cancelPreview(holder)
+        val version = holder.previewVersion
+        val context = holder.binding.preview.context
         if (home) {
             holder.binding.preview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
             holder.binding.preview.setImageResource(one.njk.sao.R.drawable.eager)
         } else holder.binding.preview.setImageDrawable(null)
         holder.loading = scope.launch {
             try {
-                source.withPreview(item) { preview ->
-                if (holder.item != item) return@withPreview
-                loader.execute(ImageRequest.Builder(holder.binding.preview.context).data(preview.data).size(1024, 1024)
-                    .apply { if (home) { placeholder(one.njk.sao.R.drawable.eager); error(one.njk.sao.R.drawable.eager) } }
-                    .target(holder.binding.preview).listener(onSuccess = { _, _ ->
-                        if (home) holder.binding.preview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-                        decorate(holder)
-                    }).build())
+                // A ViewTarget can restart itself on reattach after this source lease ends.
+                // Decode once, then let this holder's current job alone apply the result.
+                val result = source.withPreview(item) { preview ->
+                    loader.execute(ImageRequest.Builder(context).data(preview.data).size(1024, 1024).build())
                 }
+                currentCoroutineContext().ensureActive()
+                if (holder.previewVersion != version || holder.item != item || closed) return@launch
+                if (result is SuccessResult) {
+                    holder.binding.preview.setImageDrawable(result.image.asDrawable(context.resources))
+                    if (home) holder.binding.preview.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                    decorate(holder)
+                } else holder.binding.preview.setImageResource(
+                    if (home) one.njk.sao.R.drawable.eager else one.njk.sao.R.drawable.ic_picker_media)
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (holder.item == item) holder.binding.preview.setImageResource(
+            catch (_: Exception) { if (holder.previewVersion == version && holder.item == item && !closed) holder.binding.preview.setImageResource(
                 if (home) one.njk.sao.R.drawable.eager else one.njk.sao.R.drawable.ic_picker_media) }
         }
+    }
+    private fun cancelPreview(holder: Holder) {
+        holder.previewVersion++
+        holder.loading?.cancel(); holder.loading = null
     }
     private fun decorate(holder: Holder) {
         val item = holder.item ?: return
@@ -216,21 +228,24 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
             ?: view.context.getString(one.njk.sao.R.string.sequence_upload_unknown)
     }
     fun cancelGestures() { attached.forEach { it.hold?.cancel() } }
-    fun close() { closed = true; cancelGestures(); stopVideo() }
+    fun close() {
+        closed = true; cancelGestures(); stopVideo()
+        attached.forEach { cancelPreview(it); (it.binding.preview.drawable as? Animatable)?.stop() }
+    }
     override fun onViewAttachedToWindow(holder: Holder) { attached += holder; if (holder.loading == null) load(holder); decorate(holder); syncVideo() }
     override fun onViewDetachedFromWindow(holder: Holder) {
         holder.hold?.cancel()
         attached -= holder; (holder.binding.preview.drawable as? Animatable)?.stop()
         if (videoHolder === holder) stopVideo()
+        cancelPreview(holder)
         holder.binding.preview.setImageDrawable(null)
-        holder.loading?.cancel(); holder.loading = null
         syncVideo()
     }
     override fun onViewRecycled(holder: Holder) {
         holder.hold?.cancel()
         if (videoHolder === holder) stopVideo()
         attached -= holder; holder.item = null
-        holder.loading?.cancel(); holder.loading = null
+        cancelPreview(holder)
         holder.binding.preview.setImageDrawable(null)
         holder.binding.videoPreview.player = null; holder.binding.videoPreview.isVisible = false
     }
