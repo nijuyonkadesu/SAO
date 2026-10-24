@@ -36,23 +36,23 @@
             android:layout_height="wrap_content"
             android:checkable="false"
             android:text="@string/floating_show"
-            android:contentDescription="@string/floating_show" />
+            android:contentDescription="@string/floating_show" app:chipIcon="@drawable/ic_floating_picker" />
         <com.google.android.material.chip.Chip
             android:id="@+id/stop_floating"
-            style="@style/Widget.Material3.Chip.Assist"
+            style="@style/Widget.SAO.Settings.ActionChip"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:checkable="false"
             android:text="@string/floating_settings_stop"
-            android:contentDescription="@string/floating_stop" />
+            android:contentDescription="@string/floating_stop" app:chipIcon="@drawable/ic_settings_stop_circle" />
         <com.google.android.material.chip.Chip
             android:id="@+id/preview"
-            style="@style/Widget.Material3.Chip.Assist"
+            style="@style/Widget.SAO.Settings.ActionChip"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:checkable="false"
             android:text="@string/floating_settings_preview"
-            android:contentDescription="@string/floating_preview" />
+            android:contentDescription="@string/floating_preview" app:chipIcon="@drawable/source_chip_photo_library" />
     </com.google.android.material.chip.ChipGroup>
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
             <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
@@ -204,7 +204,7 @@
                 android:layout_height="wrap_content"
                 android:checkable="false"
                 android:text="@string/floating_settings_manage"
-                android:contentDescription="@string/sources_title" />
+                android:contentDescription="@string/sources_title" app:chipIcon="@drawable/source_chip_photo_library" />
         </LinearLayout>
         <TextView
             android:layout_width="match_parent"
@@ -236,7 +236,7 @@
                 android:layout_height="wrap_content"
                 android:checkable="false"
                 android:text="@string/floating_settings_choose"
-                android:contentDescription="@string/floating_telegram_apps" />
+                android:contentDescription="@string/floating_telegram_apps" app:chipIcon="@drawable/ic_settings_apps" />
         </LinearLayout>
         <TextView
             android:layout_width="match_parent"
@@ -251,7 +251,7 @@
         </LinearLayout>
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/emoji_shortcuts_help" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
         <TextView android:id="@+id/emoji_shortcuts_preview" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textAppearance="?attr/textAppearanceBodyLarge" />
-        <com.google.android.material.button.MaterialButton android:id="@+id/edit_emoji_shortcuts" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/emoji_shortcuts_edit" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/edit_emoji_shortcuts" app:icon="@drawable/source_chip_edit" app:iconSize="18dp" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/emoji_shortcuts_edit" />
     </LinearLayout>
     <com.google.android.material.divider.MaterialDivider
         android:layout_width="match_parent"
@@ -287,7 +287,7 @@
                 style="@style/Widget.SAO.Settings.StatusChip"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:checkable="false" />
+                android:checkable="false" app:chipIcon="@drawable/ic_settings_picture_in_picture_alt" />
         </LinearLayout>
         <TextView
             android:layout_width="match_parent"
@@ -317,7 +317,7 @@
                 style="@style/Widget.SAO.Settings.StatusChip"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:checkable="false" />
+                android:checkable="false" app:chipIcon="@drawable/ic_settings_apps" />
         </LinearLayout>
         <TextView
             android:layout_width="match_parent"
@@ -378,7 +378,7 @@
                 style="@style/Widget.SAO.Settings.StatusChip"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:checkable="false" />
+                android:checkable="false" app:chipIcon="@drawable/ic_settings_accessibility_new" />
         </LinearLayout>
         <TextView
             android:id="@+id/accessibility_description"
