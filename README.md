@@ -42,4 +42,4 @@ Go to the [Releases](https://github.com/nijuyonkadesu/SAO/releases/tag/Release) 
 
 The optional [floating media picker](docs/floating-picker.md) supports separately installed Immich/Local Sticker/Moeview extensions and installed-app [Rays sources](docs/rays-source.md), text/emoji search, GIF/video previews and chat delivery. It shares media playback and focal-card selection with the home screen. [Instagram delivery and modern LSPosed setup](docs/instagram-dm-delivery.md) describe the optional native Paste action.
 
-Translations: see the [translation contribution guide](docs/translations.md).
+Translations: [Crowdin community translation workflow and setup status](docs/translations.md).

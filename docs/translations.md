@@ -1,8 +1,20 @@
-# Translating SAO and its sources
+# Translate SAO through Crowdin
 
-Contributions can be ordinary GitHub pull requests containing Android XML resources. English is the complete default; partial translations fall back to English. No new language is included by this change. Crowdin configuration is provided as optional maintainer tooling; a hosted translation project has not been created.
+**Crowdin is the community translation website chosen for SAO and its extensions.** Translators use its browser editor. They do not need to edit XML, fork a repository, create GitHub pull requests, or install developer tools.
 
-## Contribute a translation
+> [!NOTE]
+> Repository integration is prepared. The hosted project still needs the owner's Crowdin sign-in and GitHub connection; its real contributor URL will be published here once verified. No translation website URL is being advertised before it exists.
+
+## Contribute in the browser
+
+1. Open SAO's Crowdin project once its URL is published and sign in, for example with GitHub.
+2. Choose your language. Filter by **SAO app**, **Shared extension settings**, **Immich**, **Local Sticker**, **Moeview**, **FindThatMeme**, or **Google Photos** to choose which part to translate.
+3. Read the English text and context, enter your translation, and click **Save**. The editor provides suggestions, comments and checks for placeholders/plurals. Keep identifiers such as `%1$s` and `%2$d` intact.
+4. If a language is missing, request it through the project. Languages are enabled deliberately; this setup does not add any new translations itself.
+
+Crowdin synchronizes the translated Android resources to a translation pull request in the appropriate repository. The maintainer reviews and merges it. Contributors stay in the website; GitHub pull requests are handled by the integration. English remains the fallback for unfinished translations. [Crowdin editor guide](https://support.crowdin.com/online-editor/).
+
+## For developers: Android resource format
 
 1. Find the English `*strings.xml` files in `app/src/main/res/values/`. Add translated entries with the same resource names under `app/src/main/res/values-<locale>/`, preserving each filename. For example, `values-fr` or `values-pt-rBR`; scripts use BCP 47 folders such as `values-b+zh+Hant`.
 2. Translate shared extension form text under `source-settings/src/main/res/values-<locale>/`. Source-specific forms, summaries, preset labels and suggestions belong to the [SAO-extensions repository](https://github.com/nijuyonkadesu/SAO-extensions/blob/main/docs/translations.md), in the corresponding APK module's resource folders. Updating shared translations requires rebuilding the versioned source-settings SDK and its consumers as part of the normal release process.
@@ -27,11 +39,9 @@ Debug builds enable Android's [pseudolocales](https://developer.android.com/guid
 
 The instrumentation checks cover scoped resource isolation, malformed locale input, XML fallback/formatting, language switching with Activity recreation, extension settings/child windows, and localized capability labels without changing backend queries. Process-restart persistence is also checked on the disposable emulator.
 
-## Optional Crowdin setup (maintainers)
+## Maintainers: connect the website
 
-[Crowdin's Android XML support](https://store.crowdin.com/android-xml) works with the existing resources; no Crowdin dependency is bundled in any APK. Use a file-based project and the checked-in [`crowdin.yml`](../crowdin.yml). Configure target languages, placeholder QA and translators in that project. Keep `CROWDIN_PROJECT_ID` and `CROWDIN_PERSONAL_TOKEN` in local environment variables or repository secrets, never in Git. The extensions repo has a separate configuration because its APKs are independently versioned.
-
-With the Crowdin CLI installed, `crowdin upload sources` and `crowdin download` use those mappings. Review downloaded XML in a pull request and run the same Android checks. `skip_untranslated_strings` preserves Android's fallback behavior instead of exporting copies of English into every language. Direct XML PRs remain fully supported even if Crowdin is never configured. See [Crowdin configuration](https://support.crowdin.com/developer/configuration-file/) for the external setup.
+Use one public **Crowdin** project for SAO, shared settings, and all five source APKs. The [activation guide](crowdin-setup.md) covers the owner sign-in, connecting both repositories, quality checks, and review. Each repository has a validated `crowdin.yml`; both integrations belong to the same Crowdin project. No Crowdin library is shipped in the APKs.
 
 ## Validation for this change
 
