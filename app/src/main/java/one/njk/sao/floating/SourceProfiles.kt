@@ -66,7 +66,7 @@ internal fun SourceCatalog.forFloating(disabled: Set<String>, available: Set<Str
 
 /** Encrypted profile repository. Only actual configuration changes write to storage. */
 @Singleton
-class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
+class SourceProfiles @Inject constructor(@ApplicationContext private val context: Context,
     private val dispatchers: FloatingDispatchers,
     private val codecs: Map<String, @JvmSuppressWildcards SourceConfigurationCodec>,
     private val mediaCache: SourceMediaCache? = null) {
@@ -158,7 +158,7 @@ class SourceProfiles @Inject constructor(@ApplicationContext context: Context,
             value.value = if (json != null) decode(json) else {
                 val old = legacy.read()
                 if (old == null) SourceProfilesSnapshot() else {
-                    val profile = SourceProfile(UUID.randomUUID().toString(), "Imported source",
+                    val profile = SourceProfile(UUID.randomUUID().toString(), one.njk.sao.AppLanguages.context(context).getString(one.njk.sao.R.string.source_imported_name),
                         UnknownSourceConfiguration("immich",old.toString()))
                     SourceProfilesSnapshot(SourceCatalog(listOf(profile), profile.id.takeIf { old.optBoolean("enabled", true) })).also(::write)
                 }

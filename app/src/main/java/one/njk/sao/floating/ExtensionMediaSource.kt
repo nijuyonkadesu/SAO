@@ -5,6 +5,7 @@ import android.net.Uri
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flowOf
@@ -20,9 +21,10 @@ import java.io.File
 class ExtensionMediaSource(private val context: Context, private val profile: SourceProfile,
     private val extensions: SourceExtensions, private val cache: SourceMediaCache) : ManagedMediaSource {
     private val config = profile.configuration as ExtensionConfig
-    private val client = ExtensionClient(context,config.component)
+    private val client = ExtensionClient(context,config.component) { one.njk.sao.AppLanguages.tags }
     @Volatile private var closed = false
     private val capabilityLock = Mutex()
+    private var capabilityLanguage: String? = null
     private var discoveryQuery: MediaQuery? = null
     private val capabilityState = MutableStateFlow<SourceCapabilitiesState>(SourceCapabilitiesState.Loading)
     override val identity = flowOf(profile.identity)
@@ -42,24 +44,31 @@ class ExtensionMediaSource(private val context: Context, private val profile: So
             awaitClose { context.contentResolver.unregisterContentObserver(observer) }
         })
     }
-    override val capabilitiesState = flow {
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    override val capabilitiesState = one.njk.sao.AppLanguages.changes.flatMapLatest { flow {
         try { loadCapabilities() } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { /* Failure is retained below; only a later user request retries. */ }
         emitAll(capabilityState)
-    }
+    } }
     override val capabilities = capabilitiesState.map {
         (it as? SourceCapabilitiesState.Ready)?.value ?: SourceCapabilities()
     }.distinctUntilChanged()
     private suspend fun loadCapabilities(): SourceCapabilities = capabilityLock.withLock {
-        (capabilityState.value as? SourceCapabilitiesState.Ready)?.value ?: run {
-            capabilityState.value = SourceCapabilitiesState.Loading
+        val language = one.njk.sao.AppLanguages.tags
+        (capabilityState.value as? SourceCapabilitiesState.Ready)?.value?.takeIf { capabilityLanguage == language } ?: run {
+            val previous = (capabilityState.value as? SourceCapabilitiesState.Ready)?.value
+            // A presentation refresh must never briefly remove the working modes/categories;
+            // doing that would normalize the current query and discard its carousel position.
+            if (previous == null) capabilityState.value = SourceCapabilitiesState.Loading
             try {
                 SourceWire.capabilities(call(SourceFeature.CAPABILITIES,ExtensionProtocol.CAPABILITIES))
-                    .also { capabilityState.value = SourceCapabilitiesState.Ready(it) }
+                    .also { capabilityLanguage = language; capabilityState.value = SourceCapabilitiesState.Ready(it) }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
-                capabilityState.value = SourceCapabilitiesState.Failed(error)
-                throw error
+                if (previous != null) previous else {
+                    capabilityState.value = SourceCapabilitiesState.Failed(error)
+                    throw error
+                }
             }
         }
     }

@@ -43,7 +43,8 @@ class AppChoiceAdapter(private val items: List<AppChoice>, private val selected:
         val builtin = item.packageName in MessagingTarget.TELEGRAM.packages
         holder.binding.apply {
             appIcon.setImageDrawable(item.icon); appLabel.text = item.label
-            appPackage.text = item.packageName + when { !item.installed -> " · ${root.context.getString(R.string.floating_not_installed)}"; builtin && selected != null -> " · ${root.context.getString(R.string.floating_builtin_app)}"; else -> "" }
+            val status = when { !item.installed -> R.string.floating_not_installed; builtin && selected != null -> R.string.floating_builtin_app; else -> null }
+            appPackage.text = status?.let { root.context.getString(R.string.label_with_status,item.packageName,root.context.getString(it)) } ?: item.packageName
             appCheck.isVisible = selected != null
             appCheck.isChecked = builtin || item.packageName in selected.orEmpty()
             appCheck.isEnabled = !builtin

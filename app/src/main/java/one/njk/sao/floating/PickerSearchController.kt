@@ -195,7 +195,7 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
         val filtersLabel = if (criteria.count == 0) activity.getString(R.string.search_filters)
             else activity.getString(R.string.search_filters_count, criteria.count)
         if (binding.searchFilters.text.toString() != filtersLabel) binding.searchFilters.text = filtersLabel
-        binding.searchFilters.contentDescription = activity.getString(R.string.search_hold_filters_accessibility, criteria.count)
+        binding.searchFilters.contentDescription = activity.resources.getQuantityString(R.plurals.search_hold_filters_accessibility, criteria.count, criteria.count)
         binding.clearSearchFilters.isVisible = supported && criteria.count > 0
         val random = query.randomRequest != null
         val luckyLabel = if (random) R.string.search_lucky_shuffle else R.string.search_lucky_short

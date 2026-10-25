@@ -12,9 +12,18 @@
     <string name="source_intake_loading">Loading saved destination…</string>
     <string name="source_intake_error">Could not load imports. Check the saved connection and that SAO is up to date.</string>
     <string name="source_intake_retry">Retry</string>
-    <string name="source_intake_added">%1$d added</string>
-    <string name="source_intake_pending">%1$d pending</string>
-    <string name="source_intake_blocked">%1$d need attention</string>
+    <plurals name="source_intake_added">
+        <item quantity="one">%1$d added</item>
+        <item quantity="other">%1$d added</item>
+    </plurals>
+    <plurals name="source_intake_pending">
+        <item quantity="one">%1$d pending</item>
+        <item quantity="other">%1$d pending</item>
+    </plurals>
+    <plurals name="source_intake_blocked">
+        <item quantity="one">%1$d need attention</item>
+        <item quantity="other">%1$d need attention</item>
+    </plurals>
     <string name="source_intake_paused">Paused · %1$s</string>
     <string name="source_intake_pause">Pause</string>
     <string name="source_intake_resume">Resume</string>

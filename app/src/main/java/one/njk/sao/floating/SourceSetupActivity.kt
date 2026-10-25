@@ -79,6 +79,7 @@ class SourceSetupActivity : AppCompatActivity() {
             extensions.migrate(found)
             phase=Phase.SETTINGS
             launcher.launch(Intent().setComponent(ComponentName(found.component.packageName,found.settings))
+                .putExtra(one.njk.sao.source.SourceLocales.EXTRA_LANGUAGE_TAGS,one.njk.sao.AppLanguages.tags)
                 .putExtra(ExtensionProtocol.PROFILE,intent.getStringExtra(ExtensionProtocol.PROFILE)))
         } catch(cancelled: CancellationException) { throw cancelled }
         catch(_: Exception) { unavailable() }

@@ -15,7 +15,8 @@ class ExtensionFailure(override val code: String, val retryAfter: String? = null
     SourceException(code = code, message = "Source extension: $code")
 
 /** One bounded, cancellable request. No idle binding or automatic reconnect loop. */
-class ExtensionClient(private val context: Context, val component: ComponentName) {
+class ExtensionClient(private val context: Context, val component: ComponentName,
+    private val languageTags: () -> String = { SourceLocales.languageTags(context) }) {
     /** Profile discovery is paged too, so adding profiles never overflows one Binder response. */
     suspend fun profiles(): List<ExtensionProfile> {
         val result = mutableListOf<ExtensionProfile>()
@@ -37,7 +38,10 @@ class ExtensionClient(private val context: Context, val component: ComponentName
         val service = try { context.packageManager.getServiceInfo(component,android.content.pm.PackageManager.GET_META_DATA) }
             catch (_: android.content.pm.PackageManager.NameNotFoundException) { throw ExtensionFailure("UNAVAILABLE") }
         if (service.metaData?.getInt(ExtensionProtocol.API_VERSION) != ExtensionProtocol.VERSION) throw ExtensionFailure("INCOMPATIBLE")
-        require(payload.toString().length * 2 <= ExtensionProtocol.MAX_REQUEST)
+        // Copy rather than mutating a caller's reusable query/configuration object.
+        val request = JSONObject(payload.toString()).put(SourceLocales.REQUEST_LANGUAGE_TAGS,
+            SourceLocales.validated(languageTags()) ?: SourceLocales.languageTags(context))
+        require(request.toString().length * 2 <= ExtensionProtocol.MAX_REQUEST)
         val ready = CompletableDeferred<ISourceExtension>()
         var pending: CompletableDeferred<JSONObject>? = null
         val connection = object : ServiceConnection {
@@ -57,7 +61,7 @@ class ExtensionClient(private val context: Context, val component: ComponentName
             if (!bound) throw ExtensionFailure("UNAVAILABLE")
             remote = withTimeout(5_000) { ready.await() }
             val result = CompletableDeferred<JSONObject>(); pending = result
-            remote.request(id, profile, operation, payload.toString(), object : ISourceCallback.Stub() {
+            remote.request(id, profile, operation, request.toString(), object : ISourceCallback.Stub() {
                 override fun complete(requestId: String, response: String) {
                     if (requestId != id || !result.isActive) return
                     try {

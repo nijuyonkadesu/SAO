@@ -7,6 +7,7 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.app.KeyguardManager
 import android.app.AppOpsManager
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -54,6 +55,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import one.njk.sao.AppLanguages
 import one.njk.sao.R
 import one.njk.sao.floating.nativebridge.NativeBridgeRegistry
 import one.njk.sao.floating.nativebridge.NativeBridgeVisibility
@@ -176,7 +178,7 @@ class FloatingService : Service() {
             setEnsureMinTouchTargetSize(true)
             setMaxImageSize(dp(24))
             setImageResource(R.drawable.ic_floating_picker)
-            contentDescription = getString(R.string.floating_open_picker)
+            contentDescription = AppLanguages.context(this@FloatingService).getString(R.string.floating_open_picker)
             setOnClickListener { openPicker() }
             setOnLongClickListener { runtime.stop(); true }
             addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
@@ -184,7 +186,7 @@ class FloatingService : Service() {
             }
         }
         ViewCompat.replaceAccessibilityAction(requireNotNull(bubble), AccessibilityActionCompat.ACTION_LONG_CLICK,
-            getString(R.string.floating_stop)) { _, _ -> bubble?.performLongClick() == true }
+            AppLanguages.context(this).getString(R.string.floating_stop)) { _, _ -> bubble?.performLongClick() == true }
         // Material adds touch-target insets to its 40 dp body. An exact 48 dp measure
         // is treated as the body size, displacing the icon and adding those insets twice.
         params = FloatingOverlayWindow.params("SAO floating icon")
@@ -198,6 +200,18 @@ class FloatingService : Service() {
             AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW, packageName, overlayPermissionChanged)
         // Picker and overlay share this process. Main.immediate restores without a broadcast hop.
         scope.launch { FloatingSession.pickerVisibility.collect { syncBubble() } }
+        scope.launch {
+            AppLanguages.changes.collect {
+                val strings = AppLanguages.context(this@FloatingService)
+                bubble?.contentDescription = strings.getString(R.string.floating_open_picker)
+                bubble?.let { button -> ViewCompat.replaceAccessibilityAction(button, AccessibilityActionCompat.ACTION_LONG_CLICK,
+                    strings.getString(R.string.floating_stop)) { _, _ -> button.performLongClick() } }
+                cancelDrag()
+                dismissTarget.hide()
+                dismissTarget = FloatingDismissTarget(bubbleTheme(), windowManager)
+                if (wantsVisible) getSystemService(NotificationManager::class.java).notify(21, notification())
+            }
+        }
         scope.launch {
             preferences.options.collect {
                 val timingChanged = options.autoHide != it.autoHide || options.idleSeconds != it.idleSeconds
@@ -223,26 +237,30 @@ class FloatingService : Service() {
         if (button.rippleColorStateList?.defaultColor != ripple) button.setRippleColor(ColorStateList.valueOf(ripple))
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP || !Settings.canDrawOverlays(this)) {
-            runtime.stop(); return START_NOT_STICKY
-        }
+    private fun notification(): Notification {
+        val strings = AppLanguages.context(this)
         val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, getString(R.string.floating_notification_channel), NotificationManager.IMPORTANCE_LOW))
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, strings.getString(R.string.floating_notification_channel), NotificationManager.IMPORTANCE_LOW))
         val stop = PendingIntent.getService(this, 0, Intent(this, FloatingService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val show = PendingIntent.getService(this, 2, Intent(this, FloatingService::class.java).setAction(ACTION_SHOW),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val settings = PendingIntent.getActivity(this, 1, Intent(this, FloatingSettingsActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification = NotificationCompat.Builder(this, CHANNEL)
+        return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_floating_picker)
-            .setContentTitle(getString(R.string.floating_notification_title))
-            .setContentText(getString(R.string.floating_hide_description))
+            .setContentTitle(strings.getString(R.string.floating_notification_title))
+            .setContentText(strings.getString(R.string.floating_hide_description))
             .setContentIntent(settings).setOngoing(true).setSilent(true)
-            .addAction(0, getString(R.string.floating_show), show)
-            .addAction(0, getString(R.string.floating_stop), stop).build()
-        ServiceCompat.startForeground(this, 21, notification,
+            .addAction(0, strings.getString(R.string.floating_show), show)
+            .addAction(0, strings.getString(R.string.floating_stop), stop).build()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP || !Settings.canDrawOverlays(this)) {
+            runtime.stop(); return START_NOT_STICKY
+        }
+        ServiceCompat.startForeground(this, 21, notification(),
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
         scope.launch {
             // Reject stale sticky restarts after a dismissal committed in another callback.

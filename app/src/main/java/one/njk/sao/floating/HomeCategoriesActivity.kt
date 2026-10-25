@@ -60,7 +60,7 @@ class HomeCategoriesActivity : AppCompatActivity() {
         binding.mode.setOnItemClickListener { _,_,index,_ -> modes.getOrNull(index)?.let(model::mode) }
         binding.addCategory.setOnClickListener { model.edit() }
         binding.resetCategories.setOnClickListener { model.reset() }
-        binding.saveCategory.setOnClickListener { binding.query.dismissSuggestions(); model.save() }
+        binding.saveCategory.setOnClickListener { binding.query.dismissSuggestions(); model.save(getString(R.string.home_category_default_all)) }
         binding.cancelCategory.setOnClickListener { binding.query.dismissSuggestions(); model.cancel() }
         binding.retry.setOnClickListener { model.retry() }
         binding.label.doAfterTextChanged { if(!rendering) model.label(it.toString()) }
@@ -74,13 +74,13 @@ class HomeCategoriesActivity : AppCompatActivity() {
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) {
             launch { sources.state.collect { state ->
                 choices=state.browsingCatalog.profiles
-                binding.profile.setSimpleItems(choices.map { it.name }.toTypedArray())
+                binding.profile.setSimpleItems(choices.map { it.displayName(this@HomeCategoriesActivity) }.toTypedArray())
                 model.catalog(state.browsingCatalog)
             } }
             launch { model.state.collect { state ->
                 rendering=true
                 val draft=state.draft?.category
-                val profileName=choices.firstOrNull { it.id==state.profile?.id }?.name.orEmpty()
+                val profileName=choices.firstOrNull { it.id==state.profile?.id }?.displayName(this@HomeCategoriesActivity).orEmpty()
                 if(binding.profile.text.toString()!=profileName) binding.profile.setText(profileName,false)
                 binding.profile.isEnabled=choices.isNotEmpty() && draft==null && !state.saving
                 binding.empty.isVisible=state.profile==null

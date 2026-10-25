@@ -11,7 +11,7 @@
     <string name="extension_repository_removed">This repository was removed. Add it again before installing this extension.</string>
     <string name="extension_repository_origin">%1$s · %2$s</string>
     <string name="extension_repository_unverified">Independent publisher · access requires your approval after installation.</string>
-    <string name="app_name">SAO</string>
+    <string name="app_name" translatable="false">SAO</string>
     <string name="action_settings">Settings</string>
     <!-- Strings used for fragments for navigation -->
     <string name="next">Next</string>
@@ -30,7 +30,6 @@
     <string name="importing">Import</string>
     <string name="importing_desc">Are you satisfied with just enjoying your gems? Why not get a good taste of your friend\'s gems?</string>
     <string name="language">Language</string>
-    <string name="english">English</string>
     <string name="language_desc">Cultured men, otaku, or however you want to call yourself, it\'s your feel, in your language</string>
     <string name="about_sao">About SAO</string>
     <string name="about_sao_desc">I’m not running a cutthroat $200bn company, SAO is purely built in my free time, to go on a date with my beautiful Material3 components (✿◡‿◡), a complete roller coaster ride is what I would like to describe, just like how it would be in irl ~~ hue hue \n- 24k🍂</string>

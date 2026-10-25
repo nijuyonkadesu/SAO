@@ -110,9 +110,9 @@ class MediaImportActivity: AppCompatActivity() {
         listOf(binding.addMedia,binding.addFiles,binding.connectFolder,binding.configure).forEach { it.isEnabled=state.loaded && !state.working }
         val stats=state.stats
         binding.status.isVisible=stats.done+stats.pending+stats.blocked>0
-        binding.status.text=if(stats.paused) getString(R.string.import_counts_paused,stats.done,stats.pending,stats.blocked)
-            else listOfNotNull(getString(R.string.import_added_count,stats.done),stats.pending.takeIf { it>0 }?.let { getString(R.string.import_pending_count,it) },
-                stats.blocked.takeIf { it>0 }?.let { getString(R.string.import_attention_count,it) }).joinToString(" · ")
+        val counts=listOfNotNull(resources.getQuantityString(R.plurals.import_added_count,stats.done,stats.done),stats.pending.takeIf { it>0 }?.let { resources.getQuantityString(R.plurals.import_pending_count,it,it) },
+                stats.blocked.takeIf { it>0 }?.let { resources.getQuantityString(R.plurals.import_attention_count,it,it) }).joinToString(" · ")
+        binding.status.text=if(stats.paused) getString(R.string.import_counts_paused,counts) else counts
         binding.queueActions.isVisible=stats.pending+stats.blocked>0 || stats.paused
         binding.clear.isVisible=stats.pending+stats.blocked>0
         binding.pause.setText(if(stats.paused) R.string.import_resume else R.string.import_pause)
@@ -129,16 +129,16 @@ class MediaImportActivity: AppCompatActivity() {
             renderedRoutes=state.routes; renderedCollections=collections; binding.folders.removeAllViews()
             collections.forEach { collection ->
                 binding.folders.addView(TextView(this).apply {
-                    text="${collection.name}\n${collection.summary}"; setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
+                    text=getString(R.string.label_with_detail,collection.name,collection.summary); setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
                     setPadding(0,8.dp,0,8.dp)
                 })
             }
             state.routes.forEach { route ->
                 val row=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(0,12.dp,0,12.dp) }
-                row.addView(TextView(this).apply { text="${route.name} → ${route.label}"; setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyLarge) })
+                row.addView(TextView(this).apply { text=getString(R.string.folder_destination,route.name,route.label); setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyLarge) })
                 row.addView(TextView(this).apply {
                     text=route.error?.let(::errorText) ?: if(route.checked==0L) getString(R.string.import_folder_pending)
-                        else getString(R.string.import_last_checked,android.text.format.DateUtils.getRelativeTimeSpanString(route.checked,System.currentTimeMillis(),60_000))
+                        else getString(R.string.import_last_checked,java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT,this.resources.configuration.locales[0]).format(java.util.Date(route.checked)))
                     setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
                     setTextColor(com.google.android.material.color.MaterialColors.getColor(this,com.google.android.material.R.attr.colorOnSurfaceVariant))
                 })

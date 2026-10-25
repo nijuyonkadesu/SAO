@@ -5,11 +5,11 @@
     <item
         android:id="@+id/bookmark"
         android:icon="@drawable/bookmark"
-        android:title="bookmark"
+        android:title="@string/action_bookmark"
         app:showAsAction="ifRoom"/>
     <item
         android:id="@+id/download"
         android:icon="@drawable/download"
-        android:title="download"
+        android:title="@string/action_download"
         app:showAsAction="ifRoom"/>
 </menu>

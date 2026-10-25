@@ -89,7 +89,7 @@ class SourceExtensions @Inject constructor(@ApplicationContext private val conte
     suspend fun refresh(extension: InstalledSourceExtension, selectedProfile: String? = null, floating: Boolean = false) {
         val current=candidates().firstOrNull { it.component==extension.component } ?: throw ExtensionFailure("UNAVAILABLE")
         if(current.approval==ExtensionApproval.UNTRUSTED) throw ExtensionFailure("UNTRUSTED")
-        val rows = ReadRetry.run { ExtensionClient(context,current.component).profiles() }.map(current::profile)
+        val rows = ReadRetry.run { ExtensionClient(context,current.component) { one.njk.sao.AppLanguages.tags }.profiles() }.map(current::profile)
         val old = profiles.current()
         val linked = old.profiles.filter { (it.configuration as? ExtensionConfig)?.component == extension.component }
         linked.filter { existing -> rows.none { it.id == existing.id } }.forEach { profiles.remove(it.id) }
@@ -103,7 +103,7 @@ class SourceExtensions @Inject constructor(@ApplicationContext private val conte
         for (profile in old.profiles) {
             val config = profile.configuration as? UnknownSourceConfiguration ?: continue
             if (config.kind !in extension.legacyKinds) continue
-            val reply = ExtensionClient(context,extension.component).request(profile.id,ExtensionProtocol.IMPORT,
+            val reply = ExtensionClient(context,extension.component) { one.njk.sao.AppLanguages.tags }.request(profile.id,ExtensionProtocol.IMPORT,
                 JSONObject().put("name",profile.name).put("configuration",JSONObject(config.json)))
             val replacement = extension.profile(SourceWire.profile(reply))
             val floatingSelected = profiles.currentFloating().selectedId == profile.id

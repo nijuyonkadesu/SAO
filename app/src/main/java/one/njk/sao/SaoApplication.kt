@@ -8,7 +8,13 @@ import dagger.hilt.android.HiltAndroidApp
 class SaoApplication: Application() {
     override fun onCreate() {
         super.onCreate()
+        AppLanguages.initialize(this)
         DynamicColors.applyToActivitiesIfAvailable(this)
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        AppLanguages.refresh(this)
     }
 
 }

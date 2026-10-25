@@ -76,7 +76,7 @@ class MediaImports @Inject constructor(@ApplicationContext private val app: Cont
     private suspend fun call(profile: SourceProfile,operation: String,payload: JSONObject=JSONObject()): JSONObject {
         val config=profile.configuration as? ExtensionConfig ?: throw ExtensionFailure("UNSUPPORTED")
         extensions.requireInstalled(config)
-        return ExtensionClient(app,config.component).request(config.profile,operation,payload.put("source",profile.identity).put("revision",config.revision))
+        return ExtensionClient(app,config.component) { one.njk.sao.AppLanguages.tags }.request(config.profile,operation,payload.put("source",profile.identity).put("revision",config.revision))
     }
     suspend fun source(id: String): SourceProfile = profiles.current().profiles.firstOrNull { it.id==id } ?: throw ExtensionFailure("PROFILE_MISSING")
     suspend fun enqueue(destination: Destination,target: ImportTarget,uris: List<Uri>,progress: suspend (Int,Int)->Unit={_,_->}) = withContext(Dispatchers.IO) {

@@ -20,8 +20,8 @@ internal class SourceIntakeViewModel(app: Application,private val saved: SavedSt
     data class Snapshot(val source: String,val changes: Uri,val done: Int,val pending: Int,val blocked: Int,val paused: Boolean,val error: String?,val routes: List<Route>)
     data class State(val options: ImportOptions?=null,val snapshot: Snapshot?=null,val target: ImportTarget?=null,
         val loading: Boolean=false,val busy: Boolean=false,val error: String?=null,val editable: Boolean=true)
-    private class Configuration(val host: String,val profile: String,val revision: String,val options: suspend ()->ImportOptions) {
-        val key="$host:$profile:$revision"
+    private class Configuration(val host: String,val profile: String,val revision: String,val languages: String,val options: suspend ()->ImportOptions) {
+        val key="$host:$profile:$revision:$languages"
     }
     private val configuration=MutableStateFlow<Configuration?>(null)
     private val refresh=MutableStateFlow(0)
@@ -32,8 +32,8 @@ internal class SourceIntakeViewModel(app: Application,private val saved: SavedSt
     var scrollPosition: Int?
         get()=saved["scroll"]
         set(value) { saved["scroll"]=value }
-    fun configure(host: String,profile: String,revision: String,options: suspend ()->ImportOptions) {
-        val next=Configuration(host,profile,revision,options)
+    fun configure(host: String,profile: String,revision: String,languages: String,options: suspend ()->ImportOptions) {
+        val next=Configuration(host,profile,revision,languages,options)
         if(configuration.value?.key==next.key) return
         cachedOptions=null; mutable.value=State(loading=true); configuration.value=next
     }
@@ -69,7 +69,7 @@ internal class SourceIntakeViewModel(app: Application,private val saved: SavedSt
     }
     private fun update(snapshot: Snapshot) { mutable.update { it.copy(snapshot=snapshot,loading=false,error=null) } }
     private suspend fun read(config: Configuration,operation: String=ImportSettings.STATE,route: String?=null): Snapshot {
-        val reply=ExtensionClient(getApplication(),ImportSettings.service(config.host)).request(config.profile,operation,
+        val reply=ExtensionClient(getApplication(),ImportSettings.service(config.host)) { config.languages }.request(config.profile,operation,
             JSONObject().put("revision",config.revision).put("route",route))
         val changes=Uri.parse(reply.getString("changes"))
         require(changes==ImportSettings.changes(config.host))

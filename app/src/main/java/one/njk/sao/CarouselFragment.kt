@@ -1,6 +1,7 @@
 package one.njk.sao
 
 import android.content.Intent
+import one.njk.sao.floating.displayName
 import android.os.Bundle
 import android.view.*
 import android.widget.FrameLayout
@@ -70,7 +71,7 @@ class CarouselFragment : Fragment(), MenuProvider {
         binding.type.setOnClickListener { chooseSource() }
         collectionGesture = HoldDragSelector(binding.type,requireActivity().findViewById<FrameLayout>(android.R.id.content),
             choices={ sources.state.value.browsingCatalog.profiles }, selected={ sources.state.value.browsingCatalog.let { it.selected ?: it.profiles.first() } },
-            label={ it.name }, identity={ sources.state.value.browsingCatalog.identity }, apply={ sources.select(it.id) },
+            label={ it.displayName(requireContext()) }, identity={ sources.state.value.browsingCatalog.identity }, apply={ sources.select(it.id) },
             title=R.string.sources_title,chooseAction=R.string.source_hold_choose,
             nextAction=R.string.source_hold_next,previousAction=R.string.source_hold_previous,
             hint={ getString(R.string.source_hold_release) },holdDelay={ holdMs })
@@ -135,7 +136,7 @@ class CarouselFragment : Fragment(), MenuProvider {
                 } }
                 launch { sources.state.collect { state ->
                     collectionGesture?.update()
-                    binding.type.text = getString(R.string.collection,state.browsingCatalog.selected?.name ?: getString(R.string.picker_source_none))
+                    binding.type.text = getString(R.string.collection,state.browsingCatalog.selected?.displayName(requireContext()) ?: getString(R.string.picker_source_none))
                     renderStatus()
                 } }
             } } finally { previews.pause(); carousel.pause() }
@@ -175,7 +176,7 @@ class CarouselFragment : Fragment(), MenuProvider {
         val catalog=sources.state.value.browsingCatalog
         if(catalog.profiles.isEmpty()) { startActivity(Intent(requireContext(),SourceSettingsActivity::class.java)); return }
         MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.sources_title)
-            .setSingleChoiceItems(catalog.profiles.map { it.name }.toTypedArray(),catalog.profiles.indexOfFirst { it.id==catalog.selectedId }) { dialog,index ->
+            .setSingleChoiceItems(catalog.profiles.map { it.displayName(requireContext()) }.toTypedArray(),catalog.profiles.indexOfFirst { it.id==catalog.selectedId }) { dialog,index ->
                 sources.select(catalog.profiles[index].id); dialog.dismiss()
             }.setNeutralButton(R.string.sources_title) { _,_ -> startActivity(Intent(requireContext(),SourceSettingsActivity::class.java)) }
             .setNegativeButton(android.R.string.cancel,null).show()

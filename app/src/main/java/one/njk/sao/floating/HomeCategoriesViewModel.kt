@@ -79,10 +79,10 @@ class HomeCategoriesViewModel @Inject constructor(private val profiles: SourcePr
         if(!state.value.saving) state.value.draft?.let { mutable.value=state.value.copy(draft=HomeCategoryDraft(change(it.category))) }
     }
     fun cancel() { if(!state.value.saving) mutable.value=state.value.copy(draft=null) }
-    fun save() {
+    fun save(defaultLabel: String) {
         val category=state.value.draft?.category ?: return
         val query=state.value.capabilities.normalize(category.query.copy(text=category.query.text.trim()))
-        val label=category.label.trim().ifEmpty { query.text.replace('_',' ').ifEmpty { "All" }.take(80) }
+        val label=category.label.trim().ifEmpty { query.text.replace('_',' ').ifEmpty { defaultLabel }.take(80) }
         val row=category.copy(label=label,query=query)
         val rows=state.value.categories.toMutableList()
         val index=rows.indexOfFirst { it.id==row.id }

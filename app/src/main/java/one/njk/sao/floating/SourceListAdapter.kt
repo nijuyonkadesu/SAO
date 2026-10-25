@@ -27,7 +27,7 @@ class SourceListAdapter(private val select: (String?) -> Unit,
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val row = getItem(position)
         holder.binding.apply {
-            name.text = row.name; description.text = row.description
+            name.text = sourceDisplayName(root.context,row.id,row.name); description.text = row.description
             description.maxLines = if(row.blocked) 4 else 2
         }
         bindControls(holder,row)
@@ -40,7 +40,7 @@ class SourceListAdapter(private val select: (String?) -> Unit,
             root.isSelected = row.selected
             root.strokeWidth = if (row.selected) (2 * root.resources.displayMetrics.density).toInt() else 0
             root.strokeColor = MaterialColors.getColor(root, androidx.appcompat.R.attr.colorPrimary)
-            root.contentDescription = if (row.selected) root.context.getString(R.string.source_selected, row.name) else row.name
+            root.contentDescription = if (row.selected) root.context.getString(R.string.source_selected, sourceDisplayName(root.context,row.id,row.name)) else sourceDisplayName(root.context,row.id,row.name)
             useSource.setText(if(setFloatingEnabled==null) R.string.source_picker_chip else R.string.source_home_chip)
             useSource.isChecked=row.selected
             useSource.isEnabled=row.interactive && !row.blocked
@@ -49,14 +49,14 @@ class SourceListAdapter(private val select: (String?) -> Unit,
             root.setOnClickListener { select(row.id) }
             root.isEnabled = row.interactive && !row.blocked
             edit.isVisible = row.id != null && row.id != ALL_SOURCE_ID
-            edit.contentDescription = root.context.getString(R.string.source_edit, row.name)
+            edit.contentDescription = root.context.getString(R.string.source_edit, sourceDisplayName(root.context,row.id,row.name))
             edit.setOnClickListener { row.id?.let(onEdit) }
             edit.isEnabled = row.interactive
             floatingEnabled.isVisible = setFloatingEnabled != null && row.id != null && row.id != ALL_SOURCE_ID
             floatingEnabled.setOnCheckedChangeListener(null)
             floatingEnabled.isChecked = row.floatingEnabled && !row.blocked
             floatingEnabled.isEnabled = row.interactive && !row.blocked
-            floatingEnabled.contentDescription = root.context.getString(R.string.source_floating_enabled, row.name)
+            floatingEnabled.contentDescription = root.context.getString(R.string.source_floating_enabled, sourceDisplayName(root.context,row.id,row.name))
             floatingEnabled.setOnClickListener {
                 val checked=floatingEnabled.isChecked
                 floatingEnabled.isChecked=row.floatingEnabled && !row.blocked

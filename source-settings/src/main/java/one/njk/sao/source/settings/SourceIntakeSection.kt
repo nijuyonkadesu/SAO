@@ -46,7 +46,7 @@ class SourceIntakeSection(private val activity: AppCompatActivity,container: and
     }
     fun configure(host: String,profile: String,revision: String,options: suspend ()->ImportOptions) {
         this.host=host; this.profile=profile; this.revision=revision
-        binding.root.isVisible=true; model.configure(host,profile,revision,options)
+        binding.root.isVisible=true; model.configure(host,profile,revision,one.njk.sao.source.SourceLocales.languageTags(activity),options)
     }
     fun editable(value: Boolean)=model.editable(value)
     private fun launch(action: String) {
@@ -84,9 +84,9 @@ class SourceIntakeSection(private val activity: AppCompatActivity,container: and
         binding.intakeActions.isVisible=all.isNotEmpty()
         listOf(binding.intakeAddMedia,binding.intakeAddFiles,binding.intakeConnectFolder,binding.intakeCheckFolders,binding.intakePause,binding.intakeRetry,binding.intakeClear).forEach { it.isEnabled=enabled }
         val counts=if(snapshot==null) "" else listOfNotNull(
-            snapshot.done.takeIf { it>0 }?.let { activity.getString(R.string.source_intake_added,it) },
-            snapshot.pending.takeIf { it>0 }?.let { activity.getString(R.string.source_intake_pending,it) },
-            snapshot.blocked.takeIf { it>0 }?.let { activity.getString(R.string.source_intake_blocked,it) }).joinToString(" · ")
+            snapshot.done.takeIf { it>0 }?.let { activity.resources.getQuantityString(R.plurals.source_intake_added,it,it) },
+            snapshot.pending.takeIf { it>0 }?.let { activity.resources.getQuantityString(R.plurals.source_intake_pending,it,it) },
+            snapshot.blocked.takeIf { it>0 }?.let { activity.resources.getQuantityString(R.plurals.source_intake_blocked,it,it) }).joinToString(" · ")
         binding.intakeStatus.isVisible=counts.isNotEmpty() || snapshot?.paused==true
         binding.intakeStatus.text=if(snapshot?.paused==true) activity.getString(R.string.source_intake_paused,counts) else counts
         binding.intakeQueueActions.isVisible=snapshot!=null && (snapshot.pending+snapshot.blocked>0 || snapshot.paused)
@@ -108,7 +108,7 @@ class SourceIntakeSection(private val activity: AppCompatActivity,container: and
                 })
                 row.addView(TextView(activity).apply {
                     text=if(route.error!=null) activity.getString(errorResource(route.error)) else if(route.checked==0L) activity.getString(R.string.source_intake_waiting)
-                        else activity.getString(R.string.source_intake_checked,android.text.format.DateUtils.getRelativeTimeSpanString(route.checked,System.currentTimeMillis(),60_000))
+                        else activity.getString(R.string.source_intake_checked,java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT,activity.resources.configuration.locales[0]).format(java.util.Date(route.checked)))
                     setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
                 })
                 row.addView((activity.layoutInflater.inflate(R.layout.source_intake_disconnect,row,false) as Chip).apply {

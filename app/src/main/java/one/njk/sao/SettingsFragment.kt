@@ -28,7 +28,20 @@ class SettingsFragment: Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding.apply {
-            languageSelect.isActivated = true // English is the currently supported language.
+            val chosen = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().toLanguageTags()
+            languageSelect.isActivated = chosen.isNotEmpty()
+            languageSelect.text = if (chosen.isEmpty()) getString(R.string.language_system) else AppLanguages.label(chosen.substringBefore(','))
+            languageSelect.contentDescription = getString(R.string.language_current, languageSelect.text)
+            languageSelect.setOnClickListener {
+                val tags = listOf("") + AppLanguages.choices(requireContext())
+                val labels = tags.map { if (it.isEmpty()) getString(R.string.language_system) else AppLanguages.label(it) }
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+                    .setTitle(R.string.language_choose)
+                    .setSingleChoiceItems(labels.toTypedArray(), tags.indexOf(chosen)) { dialog, position ->
+                        dialog.dismiss()
+                        AppLanguages.select(requireContext(), tags[position].ifEmpty { null })
+                    }.setNegativeButton(android.R.string.cancel, null).show()
+            }
             viewModel.nsfwMode.observe(viewLifecycleOwner){
                 nsfwToggle.isChecked = it
                 nsfwToggle.text = when(it){

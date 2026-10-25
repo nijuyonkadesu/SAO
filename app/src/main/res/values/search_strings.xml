@@ -60,5 +60,8 @@
     <string name="search_hold_edit_filters">Edit search filters</string>
     <string name="search_hold_next_filter">Next filter option</string>
     <string name="search_hold_previous_filter">Previous filter option</string>
-    <string name="search_hold_filters_accessibility">Search filters, %1$d active. Tap to edit, or hold and drag vertically.</string>
+    <plurals name="search_hold_filters_accessibility">
+        <item quantity="one">Search filters, %1$d active. Tap to edit, or hold and drag vertically.</item>
+        <item quantity="other">Search filters, %1$d active. Tap to edit, or hold and drag vertically.</item>
+    </plurals>
 </resources>

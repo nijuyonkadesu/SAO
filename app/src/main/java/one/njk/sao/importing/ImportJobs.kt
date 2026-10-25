@@ -73,10 +73,10 @@ internal object ImportJobs {
     }
     fun recovered(context: Context) { WorkManager.getInstance(context).cancelUniqueWork("media-import-user-recovery") }
     fun notification(context: Context): android.app.Notification {
-        context.getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("media-imports",context.getString(R.string.import_title),NotificationManager.IMPORTANCE_LOW))
+        context.getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("media-imports",one.njk.sao.AppLanguages.context(context).getString(R.string.import_title),NotificationManager.IMPORTANCE_LOW))
         val intent=PendingIntent.getActivity(context,6211,Intent(context,MediaImportActivity::class.java),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return NotificationCompat.Builder(context,"media-imports").setSmallIcon(R.drawable.ic_picker_copy)
-            .setContentTitle(context.getString(R.string.import_title)).setContentText(context.getString(R.string.import_in_progress))
+            .setContentTitle(one.njk.sao.AppLanguages.context(context).getString(R.string.import_title)).setContentText(one.njk.sao.AppLanguages.context(context).getString(R.string.import_in_progress))
             .setContentIntent(intent).setProgress(0,0,true).setOngoing(true).build()
     }
 }

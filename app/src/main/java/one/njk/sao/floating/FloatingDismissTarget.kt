@@ -19,7 +19,7 @@ internal class FloatingDismissTarget(context: Context, private val windows: Wind
     private fun dp(value: Int) = (value * density).toInt()
     private val target = MaterialButton(context, null, com.google.android.material.R.attr.materialButtonStyle).apply {
         id = R.id.floating_dismiss_target
-        text = context.getString(R.string.floating_drag_dismiss)
+        text = one.njk.sao.AppLanguages.context(context).getString(R.string.floating_drag_dismiss)
         icon = AppCompatResources.getDrawable(context, R.drawable.ic_picker_close)
         iconSize = dp(24); iconPadding = dp(8)
         cornerRadius = dp(32); minHeight = dp(56)
@@ -38,8 +38,9 @@ internal class FloatingDismissTarget(context: Context, private val windows: Wind
     fun show(bounds: Rect, insets: Insets, imeBottom: Int) {
         if (attached) return
         setHovered(false)
-        val textWidth = maxOf(target.paint.measureText(target.context.getString(R.string.floating_drag_dismiss)),
-            target.paint.measureText(target.context.getString(R.string.floating_release_dismiss)))
+        val strings = one.njk.sao.AppLanguages.context(target.context)
+        val textWidth = maxOf(target.paint.measureText(strings.getString(R.string.floating_drag_dismiss)),
+            target.paint.measureText(strings.getString(R.string.floating_release_dismiss)))
         val width = minOf(maxOf(0, bounds.width() - insets.left - insets.right - dp(32)),
             ceil(textWidth).toInt() + target.paddingLeft + target.paddingRight + target.iconSize + target.iconPadding + dp(8))
         target.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
@@ -66,7 +67,9 @@ internal class FloatingDismissTarget(context: Context, private val windows: Wind
             else com.google.android.material.R.attr.colorOnSurface)
         target.backgroundTintList = ColorStateList.valueOf(color)
         target.setTextColor(foreground); target.iconTint = ColorStateList.valueOf(foreground)
-        target.text = target.context.getString(if (value) R.string.floating_release_dismiss else R.string.floating_drag_dismiss)
+        val strings = one.njk.sao.AppLanguages.context(target.context)
+        target.layoutDirection = strings.resources.configuration.layoutDirection
+        target.text = strings.getString(if (value) R.string.floating_release_dismiss else R.string.floating_drag_dismiss)
         return changed
     }
 

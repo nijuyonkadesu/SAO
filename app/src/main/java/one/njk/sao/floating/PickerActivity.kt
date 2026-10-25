@@ -148,7 +148,7 @@ class PickerActivity : AppCompatActivity() {
             beforeGesture = { binding.search.dismissSuggestions(); if (::sourceGesture.isInitialized) sourceGesture.cancel() })
         sourceGesture = HoldDragSelector(binding.sourceToggle, binding.root as FrameLayout,
             choices = ::sourceGestureChoices,
-            selected = { SourceGestureChoice(catalog.selectedId, catalog.selected?.name ?: getString(R.string.picker_source_none)) },
+            selected = { SourceGestureChoice(catalog.selectedId, catalog.selected?.displayName(this) ?: getString(R.string.picker_source_none)) },
             label = { it.name }, identity = { catalog.identity },
             apply = { choice ->
                 showSource(false)
@@ -399,10 +399,18 @@ class PickerActivity : AppCompatActivity() {
         }
         val query = model.query.value.text.trim()
         val pickApp = target == MessagingTarget.OTHER && appChoices.isNotEmpty()
-        binding.targetLabel.text = (name?.let { getString(R.string.picker_target, it) } ?: getString(R.string.picker_clipboard)) +
-            if (model.state.value.sequenceId != null) "\n${getString(R.string.sequence_title)}"
-            else if (query.isNotEmpty()) "\n“$query”" else if (model.query.value.randomRequest != null) "\n${getString(R.string.search_random_results)}"
-            else if (pickApp) " ▾" else ""
+        val heading = name?.let { getString(R.string.picker_target, it) } ?: getString(R.string.picker_clipboard)
+        val detail = when {
+            model.state.value.sequenceId != null -> getString(R.string.sequence_title)
+            query.isNotEmpty() -> getString(R.string.picker_query_label,query)
+            model.query.value.randomRequest != null -> getString(R.string.search_random_results)
+            else -> null
+        }
+        binding.targetLabel.text = when {
+            detail != null -> getString(R.string.label_with_detail,heading,detail)
+            pickApp -> getString(R.string.picker_dropdown_label,heading)
+            else -> heading
+        }
         binding.targetLabel.contentDescription = binding.targetLabel.text.toString() + if (pickApp) ", ${getString(R.string.picker_choose_target)}" else ""
         val activeFilters = model.query.value.constraints.forSource(searchOptions.state.value.sourceId).count
         binding.searchToggle.isActivated = query.isNotEmpty() || model.query.value.randomRequest != null || (searchController.supported &&
@@ -412,7 +420,7 @@ class PickerActivity : AppCompatActivity() {
             if (compactSearch) R.drawable.ic_picker_filter else R.drawable.ic_picker_search)
         binding.searchToggle.contentDescription = getString(if (compactSearch) R.string.search_options else R.string.floating_search_hint) + if (query.isNotEmpty()) ": $query" else ""
         binding.sourceToggle.isVisible = !editing
-        val label = catalog.selected?.name ?: getString(R.string.picker_source_none)
+        val label = catalog.selected?.displayName(this) ?: getString(R.string.picker_source_none)
         val density = resources.displayMetrics.density
         val headerWidth = binding.pickerHeader.width.takeIf { it > 0 } ?: ((metrics.bounds.width() / density - 48) * density).toInt()
         val desired = binding.sourceToggle.paint.measureText("$label ▾") + 48 * density
@@ -595,7 +603,7 @@ class PickerActivity : AppCompatActivity() {
     private fun sourceGestureChoices(): List<SourceGestureChoice> {
         val state = sourcesModel.state.value
         if (!state.loaded || state.saving) return emptyList()
-        return catalog.profiles.map { SourceGestureChoice(it.id, it.name) }
+        return catalog.profiles.map { SourceGestureChoice(it.id, it.displayName(this)) }
     }
     private fun cancelPickerGesture(): Boolean {
         val search = searchController.cancelGesture()
