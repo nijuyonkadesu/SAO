@@ -73,4 +73,16 @@ class UsageReportTest {
         assertEquals(10L,report.week.actions); assertEquals(10L,report.week.actionCounts.single().count)
         assertEquals(106L,report.year.actions); assertTrue(report.year.buckets.isEmpty())
     }
+    @Test fun monthlyTotalsRespectLeapDaysMonthBoundariesAndFutureDates() {
+        val selected=LocalDate.of(2024,2,29)
+        val dashboard=UsageDashboard(UsageSelection(UsageRange.WEEK,selected,DayOfWeek.MONDAY),emptyList(),
+            listOf(day("2024-01-31",99),day("2024-02-01",3),day("2024-02-29",7),day("2024-03-01",99)),selected)
+        assertEquals(LocalDate.of(2024,2,1),dashboard.month.selection.start)
+        assertEquals(LocalDate.of(2024,3,1),dashboard.month.selection.endExclusive)
+        assertEquals(29,dashboard.month.daily.size); assertEquals(10L,dashboard.month.actions)
+        assertEquals(2,dashboard.month.activeDays); assertTrue(dashboard.month.buckets.isEmpty())
+        val beforeLeapDay=dashboard.copy(today=LocalDate.of(2024,2,28))
+        assertEquals(3L,beforeLeapDay.month.actions)
+        assertEquals(31,UsageReport(UsageSelection(UsageRange.MONTH,today,DayOfWeek.SUNDAY),emptyList(),emptyList(),today).daily.size)
+    }
 }

@@ -23,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.chip.ChipGroup
 import com.google.android.material.datepicker.CalendarConstraints
 import com.google.android.material.datepicker.DateValidatorPointBackward
 import com.google.android.material.datepicker.MaterialDatePicker
@@ -49,6 +50,7 @@ class UsageFragment: Fragment() {
     private val binding get()=requireNotNull(_binding)
     private val model: UsageViewModel by viewModels()
     private var rendered: UsageDashboard?=null
+    private var renderedCalendarMode: UsageCalendarMode?=null
     private var names: Map<String,String> = emptyMap()
     private var showDay=false
     private val locale get()=resources.configuration.locales[0]
@@ -95,6 +97,9 @@ class UsageFragment: Fragment() {
             launch { model.sourceNames.collect { current ->
                 if(names!=current) { names=current; rendered?.takeIf { it.selection==model.selectionState.value }?.let(::render) }
             } }
+            launch { model.calendarMode.collect { mode ->
+                if(renderedCalendarMode!=mode) rendered?.let(::calendar)
+            } }
         } }
     }
     override fun onStart() {
@@ -107,7 +112,7 @@ class UsageFragment: Fragment() {
     override fun onStop() { requireContext().unregisterReceiver(datesChanged); super.onStop() }
     override fun onDestroyView() {
         model.scroll=binding.usageScroll.scrollY
-        rendered=null; _binding=null; super.onDestroyView()
+        rendered=null; renderedCalendarMode=null; _binding=null; super.onDestroyView()
     }
     private fun render(report: UsageDashboard) {
         val position=if(rendered==null) model.scroll else binding.usageScroll.scrollY
@@ -147,28 +152,39 @@ class UsageFragment: Fragment() {
             R.string.usage_handoffs to numbers.format(report.handoffs)),listOf(Tone.SURFACE,Tone.SECONDARY,Tone.TERTIARY))
     }
     private fun calendar(dashboard: UsageDashboard) {
-        val report=dashboard.year
-        val column=section(R.string.usage_calendar)
+        val mode=model.calendarMode.value
+        renderedCalendarMode=mode
+        val monthly=mode==UsageCalendarMode.MONTH
+        val report=if(monthly) dashboard.month else dashboard.year
+        val column=binding.usageContent.findViewById<LinearLayout>(R.id.usage_activity_calendar) ?: section(R.string.usage_calendar)
         column.id=R.id.usage_activity_calendar
+        while(column.childCount>1) column.removeViewAt(1)
+        column.addView((layoutInflater.inflate(R.layout.view_usage_calendar_modes,column,false) as ChipGroup).apply {
+            check(if(monthly) R.id.usage_calendar_month else R.id.usage_calendar_year)
+            setOnCheckedStateChangeListener { _,ids ->
+                model.calendarMode(if(R.id.usage_calendar_month in ids) UsageCalendarMode.MONTH else UsageCalendarMode.YEAR)
+            }
+        },spaced(-1,-2))
         val controls=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL }
         column.addView(controls)
-        controls.addView(iconButton(R.drawable.ic_usage_previous,R.string.usage_previous_year) { model.year(-1) })
-        controls.addView(text(NumberFormat.getIntegerInstance(locale).apply { isGroupingUsed=false }.format(report.selection.anchor.year),true).apply { gravity=Gravity.CENTER },LinearLayout.LayoutParams(0,-2,1f))
-        controls.addView(iconButton(R.drawable.ic_usage_next,R.string.usage_next_year) { model.year(1) }.apply {
-            isEnabled=report.selection.anchor.year<dashboard.today.year
+        controls.addView(iconButton(R.drawable.ic_usage_previous,if(monthly) R.string.usage_previous_month else R.string.usage_previous_year) { model.stepCalendar(-1) }.apply { id=R.id.usage_calendar_previous })
+        val label=if(monthly) report.selection.start.format(DateTimeFormatter.ofPattern("LLLL yyyy",locale)) else NumberFormat.getIntegerInstance(locale).apply { isGroupingUsed=false }.format(report.selection.anchor.year)
+        controls.addView(text(label,true).apply { id=R.id.usage_calendar_period; gravity=Gravity.CENTER },LinearLayout.LayoutParams(0,-2,1f))
+        controls.addView(iconButton(R.drawable.ic_usage_next,if(monthly) R.string.usage_next_month else R.string.usage_next_year) { model.stepCalendar(1) }.apply {
+            id=R.id.usage_calendar_next; isEnabled=report.selection.endExclusive<=dashboard.today
         })
-        val chart=UsageHeatmapView(requireContext(),report.selection.anchor.year,report.periodDays.associate { it.day to it.actions },
-            dashboard.selection.anchor,dashboard.today,dashboard.selection.firstWeekday) { date ->
+        val chart=UsageHeatmapView(requireContext(),report.selection,report.periodDays.associate { it.day to it.actions },
+            dashboard.selection.anchor,dashboard.today) { date ->
             if(date==model.selectionState.value.anchor) binding.usageScroll.smoothScrollTo(0,(binding.root.findViewById<View>(R.id.usage_daily_chart).parent as View).top+binding.usageContent.top)
             else { showDay=true; model.date(date) }
         }.apply { id=R.id.usage_heatmap }
         val scroll=HorizontalScrollView(requireContext()).apply {
-            isHorizontalScrollBarEnabled=false
+            isHorizontalScrollBarEnabled=false; isFillViewport=monthly
             addView(chart,ViewGroup.LayoutParams(-2,-2))
         }
         column.addView(scroll,spaced(-1,-2))
         scroll.post {
-            if(chart.isAttachedToWindow) {
+            if(chart.isAttachedToWindow && !monthly) {
                 val x=if(model.heatmapYear==chart.year && model.heatmapDate==dashboard.selection.anchor.toEpochDay()) model.heatmapScroll else chart.bounds(dashboard.selection.anchor).centerX()-scroll.width/2
                 scroll.scrollTo(x.coerceAtLeast(0),0)
                 scroll.setOnScrollChangeListener { _: View,x: Int,_: Int,_: Int,_: Int ->
@@ -181,8 +197,11 @@ class UsageFragment: Fragment() {
         requireContext().usageHeatColors().forEach { color -> legend.addView(View(requireContext()).apply { background=rounded(color,3) },LinearLayout.LayoutParams(dp(12),dp(12)).apply { marginStart=dp(4) }) }
         legend.addView(text(getString(R.string.usage_more)).apply { setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelSmall) },LinearLayout.LayoutParams(-2,-2).apply { marginStart=dp(6) })
         column.addView(legend,spaced(-1,-2))
-        column.addView(text(getString(R.string.usage_heatmap_hint)),spaced(-1,-2))
-        metrics(column,listOf(R.string.usage_active_days to dayCount(report.activeDays),
+        column.addView(text(getString(if(monthly) R.string.usage_month_hint else R.string.usage_heatmap_hint)),spaced(-1,-2))
+        if(monthly) {
+            val average=NumberFormat.getNumberInstance(locale).apply { maximumFractionDigits=1 }.format(if(report.activeDays==0) 0.0 else report.actions.toDouble()/report.activeDays)
+            metrics(column,listOf(R.string.usage_actions to numbers.format(report.actions),R.string.usage_active_days to numbers.format(report.activeDays),R.string.usage_average_day to average))
+        } else metrics(column,listOf(R.string.usage_active_days to dayCount(report.activeDays),
             R.string.usage_current_streak to dayCount(report.streak.current),R.string.usage_best_streak to dayCount(report.streak.best)))
     }
     private fun week(report: UsageReport) {

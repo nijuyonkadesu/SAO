@@ -4,6 +4,11 @@
     <string name="usage_next">Next day</string>
     <string name="usage_previous_year">Previous year</string>
     <string name="usage_next_year">Next year</string>
+    <string name="usage_previous_month">Previous month</string>
+    <string name="usage_next_month">Next month</string>
+    <string name="usage_month">Month</string>
+    <string name="usage_year">Year</string>
+    <string name="usage_month_hint">Choose a date for hourly activity. Color shows daily usage this month.</string>
     <string name="usage_jump_today">Today</string>
     <string name="usage_date_selection">%1$s. Choose a date.</string>
     <string name="usage_choose_date">Choose a date</string>

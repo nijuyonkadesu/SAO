@@ -13,7 +13,8 @@ enum class UsageTarget { NONE, WHATSAPP, TELEGRAM, DISCORD, INSTAGRAM, OTHER }
 enum class UsageRoute { NONE, CLIPBOARD, ACCESSIBILITY, NATIVE, ATTACHMENT }
 enum class UsageOutcome { ACCEPTED, FAILED, UNCERTAIN }
 enum class UsageSearchMode { NONE, CONTEXT, FILENAME, DESCRIPTION, PATH, OCR, RANDOM }
-enum class UsageRange { DAY, WEEK, YEAR }
+enum class UsageRange { DAY, WEEK, MONTH, YEAR }
+enum class UsageCalendarMode(val range: UsageRange) { MONTH(UsageRange.MONTH), YEAR(UsageRange.YEAR) }
 
 /** Aggregate dimensions deliberately cannot contain queries, media identities or chat metadata. */
 data class UsageEvent(
@@ -45,11 +46,13 @@ data class UsageSelection(val range: UsageRange, val anchor: LocalDate, val firs
     val start: LocalDate get() = when(range) {
         UsageRange.DAY -> anchor
         UsageRange.WEEK -> anchor.with(TemporalAdjusters.previousOrSame(firstWeekday))
+        UsageRange.MONTH -> anchor.withDayOfMonth(1)
         UsageRange.YEAR -> anchor.withDayOfYear(1)
     }
     val endExclusive: LocalDate get() = when(range) {
         UsageRange.DAY -> start.plusDays(1)
         UsageRange.WEEK -> start.plusWeeks(1)
+        UsageRange.MONTH -> start.plusMonths(1)
         UsageRange.YEAR -> start.plusYears(1)
     }
 }
@@ -58,13 +61,14 @@ data class UsageSelection(val range: UsageRange, val anchor: LocalDate, val firs
 data class UsageDashboard(val selection: UsageSelection,val weekBuckets: List<UsageBucket>,val days: List<UsageDay>,val today: LocalDate) {
     private fun report(range: UsageRange): UsageReport {
         val period=selection.copy(range=range)
-        val buckets=if(range==UsageRange.YEAR) emptyList() else weekBuckets.filter {
+        val buckets=if(range==UsageRange.YEAR || range==UsageRange.MONTH) emptyList() else weekBuckets.filter {
             it.day>=period.start.toEpochDay() && it.day<period.endExclusive.toEpochDay()
         }
         return UsageReport(period,buckets,days,today)
     }
     val day=report(UsageRange.DAY)
     val week=report(UsageRange.WEEK)
+    val month=report(UsageRange.MONTH)
     val year=report(UsageRange.YEAR)
 }
 

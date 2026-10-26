@@ -70,6 +70,16 @@ class UsageDeviceTest {
             awaitReport(scenario)
             scenario.onActivity { it.findViewById<View>(R.id.usage_previous).performClick() }
             awaitReport(scenario,LocalDate.now().minusDays(1))
+            var daily: View?=null
+            scenario.onActivity { activity ->
+                daily=activity.findViewById(R.id.usage_daily_chart)
+                activity.findViewById<View>(R.id.usage_calendar_month).performClick()
+            }
+            instrumentation.waitForIdleSync()
+            scenario.onActivity { activity ->
+                assertSame("Changing calendar mode keeps the other reports intact",daily,activity.findViewById(R.id.usage_daily_chart))
+                assertEquals(UsageRange.MONTH,activity.findViewById<UsageHeatmapView>(R.id.usage_heatmap).period.range)
+            }
             var before=""
             var scroll=0
             scenario.onActivity { activity ->
@@ -82,10 +92,15 @@ class UsageDeviceTest {
             scenario.onActivity { activity ->
                 assertEquals(before,activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_period).text.toString())
                 assertEquals(scroll,activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollY)
+                assertTrue(activity.findViewById<com.google.android.material.chip.Chip>(R.id.usage_calendar_month).isChecked)
                 val ids=listOf(R.id.usage_activity_calendar,R.id.usage_daily_chart,R.id.usage_weekly_chart,R.id.usage_destinations,R.id.usage_breakdown,R.id.usage_records)
                 val tops=ids.map { (activity.findViewById<View>(it).parent as View).top }
                 assertEquals("Reports appear together in one scrolling page",tops.sorted(),tops)
             }
+            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_previous).performClick() }
+            awaitReport(scenario,LocalDate.now().minusDays(1).minusMonths(1))
+            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_next).performClick() }
+            awaitReport(scenario,LocalDate.now().minusDays(1))
         }
     }
     @Test fun seededReportsCanBeCapturedWithoutProductionSeedData(): Unit=runBlocking {
@@ -136,6 +151,20 @@ class UsageDeviceTest {
                 assertTrue(scroll.width>0)
             }
             awaitReport(scenario,today.minusDays(2))
+            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_month).performClick() }
+            instrumentation.waitForIdleSync()
+            scenario.onActivity { activity ->
+                val chart=activity.findViewById<UsageHeatmapView>(R.id.usage_heatmap)
+                assertEquals(UsageRange.MONTH,chart.period.range)
+                assertTrue("All seven weekday columns fit the monthly viewport",chart.width<=(chart.parent as View).width)
+                val node=chart.accessibilityNodeProvider!!.createAccessibilityNodeInfo(today.minusDays(2).dayOfMonth-1)!!
+                assertTrue(node.isSelected); assertTrue(node.isClickable)
+                val card=activity.findViewById<View>(R.id.usage_activity_calendar).parent as View
+                activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollTo(0,card.top+activity.findViewById<View>(R.id.usage_content).top)
+            }
+            instrumentation.waitForIdleSync(); SystemClock.sleep(180)
+            val month=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            File(app.filesDir,"usage-month.png").outputStream().use { month.compress(Bitmap.CompressFormat.PNG,100,it) }; month.recycle()
             assertTrue(access.usageDatabase().usage().observeDays().first().isNotEmpty())
             val clipboard=EntryPointAccessors.fromApplication(app,one.njk.sao.floating.FloatingTestAccess::class.java).clipboard()
             val request=one.njk.sao.floating.ClipboardRequest()

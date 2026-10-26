@@ -24,6 +24,8 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
     private val anchor=runCatching { LocalDate.parse(saved.get<String>("usage_anchor")) }.getOrDefault(LocalDate.now())
     private val selection=MutableStateFlow(UsageSelection(UsageRange.WEEK,anchor,WeekFields.of(Locale.getDefault()).firstDayOfWeek))
     val selectionState=selection.asStateFlow()
+    private val calendar=MutableStateFlow(runCatching { UsageCalendarMode.valueOf(saved["usage_calendar_mode"] ?: "YEAR") }.getOrDefault(UsageCalendarMode.YEAR))
+    val calendarMode=calendar.asStateFlow()
     private val today=MutableStateFlow(LocalDate.now())
     val sourceNames=profiles.snapshots.map { snapshot -> snapshot.catalog.profiles.associate { it.id to it.name } }
         .catch { error -> if(error is CancellationException) throw error; emit(emptyMap()) }
@@ -46,7 +48,11 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
         selection.value=selection.value.copy(anchor=actual)
     }
     fun step(direction: Long)=date(selection.value.anchor.plusDays(direction))
-    fun year(direction: Long)=date(selection.value.anchor.plusYears(direction))
+    fun calendarMode(value: UsageCalendarMode) { saved["usage_calendar_mode"]=value.name; calendar.value=value }
+    fun stepCalendar(direction: Long)=date(when(calendar.value) {
+        UsageCalendarMode.MONTH -> selection.value.anchor.plusMonths(direction)
+        UsageCalendarMode.YEAR -> selection.value.anchor.plusYears(direction)
+    })
     fun enabled(value: Boolean) { viewModelScope.launch { try { repository.enabled(value) } catch(cancelled: CancellationException) { throw cancelled } catch(_: Exception) { /* Repository exposes the error without losing existing graphs. */ } } }
     fun clear() { viewModelScope.launch { try { repository.clear() } catch(cancelled: CancellationException) { throw cancelled } catch(_: Exception) { /* Displayed through repository.failure. */ } } }
     var scroll: Int
