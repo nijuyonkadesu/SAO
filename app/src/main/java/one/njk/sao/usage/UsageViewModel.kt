@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import one.njk.sao.floating.SourceProfiles
 import one.njk.sao.source.FloatingDispatchers
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.temporal.WeekFields
 import java.util.Locale
 import javax.inject.Inject
@@ -26,6 +27,8 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
     val selectionState=selection.asStateFlow()
     private val calendar=MutableStateFlow(runCatching { UsageCalendarMode.valueOf(saved["usage_calendar_mode"] ?: "YEAR") }.getOrDefault(UsageCalendarMode.YEAR))
     val calendarMode=calendar.asStateFlow()
+    private val month=MutableStateFlow(runCatching { YearMonth.parse(saved.get<String>("usage_calendar_month")) }.getOrDefault(YearMonth.from(anchor)))
+    val calendarMonth=month.asStateFlow()
     private val today=MutableStateFlow(LocalDate.now())
     val sourceNames=profiles.snapshots.map { snapshot -> snapshot.catalog.profiles.associate { it.id to it.name } }
         .catch { error -> if(error is CancellationException) throw error; emit(emptyMap()) }
@@ -46,13 +49,18 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
         val actual=value.coerceAtMost(today.value)
         saved["usage_anchor"]=actual.toString()
         selection.value=selection.value.copy(anchor=actual)
+        browseMonth(YearMonth.from(actual))
     }
     fun step(direction: Long)=date(selection.value.anchor.plusDays(direction))
     fun calendarMode(value: UsageCalendarMode) { saved["usage_calendar_mode"]=value.name; calendar.value=value }
-    fun stepCalendar(direction: Long)=date(when(calendar.value) {
-        UsageCalendarMode.MONTH -> selection.value.anchor.plusMonths(direction)
-        UsageCalendarMode.YEAR -> selection.value.anchor.plusYears(direction)
-    })
+    fun stepCalendar(direction: Long) {
+        if(calendar.value==UsageCalendarMode.MONTH) browseMonth(month.value.plusMonths(direction))
+        else date(selection.value.anchor.plusYears(direction))
+    }
+    fun browseMonth(value: YearMonth) {
+        val actual=value.coerceAtMost(YearMonth.from(today.value))
+        saved["usage_calendar_month"]=actual.toString(); month.value=actual
+    }
     fun enabled(value: Boolean) { viewModelScope.launch { try { repository.enabled(value) } catch(cancelled: CancellationException) { throw cancelled } catch(_: Exception) { /* Repository exposes the error without losing existing graphs. */ } } }
     fun clear() { viewModelScope.launch { try { repository.clear() } catch(cancelled: CancellationException) { throw cancelled } catch(_: Exception) { /* Displayed through repository.failure. */ } } }
     var scroll: Int

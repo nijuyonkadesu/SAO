@@ -3,6 +3,7 @@ package one.njk.sao.usage
 import one.njk.sao.source.MediaItem
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.YearMonth
 import java.time.temporal.TemporalAdjusters
 import java.util.UUID
 
@@ -59,6 +60,8 @@ data class UsageSelection(val range: UsageRange, val anchor: LocalDate, val firs
 
 /** One date drives the entire dashboard. Only its week needs detailed buckets. */
 data class UsageDashboard(val selection: UsageSelection,val weekBuckets: List<UsageBucket>,val days: List<UsageDay>,val today: LocalDate) {
+    val calendarMonths=days.filter { it.day<=today.toEpochDay() }.groupBy { YearMonth.from(LocalDate.ofEpochDay(it.day)) }
+        .mapValues { (_,days) -> UsageMonthSummary(days) }
     private fun report(range: UsageRange): UsageReport {
         val period=selection.copy(range=range)
         val buckets=if(range==UsageRange.YEAR || range==UsageRange.MONTH) emptyList() else weekBuckets.filter {
@@ -70,6 +73,14 @@ data class UsageDashboard(val selection: UsageSelection,val weekBuckets: List<Us
     val week=report(UsageRange.WEEK)
     val month=report(UsageRange.MONTH)
     val year=report(UsageRange.YEAR)
+}
+
+/** Prepared with the dashboard on the CPU dispatcher, never during RecyclerView binding. */
+data class UsageMonthSummary(val days: List<UsageDay>) {
+    val dayCounts=days.associate { it.day to it.actions }
+    val actions=days.sumOf { it.actions }
+    val activeDays=days.size
+    companion object { val EMPTY=UsageMonthSummary(emptyList()) }
 }
 
 /** Relative quartiles keep light/heavy days distinguishable even when a single day is an outlier. */

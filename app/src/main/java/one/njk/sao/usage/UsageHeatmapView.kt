@@ -31,6 +31,7 @@ internal fun Context.usageHeatColors(): List<Int> {
 @SuppressLint("ViewConstructor") // Report data/callback supplied programmatically.
 internal class UsageHeatmapView(context: Context,val period: UsageSelection,private val days: Map<Long,Long>,
     private val selected: LocalDate,private val today: LocalDate,
+    fixedMonthRows: Boolean=false,
     private val onDate: (LocalDate)->Unit): View(context) {
     private val density=resources.displayMetrics.density
     private val locale=resources.configuration.locales[0]
@@ -42,7 +43,7 @@ internal class UsageHeatmapView(context: Context,val period: UsageSelection,priv
     private val dayCount=ChronoUnit.DAYS.between(first,period.endExclusive).toInt()
     private val weeks=((ChronoUnit.DAYS.between(gridStart,if(monthly) period.endExclusive else end)+6)/7).toInt()
     private val columns=if(monthly) 7 else weeks
-    private val rows=if(monthly) weeks else 7
+    private val rows=if(monthly) { if(fixedMonthRows) 6 else weeks } else 7
     private val colors=context.usageHeatColors()
     private val intensity=UsageIntensity(days.values)
     private val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize=context.usageSp(11f) }

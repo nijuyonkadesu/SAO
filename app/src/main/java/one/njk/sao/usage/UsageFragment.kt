@@ -39,6 +39,7 @@ import one.njk.sao.databinding.FragmentUsageBinding
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -51,6 +52,7 @@ class UsageFragment: Fragment() {
     private val model: UsageViewModel by viewModels()
     private var rendered: UsageDashboard?=null
     private var renderedCalendarMode: UsageCalendarMode?=null
+    private var monthCarousel: UsageMonthCarousel?=null
     private var names: Map<String,String> = emptyMap()
     private var showDay=false
     private val locale get()=resources.configuration.locales[0]
@@ -100,6 +102,12 @@ class UsageFragment: Fragment() {
             launch { model.calendarMode.collect { mode ->
                 if(renderedCalendarMode!=mode) rendered?.let(::calendar)
             } }
+            launch { model.calendarMonth.collect { month ->
+                if(renderedCalendarMode==UsageCalendarMode.MONTH) {
+                    monthCarousel?.showMonth(month)
+                    updateMonthControls(month)
+                }
+            } }
         } }
     }
     override fun onStart() {
@@ -112,6 +120,7 @@ class UsageFragment: Fragment() {
     override fun onStop() { requireContext().unregisterReceiver(datesChanged); super.onStop() }
     override fun onDestroyView() {
         model.scroll=binding.usageScroll.scrollY
+        monthCarousel?.close(); monthCarousel=null
         rendered=null; renderedCalendarMode=null; _binding=null; super.onDestroyView()
     }
     private fun render(report: UsageDashboard) {
@@ -158,6 +167,7 @@ class UsageFragment: Fragment() {
         val report=if(monthly) dashboard.month else dashboard.year
         val column=binding.usageContent.findViewById<LinearLayout>(R.id.usage_activity_calendar) ?: section(R.string.usage_calendar)
         column.id=R.id.usage_activity_calendar
+        monthCarousel?.close(); monthCarousel=null
         while(column.childCount>1) column.removeViewAt(1)
         column.addView((layoutInflater.inflate(R.layout.view_usage_calendar_modes,column,false) as ChipGroup).apply {
             check(if(monthly) R.id.usage_calendar_month else R.id.usage_calendar_year)
@@ -168,27 +178,31 @@ class UsageFragment: Fragment() {
         val controls=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL }
         column.addView(controls)
         controls.addView(iconButton(R.drawable.ic_usage_previous,if(monthly) R.string.usage_previous_month else R.string.usage_previous_year) { model.stepCalendar(-1) }.apply { id=R.id.usage_calendar_previous })
-        val label=if(monthly) report.selection.start.format(DateTimeFormatter.ofPattern("LLLL yyyy",locale)) else NumberFormat.getIntegerInstance(locale).apply { isGroupingUsed=false }.format(report.selection.anchor.year)
+        val label=if(monthly) model.calendarMonth.value.atDay(1).format(DateTimeFormatter.ofPattern("LLLL yyyy",locale)) else NumberFormat.getIntegerInstance(locale).apply { isGroupingUsed=false }.format(report.selection.anchor.year)
         controls.addView(text(label,true).apply { id=R.id.usage_calendar_period; gravity=Gravity.CENTER },LinearLayout.LayoutParams(0,-2,1f))
         controls.addView(iconButton(R.drawable.ic_usage_next,if(monthly) R.string.usage_next_month else R.string.usage_next_year) { model.stepCalendar(1) }.apply {
             id=R.id.usage_calendar_next; isEnabled=report.selection.endExclusive<=dashboard.today
         })
-        val chart=UsageHeatmapView(requireContext(),report.selection,report.periodDays.associate { it.day to it.actions },
-            dashboard.selection.anchor,dashboard.today) { date ->
-            if(date==model.selectionState.value.anchor) binding.usageScroll.smoothScrollTo(0,(binding.root.findViewById<View>(R.id.usage_daily_chart).parent as View).top+binding.usageContent.top)
-            else { showDay=true; model.date(date) }
-        }.apply { id=R.id.usage_heatmap }
-        val scroll=HorizontalScrollView(requireContext()).apply {
-            isHorizontalScrollBarEnabled=false; isFillViewport=monthly
-            addView(chart,ViewGroup.LayoutParams(-2,-2))
-        }
-        column.addView(scroll,spaced(-1,-2))
-        scroll.post {
-            if(chart.isAttachedToWindow && !monthly) {
-                val x=if(model.heatmapYear==chart.year && model.heatmapDate==dashboard.selection.anchor.toEpochDay()) model.heatmapScroll else chart.bounds(dashboard.selection.anchor).centerX()-scroll.width/2
-                scroll.scrollTo(x.coerceAtLeast(0),0)
-                scroll.setOnScrollChangeListener { _: View,x: Int,_: Int,_: Int,_: Int ->
-                    model.heatmapYear=chart.year; model.heatmapDate=dashboard.selection.anchor.toEpochDay(); model.heatmapScroll=x
+        if(monthly) {
+            val carousel=UsageMonthCarousel(requireContext(),dashboard,model.calendarMonth.value,model::browseMonth,::selectUsageDay) { parent,month ->
+                val average=NumberFormat.getNumberInstance(locale).apply { maximumFractionDigits=1 }.format(if(month.activeDays==0) 0.0 else month.actions.toDouble()/month.activeDays)
+                metrics(parent,listOf(R.string.usage_actions to numbers.format(month.actions),R.string.usage_active_days to numbers.format(month.activeDays),R.string.usage_average_day to average))
+            }
+            monthCarousel=carousel
+            column.addView(carousel,spaced(-1,-2))
+            updateMonthControls(model.calendarMonth.value)
+        } else {
+            val chart=UsageHeatmapView(requireContext(),report.selection,report.periodDays.associate { it.day to it.actions },
+                dashboard.selection.anchor,dashboard.today,onDate=::selectUsageDay).apply { id=R.id.usage_heatmap }
+            val scroll=HorizontalScrollView(requireContext()).apply { isHorizontalScrollBarEnabled=false; addView(chart,ViewGroup.LayoutParams(-2,-2)) }
+            column.addView(scroll,spaced(-1,-2))
+            scroll.post {
+                if(chart.isAttachedToWindow) {
+                    val x=if(model.heatmapYear==chart.year && model.heatmapDate==dashboard.selection.anchor.toEpochDay()) model.heatmapScroll else chart.bounds(dashboard.selection.anchor).centerX()-scroll.width/2
+                    scroll.scrollTo(x.coerceAtLeast(0),0)
+                    scroll.setOnScrollChangeListener { _: View,x: Int,_: Int,_: Int,_: Int ->
+                        model.heatmapYear=chart.year; model.heatmapDate=dashboard.selection.anchor.toEpochDay(); model.heatmapScroll=x
+                    }
                 }
             }
         }
@@ -198,11 +212,18 @@ class UsageFragment: Fragment() {
         legend.addView(text(getString(R.string.usage_more)).apply { setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelSmall) },LinearLayout.LayoutParams(-2,-2).apply { marginStart=dp(6) })
         column.addView(legend,spaced(-1,-2))
         column.addView(text(getString(if(monthly) R.string.usage_month_hint else R.string.usage_heatmap_hint)),spaced(-1,-2))
-        if(monthly) {
-            val average=NumberFormat.getNumberInstance(locale).apply { maximumFractionDigits=1 }.format(if(report.activeDays==0) 0.0 else report.actions.toDouble()/report.activeDays)
-            metrics(column,listOf(R.string.usage_actions to numbers.format(report.actions),R.string.usage_active_days to numbers.format(report.activeDays),R.string.usage_average_day to average))
-        } else metrics(column,listOf(R.string.usage_active_days to dayCount(report.activeDays),
+        if(!monthly) metrics(column,listOf(R.string.usage_active_days to dayCount(report.activeDays),
             R.string.usage_current_streak to dayCount(report.streak.current),R.string.usage_best_streak to dayCount(report.streak.best)))
+    }
+    private fun updateMonthControls(month: YearMonth) {
+        val column=binding.usageContent.findViewById<LinearLayout>(R.id.usage_activity_calendar) ?: return
+        column.findViewById<MaterialTextView>(R.id.usage_calendar_period)?.text=month.atDay(1).format(DateTimeFormatter.ofPattern("LLLL yyyy",locale))
+        column.findViewById<View>(R.id.usage_calendar_next)?.isEnabled=month<YearMonth.from(rendered?.today ?: LocalDate.now())
+        column.findViewById<View>(R.id.usage_calendar_previous)?.isEnabled=monthCarousel?.let { month>it.firstMonth } ?: false
+    }
+    private fun selectUsageDay(date: LocalDate) {
+        if(date==model.selectionState.value.anchor) binding.usageScroll.smoothScrollTo(0,(binding.root.findViewById<View>(R.id.usage_daily_chart).parent as View).top+binding.usageContent.top)
+        else { showDay=true; model.date(date) }
     }
     private fun week(report: UsageReport) {
         val period=getString(R.string.usage_week_range,shortDate(report.selection.start),dayLabel(report.selection.endExclusive.minusDays(1)))

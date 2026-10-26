@@ -1,6 +1,7 @@
 <resources>
     <item type="id" name="usage_activity_calendar" />
     <item type="id" name="usage_heatmap" />
+    <item type="id" name="usage_month_carousel" />
     <item type="id" name="usage_calendar_previous" />
     <item type="id" name="usage_calendar_period" />
     <item type="id" name="usage_calendar_next" />

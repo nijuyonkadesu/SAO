@@ -83,6 +83,9 @@ class UsageReportTest {
         assertEquals(2,dashboard.month.activeDays); assertTrue(dashboard.month.buckets.isEmpty())
         val beforeLeapDay=dashboard.copy(today=LocalDate.of(2024,2,28))
         assertEquals(3L,beforeLeapDay.month.actions)
+        assertEquals(10L,dashboard.calendarMonths.getValue(java.time.YearMonth.of(2024,2)).actions)
+        assertEquals(3L,beforeLeapDay.calendarMonths.getValue(java.time.YearMonth.of(2024,2)).actions)
+        assertFalse(dashboard.calendarMonths.containsKey(java.time.YearMonth.of(2024,3)))
         assertEquals(31,UsageReport(UsageSelection(UsageRange.MONTH,today,DayOfWeek.SUNDAY),emptyList(),emptyList(),today).daily.size)
     }
 }

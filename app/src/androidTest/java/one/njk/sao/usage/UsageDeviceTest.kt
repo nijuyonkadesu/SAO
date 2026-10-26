@@ -17,6 +17,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
 import java.time.LocalDate
+import java.time.YearMonth
 
 class UsageDeviceTest {
     private val instrumentation=InstrumentationRegistry.getInstrumentation()
@@ -35,6 +36,35 @@ class UsageDeviceTest {
             if(!ready) SystemClock.sleep(40)
         } while(!ready && SystemClock.elapsedRealtime()<deadline)
         assertTrue("Expected the selected report to finish rendering: $date",ready)
+    }
+    private fun monthChart(activity: MainActivity): UsageHeatmapView? {
+        val carousel=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_month_carousel) ?: return null
+        val root=com.google.android.material.carousel.CarouselSnapHelper(false).findSnapView(carousel.layoutManager) ?: return null
+        fun chart(view: View): UsageHeatmapView? {
+            if(view is UsageHeatmapView) return view
+            if(view is android.view.ViewGroup) for(index in 0 until view.childCount) chart(view.getChildAt(index))?.let { return it }
+            return null
+        }
+        return chart(root)
+    }
+    private fun awaitMonth(scenario: ActivityScenario<MainActivity>,expected: YearMonth?=null): YearMonth {
+        val deadline=SystemClock.elapsedRealtime()+8000
+        var actual: YearMonth?=null
+        do {
+            scenario.onActivity { activity ->
+                val carousel=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_month_carousel) ?: return@onActivity
+                if(carousel.scrollState!=androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) return@onActivity
+                val chart=monthChart(activity) ?: return@onActivity
+                val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
+                val fragment=host.childFragmentManager.primaryNavigationFragment!!
+                val model=androidx.lifecycle.ViewModelProvider(fragment)[UsageViewModel::class.java]
+                val month=YearMonth.from(chart.period.anchor)
+                if(month==model.calendarMonth.value && (expected==null || expected==month) && chart.isShown && chart.width>0) actual=month
+            }
+            if(actual==null) SystemClock.sleep(40)
+        } while(actual==null && SystemClock.elapsedRealtime()<deadline)
+        assertNotNull("The carousel must settle on its displayed month: $expected",actual)
+        return actual!!
     }
     @Test fun incrementsPauseAndClearAreOrderedAndDoNotReplayQueuedEvents(): Unit=runBlocking {
         val db=Room.inMemoryDatabaseBuilder(app,UsageDatabase::class.java).build()
@@ -75,11 +105,23 @@ class UsageDeviceTest {
                 daily=activity.findViewById(R.id.usage_daily_chart)
                 activity.findViewById<View>(R.id.usage_calendar_month).performClick()
             }
-            instrumentation.waitForIdleSync()
+            awaitMonth(scenario,YearMonth.now())
             scenario.onActivity { activity ->
                 assertSame("Changing calendar mode keeps the other reports intact",daily,activity.findViewById(R.id.usage_daily_chart))
-                assertEquals(UsageRange.MONTH,activity.findViewById<UsageHeatmapView>(R.id.usage_heatmap).period.range)
+                assertEquals(UsageRange.MONTH,monthChart(activity)!!.period.range)
             }
+            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_previous).performClick() }
+            awaitMonth(scenario,YearMonth.now().minusMonths(1))
+            awaitReport(scenario,LocalDate.now().minusDays(1))
+            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_next).performClick() }
+            awaitMonth(scenario,YearMonth.now())
+            scenario.onActivity { activity ->
+                val carousel=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_month_carousel)
+                assertTrue(carousel.fling(if(carousel.layoutDirection==View.LAYOUT_DIRECTION_RTL) 5500 else -5500,0))
+            }
+            val browsed=awaitMonth(scenario)
+            assertTrue("A hard fling can pass multiple months",java.time.temporal.ChronoUnit.MONTHS.between(browsed,YearMonth.now())>1)
+            scenario.onActivity { activity -> assertSame("Browsing months keeps detailed reports mounted",daily,activity.findViewById(R.id.usage_daily_chart)) }
             var before=""
             var scroll=0
             scenario.onActivity { activity ->
@@ -88,6 +130,7 @@ class UsageDeviceTest {
                 scroll=activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollY
             }
             scenario.recreate(); awaitReport(scenario,LocalDate.now().minusDays(1))
+            awaitMonth(scenario,browsed)
             instrumentation.waitForIdleSync()
             scenario.onActivity { activity ->
                 assertEquals(before,activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_period).text.toString())
@@ -97,10 +140,6 @@ class UsageDeviceTest {
                 val tops=ids.map { (activity.findViewById<View>(it).parent as View).top }
                 assertEquals("Reports appear together in one scrolling page",tops.sorted(),tops)
             }
-            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_previous).performClick() }
-            awaitReport(scenario,LocalDate.now().minusDays(1).minusMonths(1))
-            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_next).performClick() }
-            awaitReport(scenario,LocalDate.now().minusDays(1))
         }
     }
     @Test fun seededReportsCanBeCapturedWithoutProductionSeedData(): Unit=runBlocking {
@@ -152,9 +191,9 @@ class UsageDeviceTest {
             }
             awaitReport(scenario,today.minusDays(2))
             scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_month).performClick() }
-            instrumentation.waitForIdleSync()
+            awaitMonth(scenario,YearMonth.from(today.minusDays(2)))
             scenario.onActivity { activity ->
-                val chart=activity.findViewById<UsageHeatmapView>(R.id.usage_heatmap)
+                val chart=monthChart(activity)!!
                 assertEquals(UsageRange.MONTH,chart.period.range)
                 assertTrue("All seven weekday columns fit the monthly viewport",chart.width<=(chart.parent as View).width)
                 val node=chart.accessibilityNodeProvider!!.createAccessibilityNodeInfo(today.minusDays(2).dayOfMonth-1)!!
@@ -165,6 +204,11 @@ class UsageDeviceTest {
             instrumentation.waitForIdleSync(); SystemClock.sleep(180)
             val month=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
             File(app.filesDir,"usage-month.png").outputStream().use { month.compress(Bitmap.CompressFormat.PNG,100,it) }; month.recycle()
+            scenario.onActivity { activity ->
+                assertTrue(monthChart(activity)!!.accessibilityNodeProvider!!.performAction(0,
+                    androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK,null))
+            }
+            awaitReport(scenario,today.withDayOfMonth(1))
             assertTrue(access.usageDatabase().usage().observeDays().first().isNotEmpty())
             val clipboard=EntryPointAccessors.fromApplication(app,one.njk.sao.floating.FloatingTestAccess::class.java).clipboard()
             val request=one.njk.sao.floating.ClipboardRequest()
