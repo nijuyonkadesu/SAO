@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.sample
 import one.njk.sao.databinding.FragmentCarouselBinding
 import one.njk.sao.floating.*
 import one.njk.sao.source.*
+import one.njk.sao.usage.*
 import one.njk.sao.viewmodels.ArtsViewModel
 import javax.inject.Inject
 
@@ -40,6 +41,7 @@ class CarouselFragment : Fragment(), MenuProvider {
     @Inject @HomeSources lateinit var exports: MediaExports
     @Inject lateinit var downloads: MediaDownloads
     @Inject lateinit var clipboard: ClipboardPublisher
+    @Inject lateinit var usage: UsageRecorder
     private val filenameRequest=ClipboardRequest()
     @Inject lateinit var preferences: FloatingPreferences
     private var holdMs = 160L
@@ -92,19 +94,20 @@ class CarouselFragment : Fragment(), MenuProvider {
         }
         titleHold = ResultHoldAction(binding.mediaTitle,{ !carousel.centeredItem?.filename.isNullOrBlank() },
             { holdMs }, {}, { carousel.centeredItem?.let { item -> action {
-                if(source.owns(item)) clipboard.publishFilename(item,filenameRequest,filenameRequest.next())
+                if(source.owns(item)) clipboard.publishFilename(item,filenameRequest,filenameRequest.next(),UsageSurface.HOME)
             } } })
         binding.bottomAppBar.setOnMenuItemClickListener { menu ->
             val item = carousel.centeredItem ?: return@setOnMenuItemClickListener false
             when(menu.itemId) {
                 R.id.bookmark -> { model.bookmark(item); Snackbar.make(binding.root,R.string.home_bookmarked,Snackbar.LENGTH_SHORT).show(); true }
-                R.id.download -> { action { downloads.save(item,exports.prepare(item,ExportRendition.MEDIA)); Snackbar.make(binding.root,R.string.home_saved,Snackbar.LENGTH_SHORT).show() }; true }
+                R.id.download -> { action { downloads.save(item,exports.prepare(item,ExportRendition.MEDIA)); usage.record(mediaUsage(UsageAction.DOWNLOAD,UsageSurface.HOME,item)); Snackbar.make(binding.root,R.string.home_saved,Snackbar.LENGTH_SHORT).show() }; true }
                 else -> false
             }
         }
         binding.share.setOnClickListener { carousel.centeredItem?.let { item -> action {
             val media = exports.displayed(item)
             startActivity(Intent.createChooser(MediaDelivery.intent(media,null,item.title),getString(R.string.home_share)))
+            usage.record(mediaUsage(UsageAction.SHARE,UsageSurface.HOME,item,route=UsageRoute.ATTACHMENT))
         } } }
         viewLifecycleOwner.lifecycleScope.launch { viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             adapter.playing = true
@@ -194,6 +197,7 @@ class CarouselFragment : Fragment(), MenuProvider {
     override fun onDestroyView() { filenameRequest.next(); titleHold?.cancel(); titleHold=null; collectionGesture?.dispose(); collectionGesture=null; carousel.close(); categories=null; _binding=null; super.onDestroyView() }
     override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) { menuInflater.inflate(R.menu.top_app_bar,menu) }
     override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when(menuItem.itemId) {
+        R.id.usage -> { findNavController().navigate(R.id.usageFragment); true }
         R.id.settings -> { findNavController().navigate(CarouselFragmentDirections.actionHomeFragmentToSettingsFragment()); true }
         R.id.edit -> { startActivity(Intent(requireContext(),SourceSettingsActivity::class.java)); true }
         else -> false

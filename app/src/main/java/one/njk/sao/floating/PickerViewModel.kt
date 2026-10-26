@@ -1,6 +1,7 @@
 package one.njk.sao.floating
 
 import one.njk.sao.source.*
+import one.njk.sao.usage.*
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -41,7 +42,8 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
     private val exports: MediaExports, private val clipboard: ClipboardPublisher,
     private val session: PickerBrowseSession = PickerBrowseSession(),
     private val savedState: SavedStateHandle = SavedStateHandle(),
-    private val dispatchers: FloatingDispatchers = FloatingDispatchers()) : ViewModel() {
+    private val dispatchers: FloatingDispatchers = FloatingDispatchers(),
+    private val usage: UsageRecorder = NoUsageRecorder) : ViewModel() {
     private val visibilityOwner = Any()
     private var pickerShowing = false
     private val visibleState = MutableStateFlow(false)
@@ -144,7 +146,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         val version = request.next(); copying?.cancel()
         val choice = DeliveryPolicy.clipboard(item, preferredOverride ?: preferences.current().preferStickers, target)
         val media = delivery(exports.prepare(item, choice.rendition, DeliveryPolicy.stickerRequirements(target)))
-        return source.owns(item) && clipboard.publish(item, media, request, version)
+        return source.owns(item) && clipboard.publish(item, media, request, version, recordUsage=false)
     }
     override fun onCleared() { session.releaseSequence(visibilityOwner); request.next(); pickerVisible(false) }
 
@@ -176,8 +178,21 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
             var snapshot = session.results(sourceId, query)
             if (snapshot == null) {
                 emit(PickerState(query = query, sourceId = sourceId))
-                val page = source.page(query)
-                if (source.identity.first() != sourceId) throw CancellationException("Source changed")
+                val started=android.os.SystemClock.elapsedRealtime()
+                val mode=if(query.randomRequest!=null) UsageSearchMode.RANDOM else query.mode.usageMode()
+                val page = try {
+                    source.page(query).also { page ->
+                        if(source.identity.first()!=sourceId) throw CancellationException("Source changed")
+                        usage.record(UsageEvent(UsageAction.SEARCH,UsageSurface.PICKER,sourceId,searchMode=mode,
+                            outcome=if(page.interrupted) UsageOutcome.UNCERTAIN else UsageOutcome.ACCEPTED,
+                            results=page.items.size.toLong(),latencyMillis=android.os.SystemClock.elapsedRealtime()-started))
+                    }
+                } catch(cancelled: CancellationException) { throw cancelled }
+                catch(error: Exception) {
+                    usage.record(UsageEvent(UsageAction.SEARCH,UsageSurface.PICKER,sourceId,searchMode=mode,
+                        outcome=UsageOutcome.FAILED,latencyMillis=android.os.SystemClock.elapsedRealtime()-started))
+                    throw error
+                }
                 snapshot = PickerResultsSnapshot(sourceId, query, uniqueItems(page.items), page.nextCursor, interrupted = page.interrupted)
                 session.rememberResults(snapshot)
             }

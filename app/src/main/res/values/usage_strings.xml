@@ -1,0 +1,92 @@
+<resources>
+    <string name="usage_title">Usage</string>
+    <string name="usage_overview">Overview</string>
+    <string name="usage_day">Day</string>
+    <string name="usage_week">Week</string>
+    <string name="usage_year">Year</string>
+    <string name="usage_previous">Previous period</string>
+    <string name="usage_next">Next period</string>
+    <string name="usage_date_selection">%1$s. Choose a date.</string>
+    <string name="usage_choose_date">Choose a date</string>
+    <string name="usage_today">Today in SAO</string>
+    <string name="usage_selected_day">Daily activity</string>
+    <string name="usage_selected_week">Weekly activity</string>
+    <string name="usage_selected_year">Yearly activity</string>
+    <string name="usage_actions">Actions</string>
+    <string name="usage_searches">Search requests</string>
+    <string name="usage_copies">Media copies</string>
+    <string name="usage_pastes">Paste handoffs</string>
+    <string name="usage_handoffs">Handoffs</string>
+    <string name="usage_filename">Filename copies</string>
+    <string name="usage_share">Attachment shares</string>
+    <string name="usage_stickers">Sticker handoffs</string>
+    <string name="usage_downloads">Downloads</string>
+    <string name="usage_bookmarks">Bookmarks</string>
+    <string name="usage_streaks">Activity streaks</string>
+    <string name="usage_current_streak">Current streak</string>
+    <string name="usage_best_streak">Best streak</string>
+    <string name="usage_calendar">Activity calendar</string>
+    <string name="usage_active_days">Active days</string>
+    <string name="usage_average_day">Actions per active day</string>
+    <string name="usage_lifetime">Since you started</string>
+    <string name="usage_hourly">Activity by hour</string>
+    <string name="usage_hourly_summary">Your day, hour by hour</string>
+    <string name="usage_action_breakdown">What you used</string>
+    <string name="usage_destinations">Where media goes</string>
+    <string name="usage_destination_note">Accepted handoffs to apps. These are not delivery receipts.</string>
+    <string name="usage_daily_trend">Activity through the week</string>
+    <string name="usage_media">Media formats</string>
+    <string name="usage_sources">Sources you used</string>
+    <string name="usage_removed_source">Removed source</string>
+    <string name="usage_outcomes">Handoff results</string>
+    <string name="usage_accepted">Accepted</string>
+    <string name="usage_failed">Unavailable or rejected</string>
+    <string name="usage_uncertain">Unconfirmed</string>
+    <string name="usage_image">Images</string>
+    <string name="usage_animation">Animated images</string>
+    <string name="usage_video">Videos</string>
+    <string name="usage_other_app">Other apps</string>
+    <string name="usage_whatsapp" translatable="false">WhatsApp</string>
+    <string name="usage_telegram" translatable="false">Telegram</string>
+    <string name="usage_discord" translatable="false">Discord</string>
+    <string name="usage_instagram" translatable="false">Instagram</string>
+    <string name="usage_busiest">Busiest periods</string>
+    <string name="usage_best_day">Best day</string>
+    <string name="usage_best_week">Best week</string>
+    <string name="usage_best_month">Best month</string>
+    <string name="usage_heatmap">Your year in activity</string>
+    <string name="usage_heatmap_hint">Swipe through the months. Choose a date to see its day.</string>
+    <string name="usage_empty_title">Your activity starts here</string>
+    <string name="usage_empty">Search, copy or share media with SAO to fill these charts. Earlier activity cannot be reconstructed.</string>
+    <string name="usage_empty_period">No activity in this period</string>
+    <string name="usage_local">On this device</string>
+    <string name="usage_privacy">Only activity counters are saved. Searches, filenames, media and chats are never stored here. Nothing is uploaded.</string>
+    <string name="usage_recording">Recording</string>
+    <string name="usage_paused">Paused</string>
+    <string name="usage_toggle_recording">Record usage on this device</string>
+    <string name="usage_clear">Clear statistics</string>
+    <string name="usage_clear_title">Clear usage statistics?</string>
+    <string name="usage_clear_message">This removes all recorded usage from this device. Your sources, media and bookmarks are kept.</string>
+    <string name="usage_storage_error">Some statistics could not be saved or loaded. Your media actions are unaffected.</string>
+    <string name="usage_point_value">%1$s: %2$s</string>
+    <string name="usage_date_activity">%1$s, %2$s. Open day.</string>
+    <string name="usage_percent_count">%1$s · %2$s</string>
+    <string name="usage_hour_range">%1$s–%2$s</string>
+    <string name="usage_week_range">%1$s – %2$s</string>
+    <string name="usage_chart_summary">%1$s. %2$s</string>
+    <string name="usage_total">Total</string>
+    <string name="usage_search_health">Search performance</string>
+    <string name="usage_search_results">First-page results</string>
+    <string name="usage_search_latency">Average response</string>
+    <string name="usage_search_modes">Search types</string>
+    <string name="usage_milliseconds">%1$s ms</string>
+    <string name="usage_random">Random</string>
+    <plurals name="usage_actions_count">
+        <item quantity="one">%1$s action</item>
+        <item quantity="other">%1$s actions</item>
+    </plurals>
+    <plurals name="usage_days_count">
+        <item quantity="one">%1$s day</item>
+        <item quantity="other">%1$s days</item>
+    </plurals>
+</resources>

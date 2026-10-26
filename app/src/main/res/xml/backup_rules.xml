@@ -7,6 +7,10 @@
 -->
 <full-backup-content>
     <exclude domain="file" path="floating_exports/" />
+    <exclude domain="database" path="usage.db" />
+    <exclude domain="database" path="usage.db-wal" />
+    <exclude domain="database" path="usage.db-shm" />
+    <exclude domain="database" path="usage.db-journal" />
     <!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>

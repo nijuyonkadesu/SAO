@@ -1,6 +1,7 @@
 package one.njk.sao.floating
 
 import one.njk.sao.source.*
+import one.njk.sao.usage.*
 
 import android.content.ClipData
 import android.content.ClipDescription
@@ -42,6 +43,7 @@ class PickerActivity : AppCompatActivity() {
     @Inject lateinit var source: MediaSource
     @Inject lateinit var dispatchers: FloatingDispatchers
     @Inject lateinit var apps: AppCatalog
+    @Inject lateinit var usage: UsageRecorder
     @Inject lateinit var emojiKeywords: one.njk.sao.floating.emoji.EmojiKeywords
     @Inject lateinit var suggestionRequests: one.njk.sao.floating.search.SuggestionRequests
     private val model: PickerViewModel by viewModels()
@@ -190,12 +192,15 @@ class PickerActivity : AppCompatActivity() {
             val rendition = nativePasteRendition(item)
             if (rendition != null) {
                 nativeInsert(item, rendition)
-            } else if (model.prepareClipboard(target) { limitAttachment(item,it) } && PasteAssistService.requestPaste(pasteAnchor, targetPackage)) finish()
-            else inlineFailure(R.string.floating_paste_unavailable)
+            } else {
+                val event=mediaUsage(UsageAction.PASTE,UsageSurface.PICKER,item,target.usageTarget(),UsageRoute.ACCESSIBILITY)
+                if(model.prepareClipboard(target) { limitAttachment(item,it) } && PasteAssistService.requestPaste(pasteAnchor,targetPackage,event)) finish()
+                else { usage.record(event.copy(outcome=UsageOutcome.FAILED)); inlineFailure(R.string.floating_paste_unavailable) }
+            }
         } } }
         binding.mediaAction.setOnClickListener { withCenteredItem { item -> dispatch { share(item, ExportRendition.MEDIA) } } }
         binding.stickerAction.setOnClickListener { withCenteredItem { item -> dispatch {
-            if (target == MessagingTarget.TELEGRAM) share(item, ExportRendition.STICKER_WEBP) else nativeInsert(item)
+            if (target == MessagingTarget.TELEGRAM) share(item, ExportRendition.STICKER_WEBP) else nativeInsert(item,action=UsageAction.STICKER)
         } } }
         binding.targetLabel.setOnClickListener {
             if (target == MessagingTarget.OTHER && appChoices.isNotEmpty()) {
@@ -724,7 +729,7 @@ class PickerActivity : AppCompatActivity() {
         val receivingTarget = target
         if (rendition == ExportRendition.MEDIA && receivingTarget in setOf(MessagingTarget.INSTAGRAM, MessagingTarget.DISCORD) &&
             nativePasteRendition(item) != null) {
-            nativeInsert(item, ExportRendition.MEDIA)
+            nativeInsert(item, ExportRendition.MEDIA,UsageAction.SHARE)
             return
         }
         var media = exports.prepare(item, rendition, DeliveryPolicy.stickerRequirements(receivingTarget))
@@ -746,16 +751,20 @@ class PickerActivity : AppCompatActivity() {
                 return
             }
             startActivity(InstagramDelivery.intent(media, receiver, item.title))
+            usage.record(mediaUsage(UsageAction.SHARE,UsageSurface.PICKER,item,receivingTarget.usageTarget(),UsageRoute.ATTACHMENT))
             finish(); return
         }
         if (receivingTarget == MessagingTarget.TELEGRAM && rendition == ExportRendition.STICKER_WEBP) {
             startActivity(TelegramDelivery.stickerIntent(media, requireNotNull(receivingPackage), item.title))
+            usage.record(mediaUsage(UsageAction.STICKER,UsageSurface.PICKER,item,receivingTarget.usageTarget(),UsageRoute.ATTACHMENT))
             finish(); return
         }
         val send = MediaDelivery.intent(media, receivingPackage.takeIf { receivingTarget != MessagingTarget.OTHER }, item.title)
-        startActivity(if (send.`package` == null) Intent.createChooser(send, getString(R.string.floating_share)) else send); finish()
+        startActivity(if (send.`package` == null) Intent.createChooser(send, getString(R.string.floating_share)) else send)
+        usage.record(mediaUsage(UsageAction.SHARE,UsageSurface.PICKER,item,receivingTarget.usageTarget(),UsageRoute.ATTACHMENT))
+        finish()
     }
-    private suspend fun nativeInsert(item: MediaItem, rendition: ExportRendition = ExportRendition.STICKER_WEBP) {
+    private suspend fun nativeInsert(item: MediaItem, rendition: ExportRendition = ExportRendition.STICKER_WEBP, action: UsageAction = UsageAction.PASTE) {
         val pkg = targetPackage ?: return; val session = nativeSession ?: return
         var mime = if (rendition == ExportRendition.STICKER_WEBP) "image/webp.wasticker" else nativeMediaMime(item)
         if (!NativeBridgeRegistry.supports(pkg, session, mime)) { inlineFailure(R.string.floating_native_rejected); return }
@@ -769,9 +778,16 @@ class PickerActivity : AppCompatActivity() {
             if(!NativeBridgeRegistry.supports(pkg,session,mime)) { inlineFailure(R.string.floating_native_rejected); return }
         }
         val context = applicationContext
+        val event=mediaUsage(action,UsageSurface.PICKER,item,target.usageTarget(),UsageRoute.NATIVE)
+        val analytics=usage
         // Explicit handoff must outlive this activity while the original host regains focus.
         deliveryScope.launch {
             val outcome = NativeBridgeRegistry.insert(context, pkg, media.uri, mime, session)
+            analytics.record(event.copy(outcome=when(outcome) {
+                one.njk.sao.floating.nativebridge.NativeInsertResult.ACCEPTED -> UsageOutcome.ACCEPTED
+                one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED -> UsageOutcome.FAILED
+                one.njk.sao.floating.nativebridge.NativeInsertResult.UNKNOWN -> UsageOutcome.UNCERTAIN
+            }))
             Toast.makeText(context, when {
                 outcome == one.njk.sao.floating.nativebridge.NativeInsertResult.UNKNOWN -> R.string.picker_native_uncertain
                 outcome == one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED -> R.string.floating_native_rejected

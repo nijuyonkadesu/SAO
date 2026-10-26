@@ -1,6 +1,7 @@
 package one.njk.sao.floating
 
 import one.njk.sao.source.*
+import one.njk.sao.usage.*
 
 import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
@@ -26,6 +27,7 @@ class PasteAssistService : AccessibilityService() {
     @Inject lateinit var preferences: FloatingPreferences
     @Inject lateinit var dispatchers: FloatingDispatchers
     @Inject lateinit var runtime: FloatingRuntime
+    @Inject lateinit var usage: UsageRecorder
     private lateinit var scope: CoroutineScope
     private val events = Channel<Unit>(Channel.CONFLATED)
     private val operations = Mutex()
@@ -128,7 +130,7 @@ class PasteAssistService : AccessibilityService() {
         finally { scan.cancel() }
     }
 
-    private fun pasteOnce(token: String, pkg: String): Boolean {
+    private fun pasteOnce(token: String, pkg: String, event: UsageEvent?): Boolean {
         if (!enabled || !FloatingSession.active.value || pkg !in supported) return false
         val selected = lease.get()?.takeIf { it.token == token && it.editor.packageName == pkg } ?: return false
         if (!lease.compareAndSet(selected, null)) return false
@@ -156,6 +158,11 @@ class PasteAssistService : AccessibilityService() {
             catch (_: SecurityException) { PasteOutcome.UNAVAILABLE }
             currentCoroutineContext().ensureActive()
             resultState.value = Result(token, pkg, outcome)
+            event?.let { usage.record(it.copy(outcome=when(outcome) {
+                PasteOutcome.DISPATCHED -> UsageOutcome.ACCEPTED
+                PasteOutcome.UNCONFIRMED -> UsageOutcome.UNCERTAIN
+                PasteOutcome.UNAVAILABLE,PasteOutcome.CANCELLED -> UsageOutcome.FAILED
+            })) }
             // Android accepting the action does not prove attachment readiness or Send.
             if (outcome == PasteOutcome.UNAVAILABLE || outcome == PasteOutcome.UNCONFIRMED) withContext(dispatchers.main) {
                 Toast.makeText(applicationContext, if (outcome == PasteOutcome.UNCONFIRMED)
@@ -171,7 +178,7 @@ class PasteAssistService : AccessibilityService() {
         val results = resultState.asStateFlow()
         fun connected() = instance.get() != null
         suspend fun prepareTarget(): Capture? = instance.get()?.prepare()
-        fun requestPaste(token: String?, packageName: String?): Boolean =
-            if (token == null || packageName == null) false else instance.get()?.pasteOnce(token, packageName) ?: false
+        fun requestPaste(token: String?, packageName: String?, event: UsageEvent? = null): Boolean =
+            if (token == null || packageName == null) false else instance.get()?.pasteOnce(token, packageName, event) ?: false
     }
 }

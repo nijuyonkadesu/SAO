@@ -19,6 +19,7 @@ import one.njk.sao.floating.HomeSources
 import one.njk.sao.floating.PickerState
 import one.njk.sao.floating.SourceReadException
 import one.njk.sao.source.*
+import one.njk.sao.usage.*
 import javax.inject.Inject
 
 data class HomeState(val browse: PickerState = PickerState(), val categories: List<SourceCategory> = emptyList(),
@@ -29,7 +30,8 @@ data class HomeState(val browse: PickerState = PickerState(), val categories: Li
 @HiltViewModel
 class ArtsViewModel @Inject constructor(@HomeSources private val source: MediaSource,
     private val settingsDataStore: SettingsDataStore, private val bookmarksDao: BookmarksDao,
-    private val saved: SavedStateHandle, private val dispatchers: FloatingDispatchers) : ViewModel() {
+    private val saved: SavedStateHandle, private val dispatchers: FloatingDispatchers,
+    private val usage: UsageRecorder = NoUsageRecorder) : ViewModel() {
     private val category = MutableStateFlow(saved.get<String>("home_category"))
     private val requests = Channel<Boolean>(Channel.CONFLATED)
     private var paging = false
@@ -119,6 +121,7 @@ class ArtsViewModel @Inject constructor(@HomeSources private val source: MediaSo
     fun toggleNsfwMode() { viewModelScope.launch { settingsDataStore.toggleMode() } }
     fun bookmark(item: MediaItem) { viewModelScope.launch(dispatchers.io) {
         bookmarksDao.save(Bookmark("sao-source:" + SourceWire.item(item).toString()))
+        usage.record(mediaUsage(UsageAction.BOOKMARK,UsageSurface.HOME,item))
     } }
     fun exportFav() { viewModelScope.launch(dispatchers.io) {
         if(BuildConfig.DEBUG) Log.d("fav", "${bookmarksDao.get()}")

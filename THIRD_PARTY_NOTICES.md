@@ -6,7 +6,7 @@ The Local Sticker extension uses the default [Immich ONNX export](https://huggin
 
 ## Material Symbols
 
-The main settings `ic_settings_*.xml` vectors use the same Material Symbols Rounded style (24 px optical size, weight 400, fill 0), from [Google’s upstream symbols](https://github.com/google/material-design-icons/tree/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android). They are licensed under Apache-2.0; the packaged Material Symbols license applies.
+The main settings `ic_settings_*.xml` and usage analytics `ic_usage*.xml` vectors use the same Material Symbols Rounded style (24 px optical size, weight 400, fill 0), from [Google’s upstream symbols](https://github.com/google/material-design-icons/tree/10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7/symbols/android). They are licensed under Apache-2.0; the packaged Material Symbols license applies.
 
 The `ic_picker_*.xml`, `ic_floating_picker.xml` and the Immich/Local Sticker/Moeview/FindThatMeme extensions’ `ic_extension.xml` vectors are Google Material Symbols Rounded, using optical size 24, weight 400, grade 0 and fill 0. Source: [google/material-design-icons, commit 49d4db3](https://github.com/google/material-design-icons/tree/49d4db35df873165d6bd6ba09b063c7dafbac2f4/symbols/android).
 

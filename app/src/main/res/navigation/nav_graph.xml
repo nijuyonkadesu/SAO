@@ -18,4 +18,9 @@
         android:name="one.njk.sao.SettingsFragment"
         android:label="@string/action_settings"
         tools:layout="@layout/fragment_settings"/>
+    <fragment
+        android:id="@+id/usageFragment"
+        android:name="one.njk.sao.usage.UsageFragment"
+        android:label="@string/usage_title"
+        tools:layout="@layout/fragment_usage" />
 </navigation>
