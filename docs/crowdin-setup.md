@@ -1,6 +1,6 @@
 # Activate SAO's Crowdin website
 
-Crowdin is the selected hosted translation service. The repository-side setup is ready; the owner account/project has not been connected. One **public, file-based project**, with **English** as its source language, covers both repositories and all seven translation areas. Native GitHub integration handles synchronization and translation PRs; no GitHub Actions, app dependencies or runtime translation downloads are introduced.
+Crowdin is the selected hosted translation service. The public project is [SAO-share-arts-by-overlay](https://crowdin.com/project/sao-share-arts-by-overlay); its page was verified accessible without authentication. The repository-side configuration is ready. Public page visibility does not by itself verify GitHub synchronization or contributor edit access. One **public, file-based project**, with **English** as its source language, covers both repositories and all seven translation areas. Native GitHub integration handles synchronization and translation PRs; no GitHub Actions, app dependencies or runtime translation downloads are introduced.
 
 ## Why Crowdin
 
@@ -14,7 +14,7 @@ Crowdin fits SAO’s volunteer workflow and existing Android file layout.
 
 The contributor workflow is **website → select language → translate → Save**. XML files and pull requests stay implementation details for maintainers.
 
-## Owner setup
+## Owner setup and connection review
 
 1. [Sign in to Crowdin](https://crowdin.com/login), using your GitHub account if convenient. [Create one project](https://support.crowdin.com/creating-project/) named **SAO**, choose **Public**, **File-based**, and source language **English**. Choose an available project address; do not assume a particular slug is ours. Do not pre-fill a list of target languages as part of this setup; add languages when contributors request them.
 2. Authorize Crowdin’s [native GitHub integration](https://support.crowdin.com/github-integration/). Website sign-in and repository authorization are separate account actions. Configure synchronization for `nijuyonkadesu/SAO` and `nijuyonkadesu/SAO-extensions`; restrict repository access to those two when the authorization screen offers selected-repository access.
@@ -23,7 +23,7 @@ The contributor workflow is **website → select language → translate → Save
 5. Keep translations on Crowdin's integration branch and enable translation pull requests. Keep merge/release decisions with the maintainer; connecting the website does not publish APKs. Use the configured concise PR title. Crowdin normally syncs hourly; **Sync Now** can perform the initial import immediately.
 6. Configure community access and QA using the exact menus below. These settings can be saved before adding target languages. Source labels are added on the initial GitHub import; translation memory and glossary can use the project's defaults.
 7. Sync both repositories and check the file preview: only `*strings.xml` under the seven modules should appear. No Kotlin/Java source, credentials, local profiles, media, or build output is matched. Confirm that `translatable="false"` entries, including product names and shared string aliases, are excluded from translation.
-8. Verify the public project URL while signed out. Then replace the setup-status note in both translation guides and the README translation link with that actual URL. Only then add a live Crowdin badge or in-app contribution link. This prevents contributors being sent to a nonexistent or unrelated project.
+8. The project URL above has been verified while signed out and published in both READMEs and contributor guides. Keep that same verified URL when adding any future badge or in-app contribution link. Visitors can view the public page; contributors must sign in to save translations. With no target languages configured, seeing **Request new language** is expected.
 
 [Crowdin's open-source program](https://crowdin.com/product/for-open-source) requires an owner application and approval; it is not enabled by adding YAML to Git. SAO's public AGPL-3.0 code is compatible with the license criterion, but Crowdin must assess the remaining requirements. The free program includes contribution of project translations to its Global Translation Memory. The owner should review its current terms when applying. No paid plan or paid translation service is selected by these repository changes.
 

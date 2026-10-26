@@ -3,11 +3,11 @@
 **Crowdin is the community translation website chosen for SAO and its extensions.** Translators use its browser editor. They do not need to edit XML, fork a repository, create GitHub pull requests, or install developer tools.
 
 > [!NOTE]
-> Repository integration is prepared. The hosted project still needs the owner's Crowdin sign-in and GitHub connection; its real contributor URL will be published here once verified. No translation website URL is being advertised before it exists.
+> [Translate SAO and its extensions on Crowdin](https://crowdin.com/project/sao-share-arts-by-overlay). The public page is available without signing in. Saving translations requires a Crowdin account; GitHub or Google sign-in is supported. With no target languages yet, **Request new language** is the expected starting point.
 
 ## Contribute in the browser
 
-1. Open SAO's Crowdin project once its URL is published and sign in, for example with GitHub.
+1. Open [SAO’s Crowdin project](https://crowdin.com/project/sao-share-arts-by-overlay) and sign in, for example with GitHub or Google.
 2. Choose your language. Filter by **SAO app**, **Shared extension settings**, **Immich**, **Local Sticker**, **Moeview**, **FindThatMeme**, or **Google Photos** to choose which part to translate.
 3. Read the English text and context, enter your translation, and click **Save**. The editor provides suggestions, comments and checks for placeholders/plurals. Keep identifiers such as `%1$s` and `%2$d` intact.
 4. If a language is missing, request it through the project. Languages are enabled deliberately; this setup does not add any new translations itself.
