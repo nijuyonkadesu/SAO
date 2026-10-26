@@ -53,10 +53,7 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
     }
     fun step(direction: Long)=date(selection.value.anchor.plusDays(direction))
     fun calendarMode(value: UsageCalendarMode) { saved["usage_calendar_mode"]=value.name; calendar.value=value }
-    fun stepCalendar(direction: Long) {
-        if(calendar.value==UsageCalendarMode.MONTH) browseMonth(month.value.plusMonths(direction))
-        else date(selection.value.anchor.plusYears(direction))
-    }
+    fun stepYear(direction: Long)=date(selection.value.anchor.plusYears(direction))
     fun browseMonth(value: YearMonth) {
         val actual=value.coerceAtMost(YearMonth.from(today.value))
         saved["usage_calendar_month"]=actual.toString(); month.value=actual

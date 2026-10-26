@@ -3,6 +3,7 @@ package one.njk.sao.usage
 import android.graphics.Bitmap
 import android.os.SystemClock
 import android.view.View
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.navigation.fragment.NavHostFragment
 import androidx.room.Room
 import androidx.test.core.app.ActivityScenario
@@ -70,6 +71,13 @@ class UsageDeviceTest {
         assertNotNull("The carousel must settle on its displayed month: $expected",actual)
         return actual!!
     }
+    private fun scrollMonth(scenario: ActivityScenario<MainActivity>,previous: Boolean) {
+        scenario.onActivity { activity ->
+            val carousel=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_month_carousel)
+            val action=if(previous) AccessibilityNodeInfoCompat.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD
+            assertTrue("Months remain browsable with accessibility actions",carousel.performAccessibilityAction(action,null))
+        }
+    }
     @Test fun incrementsPauseAndClearAreOrderedAndDoNotReplayQueuedEvents(): Unit=runBlocking {
         val db=Room.inMemoryDatabaseBuilder(app,UsageDatabase::class.java).build()
         val repository=UsageRepository(db,FloatingDispatchers())
@@ -113,11 +121,13 @@ class UsageDeviceTest {
             scenario.onActivity { activity ->
                 assertSame("Changing calendar mode keeps the other reports intact",daily,activity.findViewById(R.id.usage_daily_chart))
                 assertEquals(UsageRange.MONTH,monthChart(activity)!!.period.range)
+                assertNull("Monthly browsing uses the carousel instead of arrow controls",activity.findViewById<View>(R.id.usage_calendar_previous))
+                assertNull(activity.findViewById<View>(R.id.usage_calendar_next))
             }
-            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_previous).performClick() }
+            scrollMonth(scenario,previous=true)
             awaitMonth(scenario,YearMonth.now().minusMonths(1))
             awaitReport(scenario,LocalDate.now().minusDays(1))
-            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_next).performClick() }
+            scrollMonth(scenario,previous=false)
             awaitMonth(scenario,YearMonth.now())
             scenario.onActivity { activity ->
                 val carousel=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_month_carousel)
@@ -208,12 +218,12 @@ class UsageDeviceTest {
             instrumentation.waitForIdleSync(); SystemClock.sleep(180)
             val month=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
             File(app.filesDir,"usage-month.png").outputStream().use { month.compress(Bitmap.CompressFormat.PNG,100,it) }; month.recycle()
-            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_previous).performClick() }
+            scrollMonth(scenario,previous=true)
             awaitMonth(scenario,YearMonth.from(today.minusDays(2)).minusMonths(1))
             instrumentation.waitForIdleSync()
             val neighbors=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
             File(app.filesDir,"usage-month-neighbors.png").outputStream().use { neighbors.compress(Bitmap.CompressFormat.PNG,100,it) }; neighbors.recycle()
-            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_next).performClick() }
+            scrollMonth(scenario,previous=false)
             awaitMonth(scenario,YearMonth.from(today.minusDays(2)))
             scenario.onActivity { activity ->
                 assertTrue(monthChart(activity)!!.accessibilityNodeProvider!!.performAction(0,

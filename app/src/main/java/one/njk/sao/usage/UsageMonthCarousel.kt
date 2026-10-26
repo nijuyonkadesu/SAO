@@ -2,19 +2,25 @@ package one.njk.sao.usage
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.core.view.doOnPreDraw
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.RecyclerViewAccessibilityDelegate
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.carousel.CarouselLayoutManager
 import com.google.android.material.carousel.CarouselSnapHelper
 import com.google.android.material.carousel.MaskableFrameLayout
 import com.google.android.material.carousel.UncontainedCarouselStrategy
+import com.google.android.material.textview.MaterialTextView
 import one.njk.sao.R
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
 /** Lazy month cards backed by the existing daily totals. Browsing never changes a report query. */
@@ -24,7 +30,7 @@ internal class UsageMonthCarousel(context: Context,private val dashboard: UsageD
     private val statistics: (LinearLayout,UsageMonthSummary)->Unit): RecyclerView(context),AutoCloseable {
     private fun dp(value: Int)=(resources.displayMetrics.density*value).toInt()
     private val latest=YearMonth.from(dashboard.today)
-    val firstMonth=minOf(dashboard.calendarMonths.keys.minOrNull() ?: latest,
+    private val firstMonth=minOf(dashboard.calendarMonths.keys.minOrNull() ?: latest,
         initial,latest.minusMonths(11))
     private val months=ChronoUnit.MONTHS.between(firstMonth,latest).toInt()+1
     private val snap=CarouselSnapHelper(false)
@@ -60,6 +66,14 @@ internal class UsageMonthCarousel(context: Context,private val dashboard: UsageD
             val period=dashboard.selection.copy(range=UsageRange.MONTH,anchor=month.atDay(1))
             val report=dashboard.calendarMonths[month] ?: UsageMonthSummary.EMPTY
             holder.column.removeAllViews()
+            holder.column.addView(MaterialTextView(context).apply {
+                text=month.atDay(1).format(DateTimeFormatter.ofPattern("LLLL yyyy",resources.configuration.locales[0]))
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleMedium_Emphasized)
+                setTextColor(context.usageColor(com.google.android.material.R.attr.colorOnSurface))
+                ViewCompat.setAccessibilityHeading(this,true)
+            },LinearLayout.LayoutParams(-1,-2).apply {
+                marginStart=dp(8); marginEnd=dp(8); topMargin=dp(4); bottomMargin=dp(12)
+            })
             holder.column.addView(UsageHeatmapView(context,period,report.dayCounts,
                 dashboard.selection.anchor,dashboard.today,fixedMonthRows=true) { date ->
                 if(position==focal && scrollState==SCROLL_STATE_IDLE) onDate(date)
@@ -92,6 +106,30 @@ internal class UsageMonthCarousel(context: Context,private val dashboard: UsageD
         itemAnimator=null; isNestedScrollingEnabled=false
         layoutManager=CarouselLayoutManager(UncontainedCarouselStrategy()).apply { carouselAlignment=CarouselLayoutManager.ALIGNMENT_CENTER }
         adapter=monthAdapter; snap.attachToRecyclerView(this)
+        setAccessibilityDelegateCompat(object: RecyclerViewAccessibilityDelegate(this) {
+            override fun onInitializeAccessibilityNodeInfo(host: View,info: AccessibilityNodeInfoCompat) {
+                super.onInitializeAccessibilityNodeInfo(host,info)
+                info.removeAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_SCROLL_BACKWARD)
+                info.removeAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_SCROLL_FORWARD)
+                if(focal>0) info.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat(
+                    AccessibilityNodeInfoCompat.ACTION_SCROLL_BACKWARD,context.getString(R.string.usage_previous_month)))
+                if(focal!=NO_POSITION && focal<months-1) info.addAction(AccessibilityNodeInfoCompat.AccessibilityActionCompat(
+                    AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD,context.getString(R.string.usage_next_month)))
+            }
+            override fun performAccessibilityAction(host: View,action: Int,args: Bundle?): Boolean {
+                val direction=when(action) {
+                    AccessibilityNodeInfoCompat.ACTION_SCROLL_BACKWARD -> -1
+                    AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD -> 1
+                    else -> return super.performAccessibilityAction(host,action,args)
+                }
+                if(focal==NO_POSITION || closed) return false
+                val next=focal+direction
+                if(next !in 0 until months) return false
+                // Navigate by month, avoiding Material's signed RTL pixel offsets.
+                showMonth(firstMonth.plusMonths(next.toLong()))
+                return true
+            }
+        })
         addOnScrollListener(object: OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView,dx: Int,dy: Int) {
                 // Material updates the mask before offsetting the child. Read its final side
