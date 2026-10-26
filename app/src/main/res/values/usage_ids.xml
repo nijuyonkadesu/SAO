@@ -1,0 +1,9 @@
+<resources>
+    <item type="id" name="usage_activity_calendar" />
+    <item type="id" name="usage_heatmap" />
+    <item type="id" name="usage_daily_chart" />
+    <item type="id" name="usage_weekly_chart" />
+    <item type="id" name="usage_destinations" />
+    <item type="id" name="usage_breakdown" />
+    <item type="id" name="usage_records" />
+</resources>

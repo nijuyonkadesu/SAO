@@ -44,4 +44,4 @@ The optional [floating media picker](docs/floating-picker.md) supports separatel
 
 Translations: [Translate SAO on Crowdin](https://crowdin.com/project/sao-share-arts-by-overlay) · [Contributor guide](docs/translations.md).
 
-[Local usage analytics](docs/usage-analytics.md) provides Overview, Day, Week and Year reports from SAO activity counters, with recording and clear controls.
+[Local usage analytics](docs/usage-analytics.md) combines daily and weekly reports, a yearly activity heatmap and milestones in one scrolling page, with recording and clear controls.

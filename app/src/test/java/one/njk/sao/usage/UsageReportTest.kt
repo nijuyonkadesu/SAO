@@ -9,7 +9,7 @@ class UsageReportTest {
     private val today=LocalDate.of(2026,10,26)
     private fun day(date: String,actions: Long=1)=UsageDay(LocalDate.parse(date).toEpochDay(),actions,0,0,0)
     @Test fun emptyHistoryHasNoArtificialRecordsOrStreak() {
-        val report=UsageReport(UsageSelection(UsagePage.WEEK,today,DayOfWeek.MONDAY),emptyList(),emptyList(),today)
+        val report=UsageReport(UsageSelection(UsageRange.WEEK,today,DayOfWeek.MONDAY),emptyList(),emptyList(),today)
         assertEquals(0L,report.actions); assertEquals(0,report.activeDays); assertEquals(UsageStreak(),report.streak)
         assertEquals(List(7) { 0L },report.daily); assertEquals(List(24) { 0L },report.hourly)
     }
@@ -21,7 +21,7 @@ class UsageReportTest {
     }
     @Test fun weekBoundariesFollowLocaleAndIncludeAdjacentYearDates() {
         val date=LocalDate.of(2027,1,1)
-        val monday=UsageSelection(UsagePage.WEEK,date,DayOfWeek.MONDAY)
+        val monday=UsageSelection(UsageRange.WEEK,date,DayOfWeek.MONDAY)
         val sunday=monday.copy(firstWeekday=DayOfWeek.SUNDAY)
         assertEquals(LocalDate.of(2026,12,28),monday.start)
         assertEquals(LocalDate.of(2027,1,4),monday.endExclusive)
@@ -30,7 +30,7 @@ class UsageReportTest {
         assertEquals(10L,report.actions); assertEquals(listOf(3L,0,0,0,7,0,0),report.daily)
     }
     @Test fun leapYearAndAnnualRecordsAreLimitedToSelectedYear() {
-        val selection=UsageSelection(UsagePage.YEAR,LocalDate.of(2024,2,29),DayOfWeek.MONDAY)
+        val selection=UsageSelection(UsageRange.YEAR,LocalDate.of(2024,2,29),DayOfWeek.MONDAY)
         val report=UsageReport(selection,emptyList(),listOf(day("2023-12-31",999),day("2024-02-28",4),day("2024-02-29",6),day("2024-03-01",10),day("2025-01-01",99)),today)
         assertEquals(366,report.daily.size); assertEquals(20L,report.actions)
         assertEquals(3,report.periodStreak.best); assertEquals(10L,report.bestDay)
@@ -43,7 +43,7 @@ class UsageReportTest {
             UsageBucket(today.toEpochDay(),12,UsageAction.PASTE,UsageSurface.PICKER,target=UsageTarget.INSTAGRAM,outcome=UsageOutcome.UNCERTAIN,occurrences=7),
             UsageBucket(today.toEpochDay(),12,UsageAction.COPY_MEDIA,UsageSurface.PICKER,target=UsageTarget.DISCORD,occurrences=2),
             UsageBucket(today.toEpochDay(),12,UsageAction.SHARE,UsageSurface.HOME,target=UsageTarget.WHATSAPP,occurrences=1))
-        val report=UsageReport(UsageSelection(UsagePage.DAY,today,DayOfWeek.MONDAY),rows,emptyList(),today)
+        val report=UsageReport(UsageSelection(UsageRange.DAY,today,DayOfWeek.MONDAY),rows,emptyList(),today)
         assertEquals(listOf(UsageShare(UsageTarget.TELEGRAM,3),UsageShare(UsageTarget.WHATSAPP,1)),report.targets)
         assertEquals(20L,report.outcomes.sumOf { it.count })
         assertEquals(22L,report.hourly[12])
@@ -56,5 +56,21 @@ class UsageReportTest {
             .bucket(today.atTime(23,58))
         assertEquals(UsageSearchMode.NONE,row.searchMode); assertEquals(0L,row.results); assertEquals(0L,row.latencyMillis)
         assertEquals(today.toEpochDay(),row.day); assertEquals(23,row.hour)
+    }
+    @Test fun heatmapIntensityDistinguishesHeavyDaysWithoutLettingOutliersFlattenTheYear() {
+        val intensity=UsageIntensity(listOf(0,1,2,3,4,5,6,7,10000))
+        assertEquals((0..4).toList(),listOf(0L,1,3,5,10000).map(intensity::level))
+        assertEquals(listOf(2,4),listOf(3L,8).map(UsageIntensity(listOf(3,8))::level))
+        assertEquals(4,UsageIntensity(listOf(9,9,9)).level(9))
+        assertEquals(0,UsageIntensity(emptyList()).level(0))
+    }
+    @Test fun dashboardSharesOneDateWhileKeepingDayWeekAndAnnualCountsSeparate() {
+        val date=LocalDate.of(2027,1,1)
+        val days=listOf(day("2026-12-28",3),day("2027-01-01",7),day("2027-01-04",99))
+        val rows=days.map { UsageBucket(it.day,12,UsageAction.COPY_MEDIA,UsageSurface.PICKER,occurrences=it.actions) }
+        val report=UsageDashboard(UsageSelection(UsageRange.WEEK,date,DayOfWeek.MONDAY),rows.take(2),days,date.plusDays(4))
+        assertEquals(7L,report.day.actions); assertEquals(7L,report.day.hourly[12])
+        assertEquals(10L,report.week.actions); assertEquals(10L,report.week.actionCounts.single().count)
+        assertEquals(106L,report.year.actions); assertTrue(report.year.buckets.isEmpty())
     }
 }

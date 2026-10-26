@@ -2,11 +2,6 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/usage_tabs" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:minHeight="48dp" android:layout_marginHorizontal="16dp" app:tabMode="fixed"
-        app:tabIndicatorFullWidth="false" app:tabTextAppearance="?attr/textAppearanceLabelLarge"
-        app:tabTextColor="?attr/colorOnSurfaceVariant" app:tabSelectedTextColor="?attr/colorPrimary" />
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical"
         android:layout_marginHorizontal="16dp" android:layout_marginTop="12dp" android:layout_marginBottom="8dp">
         <com.google.android.material.button.MaterialButton
@@ -22,6 +17,10 @@
             android:id="@+id/usage_next" style="@style/Widget.Material3.Button.TonalButton.Icon"
             android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="@string/usage_next"
             app:icon="@drawable/ic_usage_next" app:iconGravity="textStart" app:iconPadding="0dp" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/usage_today" style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp"
+            android:text="@string/usage_jump_today" android:visibility="gone" />
     </LinearLayout>
     <androidx.core.widget.NestedScrollView android:id="@+id/usage_scroll"
         android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true" android:clipToPadding="false">

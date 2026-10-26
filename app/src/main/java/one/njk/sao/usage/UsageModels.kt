@@ -13,7 +13,7 @@ enum class UsageTarget { NONE, WHATSAPP, TELEGRAM, DISCORD, INSTAGRAM, OTHER }
 enum class UsageRoute { NONE, CLIPBOARD, ACCESSIBILITY, NATIVE, ATTACHMENT }
 enum class UsageOutcome { ACCEPTED, FAILED, UNCERTAIN }
 enum class UsageSearchMode { NONE, CONTEXT, FILENAME, DESCRIPTION, PATH, OCR, RANDOM }
-enum class UsagePage { OVERVIEW, DAY, WEEK, YEAR }
+enum class UsageRange { DAY, WEEK, YEAR }
 
 /** Aggregate dimensions deliberately cannot contain queries, media identities or chat metadata. */
 data class UsageEvent(
@@ -41,18 +41,43 @@ data class UsageEvent(
     }
 }
 
-data class UsageSelection(val page: UsagePage, val anchor: LocalDate, val firstWeekday: java.time.DayOfWeek) {
-    val start: LocalDate get() = when(page) {
-        UsagePage.OVERVIEW -> anchor.withDayOfMonth(1)
-        UsagePage.DAY -> anchor
-        UsagePage.WEEK -> anchor.with(TemporalAdjusters.previousOrSame(firstWeekday))
-        UsagePage.YEAR -> anchor.withDayOfYear(1)
+data class UsageSelection(val range: UsageRange, val anchor: LocalDate, val firstWeekday: java.time.DayOfWeek) {
+    val start: LocalDate get() = when(range) {
+        UsageRange.DAY -> anchor
+        UsageRange.WEEK -> anchor.with(TemporalAdjusters.previousOrSame(firstWeekday))
+        UsageRange.YEAR -> anchor.withDayOfYear(1)
     }
-    val endExclusive: LocalDate get() = when(page) {
-        UsagePage.OVERVIEW -> start.plusMonths(1)
-        UsagePage.DAY -> start.plusDays(1)
-        UsagePage.WEEK -> start.plusWeeks(1)
-        UsagePage.YEAR -> start.plusYears(1)
+    val endExclusive: LocalDate get() = when(range) {
+        UsageRange.DAY -> start.plusDays(1)
+        UsageRange.WEEK -> start.plusWeeks(1)
+        UsageRange.YEAR -> start.plusYears(1)
+    }
+}
+
+/** One date drives the entire dashboard. Only its week needs detailed buckets. */
+data class UsageDashboard(val selection: UsageSelection,val weekBuckets: List<UsageBucket>,val days: List<UsageDay>,val today: LocalDate) {
+    private fun report(range: UsageRange): UsageReport {
+        val period=selection.copy(range=range)
+        val buckets=if(range==UsageRange.YEAR) emptyList() else weekBuckets.filter {
+            it.day>=period.start.toEpochDay() && it.day<period.endExclusive.toEpochDay()
+        }
+        return UsageReport(period,buckets,days,today)
+    }
+    val day=report(UsageRange.DAY)
+    val week=report(UsageRange.WEEK)
+    val year=report(UsageRange.YEAR)
+}
+
+/** Relative quartiles keep light/heavy days distinguishable even when a single day is an outlier. */
+internal class UsageIntensity(counts: Collection<Long>) {
+    private val active=counts.filter { it>0 }.sorted()
+    private fun threshold(quarter: Int)=active[(active.size*quarter/4).coerceAtMost(active.lastIndex)]
+    fun level(count: Long): Int=when {
+        count<=0 || active.isEmpty() -> 0
+        count>=threshold(3) -> 4
+        count>=threshold(2) -> 3
+        count>=threshold(1) -> 2
+        else -> 1
     }
 }
 

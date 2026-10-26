@@ -21,7 +21,7 @@ import java.time.LocalDate
 class UsageDeviceTest {
     private val instrumentation=InstrumentationRegistry.getInstrumentation()
     private val app=instrumentation.targetContext
-    private fun awaitReport(scenario: ActivityScenario<MainActivity>,page: UsagePage): Unit {
+    private fun awaitReport(scenario: ActivityScenario<MainActivity>,date: LocalDate = LocalDate.now()): Unit {
         val deadline=SystemClock.elapsedRealtime()+5000
         var ready=false
         do {
@@ -29,13 +29,12 @@ class UsageDeviceTest {
                 val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
                 val fragment=host.childFragmentManager.primaryNavigationFragment as? UsageFragment ?: return@onActivity
                 val model=androidx.lifecycle.ViewModelProvider(fragment)[UsageViewModel::class.java]
-                ready=model.state.value.report?.selection==model.selectionState.value && model.selectionState.value.page==page &&
-                    activity.findViewById<com.google.android.material.tabs.TabLayout>(R.id.usage_tabs)?.selectedTabPosition==page.ordinal &&
+                ready=model.state.value.report?.selection==model.selectionState.value && model.selectionState.value.anchor==date &&
                     activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_period)?.text?.isNotBlank()==true
             }
             if(!ready) SystemClock.sleep(40)
         } while(!ready && SystemClock.elapsedRealtime()<deadline)
-        assertTrue("Expected the selected report to finish rendering: $page",ready)
+        assertTrue("Expected the selected report to finish rendering: $date",ready)
     }
     @Test fun incrementsPauseAndClearAreOrderedAndDoNotReplayQueuedEvents(): Unit=runBlocking {
         val db=Room.inMemoryDatabaseBuilder(app,UsageDatabase::class.java).build()
@@ -46,7 +45,7 @@ class UsageDeviceTest {
             assertTrue("Opening an unconfigured picker is not a backend search",repository.days.first().isEmpty())
             val event=UsageEvent(UsageAction.COPY_MEDIA,UsageSurface.PICKER,"f7a936dd-f5bc-4e99-a344-bd6a394f1788:secret-hash",UsageMedia.IMAGE)
             repeat(100) { repository.record(event) }; repository.flush()
-            val selection=UsageSelection(UsagePage.DAY,LocalDate.now(),java.time.DayOfWeek.MONDAY)
+            val selection=UsageSelection(UsageRange.DAY,LocalDate.now(),java.time.DayOfWeek.MONDAY)
             assertEquals(100L,repository.buckets(selection).first().single().occurrences)
             assertEquals("f7a936dd-f5bc-4e99-a344-bd6a394f1788",repository.buckets(selection).first().single().sourceId)
             repository.enabled(false); repeat(10) { repository.record(event) }; repository.flush()
@@ -58,7 +57,7 @@ class UsageDeviceTest {
             assertFalse(repository.failure.value)
         } finally { repository.close(); db.close() }
     }
-    @Test fun usageDestinationHasOrderedEntryAndRetainsPageAndDateAcrossRecreation(): Unit=runBlocking {
+    @Test fun usageDestinationHasOrderedEntryAndRetainsDateAndScrollAcrossRecreation(): Unit=runBlocking {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val menu=activity.findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.topAppBar).menu
@@ -68,21 +67,24 @@ class UsageDeviceTest {
                 val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
                 host.navController.navigate(R.id.usageFragment)
             }
-            awaitReport(scenario,UsagePage.OVERVIEW)
-            scenario.onActivity { activity ->
-                activity.findViewById<com.google.android.material.tabs.TabLayout>(R.id.usage_tabs).getTabAt(2)!!.select()
-            }
-            awaitReport(scenario,UsagePage.WEEK)
+            awaitReport(scenario)
             scenario.onActivity { it.findViewById<View>(R.id.usage_previous).performClick() }
-            instrumentation.waitForIdleSync(); SystemClock.sleep(250)
+            awaitReport(scenario,LocalDate.now().minusDays(1))
             var before=""
-            scenario.onActivity { before=it.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_period).text.toString() }
-            scenario.recreate(); awaitReport(scenario,UsagePage.WEEK)
+            var scroll=0
             scenario.onActivity { activity ->
-                assertEquals(2,activity.findViewById<com.google.android.material.tabs.TabLayout>(R.id.usage_tabs).selectedTabPosition)
+                before=activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_period).text.toString()
+                activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollTo(0,700)
+                scroll=activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollY
+            }
+            scenario.recreate(); awaitReport(scenario,LocalDate.now().minusDays(1))
+            instrumentation.waitForIdleSync()
+            scenario.onActivity { activity ->
                 assertEquals(before,activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_period).text.toString())
-                val root=activity.findViewById<View>(R.id.usage_content)
-                assertTrue(root.width>0); assertTrue(root.height>0)
+                assertEquals(scroll,activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollY)
+                val ids=listOf(R.id.usage_activity_calendar,R.id.usage_daily_chart,R.id.usage_weekly_chart,R.id.usage_destinations,R.id.usage_breakdown,R.id.usage_records)
+                val tops=ids.map { (activity.findViewById<View>(it).parent as View).top }
+                assertEquals("Reports appear together in one scrolling page",tops.sorted(),tops)
             }
         }
     }
@@ -109,30 +111,32 @@ class UsageDeviceTest {
                 host.navController.navigate(R.id.usageFragment)
             }
             instrumentation.waitForIdleSync(); SystemClock.sleep(350)
-            for(index in 0..3) {
-                scenario.onActivity { it.findViewById<com.google.android.material.tabs.TabLayout>(R.id.usage_tabs).getTabAt(index)!!.select() }
-                awaitReport(scenario,UsagePage.entries[index]); instrumentation.waitForIdleSync(); SystemClock.sleep(200)
-                val bitmap=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
-                File(app.filesDir,"usage-$index.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }; bitmap.recycle()
+            awaitReport(scenario)
+            val sections=listOf(0,R.id.usage_activity_calendar,R.id.usage_daily_chart,R.id.usage_weekly_chart,R.id.usage_destinations,R.id.usage_breakdown,R.id.usage_records)
+            sections.forEachIndexed { index,id ->
                 scenario.onActivity { activity ->
                     val content=activity.findViewById<android.widget.LinearLayout>(R.id.usage_content)
-                    val target=content.getChildAt(when(index) { 0 -> 2; 1,2 -> 1; else -> content.childCount-1 })
-                    activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollTo(0,target.top+content.top)
+                    val y=if(id==0) 0 else (activity.findViewById<View>(id).parent as View).top+content.top
+                    activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollTo(0,y)
                 }
-                instrumentation.waitForIdleSync(); SystemClock.sleep(250)
-                scenario.onActivity { activity ->
-                    fun checkCalendars(view: View) {
-                        if(view is UsageMonthView && view.width>0) {
-                            val child=view.getChildAt(0)
-                            assertEquals("Calendar must use the viewport or its accessible minimum width",maxOf(view.width,child.minimumWidth),child.width)
-                        }
-                        if(view is android.view.ViewGroup) for(child in 0 until view.childCount) checkCalendars(view.getChildAt(child))
-                    }
-                    checkCalendars(activity.findViewById(R.id.usage_content))
-                }
-                val detail=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
-                File(app.filesDir,"usage-$index-detail.png").outputStream().use { detail.compress(Bitmap.CompressFormat.PNG,100,it) }; detail.recycle()
+                instrumentation.waitForIdleSync(); SystemClock.sleep(180)
+                val bitmap=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+                File(app.filesDir,"usage-$index.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }; bitmap.recycle()
             }
+            scenario.onActivity { activity ->
+                val chart=activity.findViewById<UsageHeatmapView>(R.id.usage_heatmap)
+                val rect=chart.bounds(today)
+                assertTrue("Cells are compact chart entries",rect.width()<24*app.resources.displayMetrics.density)
+                val scroll=chart.parent as android.widget.HorizontalScrollView
+                val provider=chart.accessibilityNodeProvider!!
+                val date=today.minusDays(2)
+                val node=provider.createAccessibilityNodeInfo(date.dayOfYear-1)!!
+                assertTrue(node.contentDescription.isNotBlank()); assertTrue(node.isClickable); assertFalse(node.isSelected)
+                assertTrue(provider.performAction(date.dayOfYear-1,androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK,null))
+                assertTrue(scroll.width>0)
+            }
+            awaitReport(scenario,today.minusDays(2))
+            assertTrue(access.usageDatabase().usage().observeDays().first().isNotEmpty())
             val clipboard=EntryPointAccessors.fromApplication(app,one.njk.sao.floating.FloatingTestAccess::class.java).clipboard()
             val request=one.njk.sao.floating.ClipboardRequest()
             assertTrue(clipboard.publishFilename(one.njk.sao.source.MediaItem("usage-fixture","Fixture","","image/png",emptyList(),emptyList(),filename="never-store-this-filename.png"),request,request.next()))

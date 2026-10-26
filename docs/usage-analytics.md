@@ -30,12 +30,18 @@ Kimon was cloned to `/tmp/sao-kimon-reference` and inspected at commit `2fcfe3b2
 
 SAO owns collection, storage, aggregation, charts and controls. No extension or SDK protocol change is needed. Entry: an analytics icon **between Edit and Settings** in the existing home toolbar. The home carousel and settings layout stay as they are.
 
-| SAO page | Content |
+The dashboard is one scrolling page, not Kimon's four-tab layout. One selected date drives its day, week and year sections; previous/next day, a date picker and a return-to-today action keep the scope explicit. Calendar year navigation changes that same date. The selected date and scroll positions live in SavedStateHandle, never preferences.
+
+| SAO section, in display order | Content |
 |---|---|
-| Overview | Today’s searches, media copies and paste handoffs; current/best usage streak; navigable monthly activity calendar; active days/month activity; lifetime actions and active days. |
-| Day | Date picker and previous/next controls; action/search/handoff totals; 24-hour action chart; hourly summary; action, search-mode/performance, outcome, source and media-format breakdowns. This is an hourly aggregate, not a stored event log. |
-| Week | Week navigation; action and delivery totals; destination-app distribution donut with exact counts/percentages; seven-day activity trend; source and media-format breakdowns. |
-| Year | Year navigation; actions, searches, paste handoffs, active days, streak and best day/week/month; browsable monthly heatmaps. Calendar date selection opens that Day report. |
+| Selected day | A primary-container summary with total actions and compact, separately toned search/copy/handoff tiles. Defaults to today. |
+| Activity calendar | One compact, horizontally scrollable yearly heatmap. Twelve-dp cells have four color-intensity levels based on quartiles of active-day action counts in that year; zero is neutral. Equal counts have equal intensity; outliers do not flatten the other days. A Less/More legend explains the scale. Future dates are omitted. Selecting a date brings the hourly section into view. Active days and lifetime current/best streaks sit below the chart. |
+| By hour | Selected day's 24-hour activity bars, exact-count accessible summary and tap-to-inspect counts. |
+| Through the week | Selected week's total actions/handoffs and seven-day trend; date range is shown. Selecting a point changes the dashboard date. |
+| Destinations | The same week's accepted handoffs, with a compact donut and count/percentage legend; reflows vertically at large text sizes. |
+| Breakdowns | Weekly action types, media/source counts, handoff outcomes and search-mode/performance counters, grouped rather than repeated across separate tabs. |
+| Milestones | Selected-year totals and best day/week/month/streak, average actions per active day, and lifetime totals. |
+| Local controls | Pause/resume recording and confirmed clearing, on the same page. |
 
 ### Metric definitions
 
@@ -51,19 +57,19 @@ SAO owns collection, storage, aggregation, charts and controls. No extension or 
 
 The existing Room/coroutines stack provides a separate host-owned usage database, with counters grouped by local day/hour and typed dimensions. A bounded, ordered asynchronous writer keeps recording from blocking delivery or making media work fail. Recording and Clear statistics controls are available directly on the usage page; clear/pause are serialized with writes so queued work cannot repopulate cleared data. Clearing preserves the recording toggle. Recording is local and enabled by default; there is no telemetry SDK, upload, background timer, wake lock, extension binding or UsageStats permission. Database files are excluded from Android cloud/device backup. Counters start with this build; no invented historical data is shown.
 
-Room provides period-bounded bucket queries and compact lifetime daily totals. Calculations run off the main thread and views collect only while started. A ViewModel/SavedStateHandle retains page/date/scroll state, without preference writes. Date/time-zone changes refresh the page through lifecycle/system events, not polling. The writer waits for real actions while idle. Persistence is best effort on abrupt process death; failed analytics never changes a media action’s result.
+Room provides one selected-week bucket query and compact lifetime daily totals. Daily details filter that week's buckets; yearly heatmaps and records use daily totals, so displaying all sections does not fetch a year's detailed buckets or bind an extension. Calculations run off the main thread and views collect only while started. A ViewModel/SavedStateHandle retains date and vertical/horizontal scroll state, without preference writes. Date/time-zone changes refresh the page through lifecycle/system events, not polling. The writer waits for real actions while idle. Persistence is best effort on abrupt process death; failed analytics never changes a media action’s result.
 
 ### Views / Material 3 design
 
-The screen uses a Material toolbar destination, Material tabs, cards, text/icon buttons, filled selection chips, date picker, clear-confirmation dialog and tonal metric tiles. Graphs use small native Canvas Views rather than another chart dependency; exact-value summaries and accessible labels accompany them. Calendars use actual focusable views and lazy horizontal month presentation. Theme color roles cover surfaces, text and series, with Material Symbols, 16 dp screen insets, 16 dp card padding, 12 dp card gaps and 48 dp action targets. Strings/plurals are Android resources; locale formatting, RTL, dark mode and large-text reflow are supported. No dependency was added, and the source SDK and extension APKs are unchanged.
+The screen uses a Material toolbar destination, cards, text/icon buttons, filled selection chips, date picker, clear-confirmation dialog and tonal metric tiles. Primary/on-primary-container roles define the main summary; secondary and tertiary container/on-container pairs distinguish supporting metrics. Neutral surface containers keep plots readable. Repeated decorative chart badges and tabs are removed. Graphs use small native Canvas Views rather than another chart dependency; exact-value summaries and accessible labels accompany them. The compact heatmap exposes each date as an accessible virtual button through ExploreByTouchHelper; keyboard/TalkBack selection and the full-size date picker provide alternatives to tiny chart-cell touch targets. Theme color roles cover surfaces, text and series, with Material Symbols, 16 dp screen insets, 16 dp card padding, 12 dp card gaps and 48 dp navigation targets. Strings/plurals are Android resources; locale formatting, RTL, dark mode and large-text reflow are supported. No dependency was added, and the source SDK and extension APKs are unchanged.
 
 ### Validation
 
 Verified on a disposable Android 15 emulator with synthetic counters and no private accounts or chat sends:
 
-- **51 JVM tests pass**, including six new aggregation/privacy cases covering empty data, gaps, future dates, locale/week/year boundaries, leap years, scoped yearly records and accepted-outcome denominators.
-- **Three Android tests pass:** ordered atomic recording/pause/clear behavior; toolbar order and selection restoration across recreation; opt-in populated reports, calendar dimensions, actual filename-copy recording and UI pause/confirmed-clear controls. The populated-report case also passes separately in dark mode and at 200% font size.
-- **Visual inspection:** all four populated pages and their chart/calendar details in light/dark and large text; empty state; mirrored RTL layout; home toolbar icon placement. Screenshots are saved locally in `/srv/samba/share/tmp/usage/`.
+- **53 JVM tests pass**, including eight usage cases covering empty data, gaps, future dates, locale/week/year boundaries, leap years, scoped yearly records, accepted-outcome denominators, heatmap intensity/outliers and consistent day/week/year scopes in one dashboard.
+- **Three Android tests pass:** ordered atomic recording/pause/clear behavior; toolbar order, stacked sections and date/scroll restoration across recreation; opt-in populated reports, compact cell dimensions, accessible date selection, actual filename-copy recording and UI pause/confirmed-clear controls. The populated-report case also passes separately in dark mode, at 200% font size, and with the RTL pseudolocale.
+- **Visual inspection:** the stacked dashboard and chart/calendar details in light/dark, large text and RTL. Revised screenshots are saved locally in `/srv/samba/share/tmp/analytics/redesign/`; earlier toolbar/empty-state checks are in `/srv/samba/share/tmp/analytics/`.
 - **Builds:** debug, instrumentation APK and minified unsigned release succeed. Lint reports no errors and no issues in the new usage code/resources. Usage database backup exclusions were reviewed.
 
 Synthetic seeding exists only in an opt-in instrumentation test; production never seeds history. The debug APK is copied to `/srv/samba/share/app-debug.apk`. No APK/release is published and the PR description is unchanged. These checks validate SAO's recording and reporting; they do not claim end-to-end delivery in third-party messaging apps.

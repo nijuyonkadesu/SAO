@@ -15,15 +15,14 @@ import java.time.temporal.WeekFields
 import java.util.Locale
 import javax.inject.Inject
 
-data class UsageUiState(val report: UsageReport? = null,val enabled: Boolean? = null,val error: Boolean = false)
+data class UsageUiState(val report: UsageDashboard? = null,val enabled: Boolean? = null,val error: Boolean = false)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class UsageViewModel @Inject constructor(private val repository: UsageRepository,private val saved: SavedStateHandle,
     profiles: SourceProfiles,dispatchers: FloatingDispatchers): ViewModel() {
-    private val page=runCatching { UsagePage.valueOf(saved["usage_page"] ?: "OVERVIEW") }.getOrDefault(UsagePage.OVERVIEW)
-    private fun anchor(page: UsagePage)=runCatching { LocalDate.parse(saved.get<String>("usage_anchor_$page")) }.getOrDefault(LocalDate.now())
-    private val selection=MutableStateFlow(UsageSelection(page,anchor(page),WeekFields.of(Locale.getDefault()).firstDayOfWeek))
+    private val anchor=runCatching { LocalDate.parse(saved.get<String>("usage_anchor")) }.getOrDefault(LocalDate.now())
+    private val selection=MutableStateFlow(UsageSelection(UsageRange.WEEK,anchor,WeekFields.of(Locale.getDefault()).firstDayOfWeek))
     val selectionState=selection.asStateFlow()
     private val today=MutableStateFlow(LocalDate.now())
     val sourceNames=profiles.snapshots.map { snapshot -> snapshot.catalog.profiles.associate { it.id to it.name } }
@@ -31,7 +30,7 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
         .stateIn(viewModelScope,SharingStarted.WhileSubscribed(0),emptyMap())
     val state=combine(selection,today) { selected,now -> selected to now }.flatMapLatest { (selected,now) ->
         combine(repository.buckets(selected),repository.days,repository.enabled,repository.failure) { buckets,days,enabled,error ->
-            UsageUiState(UsageReport(selected,buckets,days.filter { it.day<=now.toEpochDay() },now),enabled,error)
+            UsageUiState(UsageDashboard(selected,buckets,days.filter { it.day<=now.toEpochDay() },now),enabled,error)
         }.flowOn(dispatchers.cpu).catch { error ->
             if(error is CancellationException) throw error
             emit(UsageUiState(error=true))
@@ -41,27 +40,25 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
         today.value=LocalDate.now()
         selection.value=selection.value.copy(firstWeekday=WeekFields.of(locale).firstDayOfWeek)
     }
-    fun page(value: UsagePage) { saved["usage_page"]=value.name; selection.value=selection.value.copy(page=value,anchor=anchor(value).coerceAtMost(today.value)) }
     fun date(value: LocalDate) {
         val actual=value.coerceAtMost(today.value)
-        saved["usage_anchor_${selection.value.page}"]=actual.toString()
+        saved["usage_anchor"]=actual.toString()
         selection.value=selection.value.copy(anchor=actual)
     }
-    fun step(direction: Long) {
-        val selected=selection.value
-        date(when(selected.page) {
-            UsagePage.OVERVIEW -> selected.start.plusMonths(direction)
-            UsagePage.DAY -> selected.start.plusDays(direction)
-            UsagePage.WEEK -> selected.start.plusWeeks(direction)
-            UsagePage.YEAR -> selected.start.plusYears(direction)
-        })
-    }
-    fun openDay(value: LocalDate) { page(UsagePage.DAY); date(value) }
+    fun step(direction: Long)=date(selection.value.anchor.plusDays(direction))
+    fun year(direction: Long)=date(selection.value.anchor.plusYears(direction))
     fun enabled(value: Boolean) { viewModelScope.launch { try { repository.enabled(value) } catch(cancelled: CancellationException) { throw cancelled } catch(_: Exception) { /* Repository exposes the error without losing existing graphs. */ } } }
     fun clear() { viewModelScope.launch { try { repository.clear() } catch(cancelled: CancellationException) { throw cancelled } catch(_: Exception) { /* Displayed through repository.failure. */ } } }
-    fun scroll(page: UsagePage): Int = saved["usage_scroll_$page"] ?: 0
-    fun scroll(page: UsagePage,y: Int) { saved["usage_scroll_$page"]=y }
-    var heatmapMonth: Int
-        get()=saved["usage_heatmap_month"] ?: (LocalDate.now().monthValue-1)
-        set(value) { saved["usage_heatmap_month"]=value }
+    var scroll: Int
+        get()=saved["usage_scroll"] ?: 0
+        set(value) { saved["usage_scroll"]=value }
+    var heatmapYear: Int
+        get()=saved["usage_heatmap_year"] ?: 0
+        set(value) { saved["usage_heatmap_year"]=value }
+    var heatmapDate: Long
+        get()=saved["usage_heatmap_date"] ?: Long.MIN_VALUE
+        set(value) { saved["usage_heatmap_date"]=value }
+    var heatmapScroll: Int
+        get()=saved["usage_heatmap_scroll"] ?: 0
+        set(value) { saved["usage_heatmap_scroll"]=value }
 }
