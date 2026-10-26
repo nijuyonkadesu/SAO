@@ -6,9 +6,11 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.view.MotionEvent
 import android.view.View
 import com.google.android.material.color.MaterialColors
+import androidx.core.graphics.ColorUtils
 import one.njk.sao.R
 import java.text.NumberFormat
 import kotlin.math.max
@@ -31,6 +33,7 @@ internal class UsageTrendView(context: Context,private val points: List<UsagePoi
     private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
     private val plot=RectF()
     private val path=Path()
+    private val area=Path()
     private val number=NumberFormat.getIntegerInstance(resources.configuration.locales[0])
     private val dataMaximum=(points.maxOfOrNull { it.value } ?: 0L).coerceAtLeast(1)
     private val ticks=dataMaximum.coerceAtMost(3).toInt()
@@ -68,7 +71,7 @@ internal class UsageTrendView(context: Context,private val points: List<UsagePoi
         paint.strokeWidth=density; paint.style=Paint.Style.FILL
         for(index in 0..ticks) {
             val y=plot.bottom-plot.height()*index/ticks
-            paint.color=outline; canvas.drawLine(plot.left,y,plot.right,y,paint)
+            paint.color=ColorUtils.setAlphaComponent(outline,128); canvas.drawLine(plot.left,y,plot.right,y,paint)
             paint.color=foreground; paint.textAlign=Paint.Align.RIGHT
             canvas.drawText(labels[index],plot.left-8*density,y+paint.textSize/3,paint)
         }
@@ -77,6 +80,8 @@ internal class UsageTrendView(context: Context,private val points: List<UsagePoi
         if(line) {
             path.reset()
             points.forEachIndexed { index,point -> if(index==0) path.moveTo(x(index),y(point.value)) else path.lineTo(x(index),y(point.value)) }
+            area.set(path); area.lineTo(x(points.lastIndex),plot.bottom); area.lineTo(x(0),plot.bottom); area.close()
+            paint.color=ColorUtils.setAlphaComponent(primary,22); canvas.drawPath(area,paint)
             paint.color=primary; paint.style=Paint.Style.STROKE; paint.strokeWidth=3*density
             canvas.drawPath(path,paint); paint.style=Paint.Style.FILL
         }
@@ -114,6 +119,7 @@ internal class UsageTrendView(context: Context,private val points: List<UsagePoi
 @SuppressLint("ViewConstructor") // Programmatic report view, never inflated from XML.
 internal class UsageDonutView(context: Context,private val points: List<UsagePoint>): View(context) {
     private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
+    private val emphasisTypeface=Typeface.create(Typeface.DEFAULT,600,false)
     private val bounds=RectF()
     private val colors=context.usageSeriesColors()
     private val sum=points.sumOf { it.value }
@@ -125,7 +131,7 @@ internal class UsageDonutView(context: Context,private val points: List<UsagePoi
     }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val stroke=18*resources.displayMetrics.density
+        val stroke=20*resources.displayMetrics.density
         val size=minOf(width,height).toFloat()
         bounds.set((width-size)/2+stroke,(height-size)/2+stroke,(width+size)/2-stroke,(height+size)/2-stroke)
         paint.style=Paint.Style.STROKE; paint.strokeWidth=stroke; paint.strokeCap=Paint.Cap.ROUND
@@ -139,12 +145,12 @@ internal class UsageDonutView(context: Context,private val points: List<UsagePoi
         }
         paint.style=Paint.Style.FILL; paint.strokeCap=Paint.Cap.BUTT
         paint.color=context.usageColor(com.google.android.material.R.attr.colorOnSurface)
-        paint.textAlign=Paint.Align.CENTER; paint.isFakeBoldText=true
-        paint.textSize=context.usageSp(28f)
+        paint.textAlign=Paint.Align.CENTER; paint.typeface=emphasisTypeface
+        paint.textSize=context.usageSp(32f)
         val fit=(bounds.width()-stroke-12*resources.displayMetrics.density)/paint.measureText(total).coerceAtLeast(1f)
         if(fit<1) paint.textSize*=fit
         canvas.drawText(total,width/2f,height/2f,paint)
-        paint.isFakeBoldText=false; paint.textSize=context.usageSp(14f)
+        paint.typeface=Typeface.DEFAULT; paint.textSize=context.usageSp(12f)
         paint.color=context.usageColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
         canvas.drawText(context.getString(R.string.usage_total),width/2f,height/2f+paint.textSize*1.7f,paint)
     }

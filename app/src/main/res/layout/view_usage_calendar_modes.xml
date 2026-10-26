@@ -1,11 +1,12 @@
-<com.google.android.material.chip.ChipGroup xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.button.MaterialButtonToggleGroup xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    style="@style/Widget.Material3Expressive.MaterialButtonToggleGroup"
     android:layout_width="match_parent" android:layout_height="wrap_content"
     app:singleSelection="true" app:selectionRequired="true">
-    <com.google.android.material.chip.Chip android:id="@+id/usage_calendar_month"
-        style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:checkable="true" android:text="@string/usage_month" />
-    <com.google.android.material.chip.Chip android:id="@+id/usage_calendar_year"
-        style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:checkable="true" android:text="@string/usage_year" />
-</com.google.android.material.chip.ChipGroup>
+    <com.google.android.material.button.MaterialButton android:id="@+id/usage_calendar_month"
+        style="@style/Widget.SAO.Usage.CalendarChoice" android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_weight="1" android:text="@string/usage_month" />
+    <com.google.android.material.button.MaterialButton android:id="@+id/usage_calendar_year"
+        style="@style/Widget.SAO.Usage.CalendarChoice" android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_weight="1" android:text="@string/usage_year" />
+</com.google.android.material.button.MaterialButtonToggleGroup>

@@ -139,7 +139,7 @@ class UsageDeviceTest {
             scenario.onActivity { activity ->
                 assertEquals(before,activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_period).text.toString())
                 assertEquals(scroll,activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollY)
-                assertTrue(activity.findViewById<com.google.android.material.chip.Chip>(R.id.usage_calendar_month).isChecked)
+                assertTrue(activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_calendar_month).isChecked)
                 val ids=listOf(R.id.usage_activity_calendar,R.id.usage_daily_chart,R.id.usage_weekly_chart,R.id.usage_destinations,R.id.usage_breakdown,R.id.usage_records)
                 val tops=ids.map { (activity.findViewById<View>(it).parent as View).top }
                 assertEquals("Reports appear together in one scrolling page",tops.sorted(),tops)

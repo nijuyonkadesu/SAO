@@ -5,20 +5,20 @@
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical"
         android:layout_marginHorizontal="16dp" android:layout_marginTop="12dp" android:layout_marginBottom="8dp">
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/usage_previous" style="@style/Widget.Material3.Button.TonalButton.Icon"
+            android:id="@+id/usage_previous" style="@style/Widget.SAO.Usage.IconButton"
             android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="@string/usage_previous"
             app:icon="@drawable/ic_usage_previous" app:iconGravity="textStart" app:iconPadding="0dp" />
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/usage_period" style="@style/Widget.Material3.Button.TextButton"
+            android:id="@+id/usage_period" style="@style/Widget.SAO.Usage.DateButton"
             android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minHeight="48dp"
             android:layout_marginHorizontal="8dp" android:contentDescription="@string/usage_choose_date"
-            app:icon="@drawable/ic_usage_calendar" app:iconSize="18dp" />
+            app:icon="@drawable/ic_usage_calendar" app:iconSize="18dp" app:iconGravity="textStart" app:iconPadding="8dp" />
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/usage_next" style="@style/Widget.Material3.Button.TonalButton.Icon"
+            android:id="@+id/usage_next" style="@style/Widget.SAO.Usage.IconButton"
             android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="@string/usage_next"
             app:icon="@drawable/ic_usage_next" app:iconGravity="textStart" app:iconPadding="0dp" />
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/usage_today" style="@style/Widget.Material3.Button.TextButton"
+            android:id="@+id/usage_today" style="@style/Widget.Material3Expressive.Button.TextButton"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp"
             android:text="@string/usage_jump_today" android:visibility="gone" />
     </LinearLayout>
@@ -36,19 +36,19 @@
             <LinearLayout android:id="@+id/usage_content" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp"
-                app:cardBackgroundColor="?attr/colorSurfaceContainerLow" app:cardCornerRadius="24dp" app:cardElevation="0dp" app:strokeWidth="0dp">
+                app:cardBackgroundColor="?attr/colorSurfaceContainer" app:cardCornerRadius="28dp" app:cardElevation="0dp" app:strokeWidth="0dp">
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
                     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
                         <com.google.android.material.textview.MaterialTextView
                             android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-                            android:layout_marginEnd="12dp" android:text="@string/usage_local" android:textAppearance="?attr/textAppearanceTitleMedium" />
+                            android:layout_marginEnd="12dp" android:text="@string/usage_local" android:textAppearance="@style/TextAppearance.Material3.TitleSmall.Emphasized" />
                         <com.google.android.material.chip.Chip android:id="@+id/usage_recording"
                             style="@style/Widget.SAO.Chip.Filter" android:layout_width="wrap_content" android:layout_height="wrap_content"
                             android:checkable="true" android:text="@string/usage_recording" android:contentDescription="@string/usage_toggle_recording" />
                     </LinearLayout>
                     <com.google.android.material.textview.MaterialTextView android:layout_width="match_parent" android:layout_height="wrap_content"
                         android:layout_marginTop="4dp" android:text="@string/usage_privacy"
-                        android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" />
+                        android:textAppearance="?attr/textAppearanceBodySmall" android:textColor="?attr/colorOnSurfaceVariant" />
                     <com.google.android.material.chip.Chip android:id="@+id/usage_clear"
                         style="@style/Widget.SAO.Settings.ActionChip" android:layout_width="wrap_content" android:layout_height="wrap_content"
                         android:layout_marginTop="8dp" android:text="@string/usage_clear" app:chipIcon="@drawable/source_chip_delete" />

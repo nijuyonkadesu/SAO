@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.Gravity
+import androidx.appcompat.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -23,7 +24,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
-import com.google.android.material.chip.ChipGroup
+import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.color.DynamicColors
 import com.google.android.material.datepicker.CalendarConstraints
 import com.google.android.material.datepicker.DateValidatorPointBackward
 import com.google.android.material.datepicker.MaterialDatePicker
@@ -49,6 +51,7 @@ import java.time.format.TextStyle
 class UsageFragment: Fragment() {
     private var _binding: FragmentUsageBinding?=null
     private val binding get()=requireNotNull(_binding)
+    private val uiContext: Context get()=binding.root.context
     private val model: UsageViewModel by viewModels()
     private var rendered: UsageDashboard?=null
     private var renderedCalendarMode: UsageCalendarMode?=null
@@ -68,7 +71,8 @@ class UsageFragment: Fragment() {
         SURFACE(com.google.android.material.R.attr.colorSurfaceContainerHigh,com.google.android.material.R.attr.colorOnSurface)
     }
     override fun onCreateView(inflater: LayoutInflater,container: ViewGroup?,state: Bundle?): View {
-        _binding=FragmentUsageBinding.inflate(inflater,container,false)
+        val themed=DynamicColors.wrapContextIfAvailable(ContextThemeWrapper(requireContext(),R.style.Theme_SAO_Usage))
+        _binding=FragmentUsageBinding.inflate(inflater.cloneInContext(themed),container,false)
         return binding.root
     }
     override fun onViewCreated(view: View,savedInstanceState: Bundle?) {
@@ -78,7 +82,7 @@ class UsageFragment: Fragment() {
         binding.usageToday.setOnClickListener { model.date(LocalDate.now()) }
         binding.usageRecording.setOnClickListener { if(model.state.value.enabled!=null) model.enabled(binding.usageRecording.isChecked) }
         binding.usageClear.setOnClickListener {
-            MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.usage_clear_title).setMessage(R.string.usage_clear_message)
+            MaterialAlertDialogBuilder(uiContext).setTitle(R.string.usage_clear_title).setMessage(R.string.usage_clear_message)
                 .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.usage_clear) { _,_ -> model.clear() }.show()
         }
         viewLifecycleOwner.lifecycleScope.launch { viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -133,7 +137,7 @@ class UsageFragment: Fragment() {
         calendar(report)
         val daily=section(R.string.usage_hourly,dayLabel(report.selection.anchor)).apply { id=R.id.usage_daily_chart }
         val hours=report.day.hourly.mapIndexed { hour,value -> UsagePoint(hourLabel(hour),value) }
-        daily.addView(UsageTrendView(requireContext(),hours) { showPoint(hours[it]) },spaced(-1,dp(180)))
+        daily.addView(UsageTrendView(uiContext,hours) { showPoint(hours[it]) },spaced(-1,dp(180)))
         week(report.week)
         breakdown(report.week)
         records(report)
@@ -150,11 +154,9 @@ class UsageFragment: Fragment() {
         val report=dashboard.day
         val column=section(if(report.selection.anchor==report.today) R.string.usage_today else R.string.usage_selected_day,
             tone=Tone.PRIMARY)
-        val total=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL }
+        val total=LinearLayout(uiContext).apply { gravity=Gravity.CENTER_VERTICAL }
         column.addView(total)
-        total.addView(text(numbers.format(report.actions),tone=Tone.PRIMARY,appearance=com.google.android.material.R.style.TextAppearance_Material3_DisplayMedium).apply {
-            setTypeface(typeface,android.graphics.Typeface.BOLD)
-        })
+        total.addView(text(numbers.format(report.actions),tone=Tone.PRIMARY,appearance=com.google.android.material.R.style.TextAppearance_Material3_DisplayLarge_Emphasized))
         total.addView(text(getString(R.string.usage_actions),tone=Tone.PRIMARY),LinearLayout.LayoutParams(-2,-2).apply { marginStart=dp(12) })
         if(dashboard.days.isEmpty()) column.addView(text(getString(R.string.usage_empty),tone=Tone.PRIMARY),spaced(-1,-2))
         metrics(column,listOf(R.string.usage_searches to numbers.format(report.searches),R.string.usage_copies to numbers.format(report.copies),
@@ -168,14 +170,24 @@ class UsageFragment: Fragment() {
         val column=binding.usageContent.findViewById<LinearLayout>(R.id.usage_activity_calendar) ?: section(R.string.usage_calendar)
         column.id=R.id.usage_activity_calendar
         monthCarousel?.close(); monthCarousel=null
-        while(column.childCount>1) column.removeViewAt(1)
-        column.addView((layoutInflater.inflate(R.layout.view_usage_calendar_modes,column,false) as ChipGroup).apply {
-            check(if(monthly) R.id.usage_calendar_month else R.id.usage_calendar_year)
-            setOnCheckedStateChangeListener { _,ids ->
-                model.calendarMode(if(R.id.usage_calendar_month in ids) UsageCalendarMode.MONTH else UsageCalendarMode.YEAR)
+        var modes=column.getChildAt(1) as? MaterialButtonToggleGroup
+        if(modes==null) {
+            modes=LayoutInflater.from(uiContext).inflate(R.layout.view_usage_calendar_modes,column,false) as MaterialButtonToggleGroup
+            modes.check(if(monthly) R.id.usage_calendar_month else R.id.usage_calendar_year)
+            for(id in listOf(R.id.usage_calendar_month,R.id.usage_calendar_year)) modes.findViewById<MaterialButton>(id).apply {
+                icon=if(isChecked) ContextCompat.getDrawable(context,R.drawable.ic_picker_check) else null
             }
-        },spaced(-1,-2))
-        val controls=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL }
+            modes.addOnButtonCheckedListener { group,id,checked ->
+                group.findViewById<MaterialButton>(id).icon=if(checked) ContextCompat.getDrawable(group.context,R.drawable.ic_picker_check) else null
+                if(checked) model.calendarMode(if(id==R.id.usage_calendar_month) UsageCalendarMode.MONTH else UsageCalendarMode.YEAR)
+            }
+            column.addView(modes,spaced(-1,-2))
+        }
+        val selectedMode=if(monthly) R.id.usage_calendar_month else R.id.usage_calendar_year
+        if(modes.checkedButtonId!=selectedMode) modes.check(selectedMode)
+        // Leave the switcher mounted so its native checked/pressed shape animation can finish.
+        while(column.childCount>2) column.removeViewAt(2)
+        val controls=LinearLayout(uiContext).apply { gravity=Gravity.CENTER_VERTICAL }
         column.addView(controls)
         controls.addView(iconButton(R.drawable.ic_usage_previous,if(monthly) R.string.usage_previous_month else R.string.usage_previous_year) { model.stepCalendar(-1) }.apply { id=R.id.usage_calendar_previous })
         val label=if(monthly) model.calendarMonth.value.atDay(1).format(DateTimeFormatter.ofPattern("LLLL yyyy",locale)) else NumberFormat.getIntegerInstance(locale).apply { isGroupingUsed=false }.format(report.selection.anchor.year)
@@ -184,7 +196,7 @@ class UsageFragment: Fragment() {
             id=R.id.usage_calendar_next; isEnabled=report.selection.endExclusive<=dashboard.today
         })
         if(monthly) {
-            val carousel=UsageMonthCarousel(requireContext(),dashboard,model.calendarMonth.value,model::browseMonth,::selectUsageDay) { parent,month ->
+            val carousel=UsageMonthCarousel(uiContext,dashboard,model.calendarMonth.value,model::browseMonth,::selectUsageDay) { parent,month ->
                 val average=NumberFormat.getNumberInstance(locale).apply { maximumFractionDigits=1 }.format(if(month.activeDays==0) 0.0 else month.actions.toDouble()/month.activeDays)
                 metrics(parent,listOf(R.string.usage_actions to numbers.format(month.actions),R.string.usage_active_days to numbers.format(month.activeDays),R.string.usage_average_day to average))
             }
@@ -192,9 +204,9 @@ class UsageFragment: Fragment() {
             column.addView(carousel,spaced(-1,-2))
             updateMonthControls(model.calendarMonth.value)
         } else {
-            val chart=UsageHeatmapView(requireContext(),report.selection,report.periodDays.associate { it.day to it.actions },
+            val chart=UsageHeatmapView(uiContext,report.selection,report.periodDays.associate { it.day to it.actions },
                 dashboard.selection.anchor,dashboard.today,onDate=::selectUsageDay).apply { id=R.id.usage_heatmap }
-            val scroll=HorizontalScrollView(requireContext()).apply { isHorizontalScrollBarEnabled=false; addView(chart,ViewGroup.LayoutParams(-2,-2)) }
+            val scroll=HorizontalScrollView(uiContext).apply { isHorizontalScrollBarEnabled=false; addView(chart,ViewGroup.LayoutParams(-2,-2)) }
             column.addView(scroll,spaced(-1,-2))
             scroll.post {
                 if(chart.isAttachedToWindow) {
@@ -206,9 +218,9 @@ class UsageFragment: Fragment() {
                 }
             }
         }
-        val legend=LinearLayout(requireContext()).apply { gravity=Gravity.END or Gravity.CENTER_VERTICAL; importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+        val legend=LinearLayout(uiContext).apply { gravity=Gravity.END or Gravity.CENTER_VERTICAL; importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO }
         legend.addView(text(getString(R.string.usage_less)).apply { setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelSmall) })
-        requireContext().usageHeatColors().forEach { color -> legend.addView(View(requireContext()).apply { background=rounded(color,3) },LinearLayout.LayoutParams(dp(12),dp(12)).apply { marginStart=dp(4) }) }
+        uiContext.usageHeatColors().forEach { color -> legend.addView(View(uiContext).apply { background=rounded(color,3) },LinearLayout.LayoutParams(dp(12),dp(12)).apply { marginStart=dp(4) }) }
         legend.addView(text(getString(R.string.usage_more)).apply { setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelSmall) },LinearLayout.LayoutParams(-2,-2).apply { marginStart=dp(6) })
         column.addView(legend,spaced(-1,-2))
         column.addView(text(getString(if(monthly) R.string.usage_month_hint else R.string.usage_heatmap_hint)),spaced(-1,-2))
@@ -261,7 +273,7 @@ class UsageFragment: Fragment() {
             }),numbers.format(it.count)) }
             if(report.sources.isNotEmpty()) {
                 subheading(this,R.string.usage_sources)
-                report.sources.forEach { row(this,names[it.key]?.let { name -> one.njk.sao.floating.sourceDisplayName(requireContext(),it.key,name) } ?: getString(R.string.usage_removed_source),numbers.format(it.count)) }
+                report.sources.forEach { row(this,names[it.key]?.let { name -> one.njk.sao.floating.sourceDisplayName(uiContext,it.key,name) } ?: getString(R.string.usage_removed_source),numbers.format(it.count)) }
             }
             if(report.outcomes.isNotEmpty()) {
                 subheading(this,R.string.usage_outcomes)
@@ -292,9 +304,9 @@ class UsageFragment: Fragment() {
             metrics(this,listOf(R.string.usage_actions to numbers.format(report.actions),R.string.usage_searches to numbers.format(report.searches),
                 R.string.usage_copies to numbers.format(report.copies),R.string.usage_handoffs to numbers.format(report.handoffs)))
             subheading(this,R.string.usage_busiest)
-            row(this,getString(R.string.usage_best_day),requireContext().actionCount(report.bestDay))
-            row(this,getString(R.string.usage_best_week),requireContext().actionCount(report.bestWeek))
-            row(this,getString(R.string.usage_best_month),requireContext().actionCount(report.bestMonth))
+            row(this,getString(R.string.usage_best_day),uiContext.actionCount(report.bestDay))
+            row(this,getString(R.string.usage_best_week),uiContext.actionCount(report.bestWeek))
+            row(this,getString(R.string.usage_best_month),uiContext.actionCount(report.bestMonth))
             row(this,getString(R.string.usage_year_streak),dayCount(report.periodStreak.best))
             val average=NumberFormat.getNumberInstance(locale).apply { maximumFractionDigits=1 }.format(if(report.activeDays==0) 0.0 else report.actions.toDouble()/report.activeDays)
             row(this,getString(R.string.usage_average_day),average)
@@ -304,12 +316,15 @@ class UsageFragment: Fragment() {
         }
     }
     private fun section(title: Int,subtitle: String?=null,tone: Tone?=null): LinearLayout {
-        val card=MaterialCardView(requireContext()).apply {
-            radius=dp(if(tone==Tone.PRIMARY) 28 else 24).toFloat(); cardElevation=0f; strokeWidth=0
+        val card=MaterialCardView(uiContext).apply {
+            radius=dp(if(tone==Tone.PRIMARY || title==R.string.usage_calendar) 32 else 28).toFloat(); cardElevation=0f; strokeWidth=0
+            if(tone==Tone.PRIMARY) shapeAppearanceModel=shapeAppearanceModel.toBuilder()
+                .setBottomLeftCornerSize(dp(if(resources.configuration.layoutDirection==View.LAYOUT_DIRECTION_RTL) 32 else 8).toFloat())
+                .setBottomRightCornerSize(dp(if(resources.configuration.layoutDirection==View.LAYOUT_DIRECTION_RTL) 8 else 32).toFloat()).build()
             setCardBackgroundColor(context.usageColor(tone?.container ?: com.google.android.material.R.attr.colorSurfaceContainerLow))
         }
         binding.usageContent.addView(card,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
-        val column=LinearLayout(requireContext()).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(16)) }
+        val column=LinearLayout(uiContext).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(16)) }
         card.addView(column)
         column.addView(text(getString(title),true,tone))
         subtitle?.let { column.addView(text(it),spaced(-1,-2)) }
@@ -321,46 +336,58 @@ class UsageFragment: Fragment() {
             setTextColor(context.usageColor(com.google.android.material.R.attr.colorTertiary))
         },LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(16); bottomMargin=dp(4) })
     }
-    private fun text(value: String,title: Boolean=false,tone: Tone?=null,appearance: Int?=null)=MaterialTextView(requireContext()).apply {
+    private fun text(value: String,title: Boolean=false,tone: Tone?=null,appearance: Int?=null)=MaterialTextView(uiContext).apply {
         text=value
-        setTextAppearance(appearance ?: if(title) com.google.android.material.R.style.TextAppearance_Material3_TitleMedium else com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
+        setTextAppearance(appearance ?: if(title) com.google.android.material.R.style.TextAppearance_Material3_TitleMedium_Emphasized else com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
         setTextColor(context.usageColor(tone?.foreground ?: if(title) com.google.android.material.R.attr.colorOnSurface else com.google.android.material.R.attr.colorOnSurfaceVariant))
         if(title) ViewCompat.setAccessibilityHeading(this,true)
     }
     private fun metrics(parent: LinearLayout,values: List<Pair<Int,String>>,tones: List<Tone> = listOf(Tone.PRIMARY,Tone.SECONDARY,Tone.TERTIARY)) {
-        val columns=when { resources.configuration.fontScale>1.5f -> 1; values.size==3 && resources.configuration.screenWidthDp>=360 -> 3; else -> 2 }
-        val grid=GridLayout(requireContext()).apply { columnCount=columns }
+        val columns=when { resources.configuration.fontScale>1.5f -> 1; values.size==3 -> if(resources.configuration.screenWidthDp>=360) 3 else 1; else -> 2 }
+        val grid=GridLayout(uiContext).apply { columnCount=columns }
         parent.addView(grid,spaced(-1,-2))
         values.forEachIndexed { index,(label,value) ->
             val tone=tones[index%tones.size]
-            val tile=MaterialCardView(requireContext()).apply {
-                radius=dp(16).toFloat(); cardElevation=0f; strokeWidth=0; setCardBackgroundColor(context.usageColor(tone.container))
+            val tile=MaterialCardView(uiContext).apply {
+                shapeAppearanceModel=metricShape(index,columns,values.size)
+                cardElevation=0f; strokeWidth=0; setCardBackgroundColor(context.usageColor(tone.container))
             }
             grid.addView(tile,GridLayout.LayoutParams(GridLayout.spec(index/columns),GridLayout.spec(index%columns,1f)).apply {
-                width=0; height=-2; setGravity(Gravity.FILL); setMargins(dp(3),dp(3),dp(3),dp(3))
+                width=0; height=-2; setGravity(Gravity.FILL); setMargins(dp(1),dp(1),dp(1),dp(1))
             })
-            tile.addView(LinearLayout(requireContext()).apply {
+            tile.addView(LinearLayout(uiContext).apply {
                 orientation=LinearLayout.VERTICAL; setPadding(dp(12),dp(12),dp(12),dp(12))
-                addView(text(getString(label),tone=tone,appearance=com.google.android.material.R.style.TextAppearance_Material3_LabelMedium))
+                addView(text(getString(label),tone=tone,appearance=com.google.android.material.R.style.TextAppearance_Material3_LabelMedium_Emphasized))
                 addView(android.widget.Space(context),LinearLayout.LayoutParams(0,0,1f))
-                addView(text(value,tone=tone,appearance=com.google.android.material.R.style.TextAppearance_Material3_HeadlineSmall).apply {
-                    setTypeface(typeface,android.graphics.Typeface.BOLD)
-                },spaced(-1,-2))
+                addView(text(value,tone=tone,appearance=com.google.android.material.R.style.TextAppearance_Material3_HeadlineSmall_Emphasized),spaced(-1,-2))
             })
         }
     }
+    private fun metricShape(index: Int,columns: Int,count: Int): ShapeAppearanceModel {
+        val row=index/columns; val column=index%columns; val rows=(count+columns-1)/columns
+        val outer=dp(20).toFloat(); val inner=dp(4).toFloat()
+        val topStart=if(row==0 && column==0) outer else inner
+        val topEnd=if(row==0 && column==columns-1) outer else inner
+        val bottomStart=if(row==rows-1 && column==0) outer else inner
+        val bottomEnd=if(row==rows-1 && index==count-1) outer else inner
+        val rtl=resources.configuration.layoutDirection==View.LAYOUT_DIRECTION_RTL
+        return ShapeAppearanceModel.builder().setTopLeftCornerSize(if(rtl) topEnd else topStart)
+            .setTopRightCornerSize(if(rtl) topStart else topEnd)
+            .setBottomLeftCornerSize(if(rtl) bottomEnd else bottomStart)
+            .setBottomRightCornerSize(if(rtl) bottomStart else bottomEnd).build()
+    }
     private fun row(parent: LinearLayout,label: String,value: String,color: Int?=null) {
-        val row=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(0,dp(7),0,dp(7)) }
+        val row=LinearLayout(uiContext).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(0,dp(7),0,dp(7)) }
         parent.addView(row,LinearLayout.LayoutParams(-1,-2))
-        if(color!=null) row.addView(View(requireContext()).apply { background=rounded(color,4); importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO },LinearLayout.LayoutParams(dp(8),dp(8)).apply { marginEnd=dp(8) })
+        if(color!=null) row.addView(View(uiContext).apply { background=rounded(color,4); importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO },LinearLayout.LayoutParams(dp(8),dp(8)).apply { marginEnd=dp(8) })
         row.addView(text(label),LinearLayout.LayoutParams(0,-2,1f).apply { marginEnd=dp(8) })
-        row.addView(text(value).apply { setTypeface(typeface,android.graphics.Typeface.BOLD) },LinearLayout.LayoutParams(-2,-2))
+        row.addView(text(value,tone=Tone.SURFACE,appearance=com.google.android.material.R.style.TextAppearance_Material3_LabelLarge_Emphasized),LinearLayout.LayoutParams(-2,-2))
     }
-    private fun iconButton(iconRes: Int,label: Int,action: ()->Unit)=MaterialButton(requireContext(),null,com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-        layoutParams=LinearLayout.LayoutParams(dp(48),dp(48)); icon=ContextCompat.getDrawable(context,iconRes)
-        iconPadding=0; iconGravity=MaterialButton.ICON_GRAVITY_TEXT_START; contentDescription=getString(label)
-        setPadding(0,0,0,0); setOnClickListener { action() }
-    }
+    private fun iconButton(iconRes: Int,label: Int,action: ()->Unit)=
+        (LayoutInflater.from(uiContext).inflate(R.layout.view_usage_navigation_button,binding.usageContent,false) as MaterialButton).apply {
+            icon=ContextCompat.getDrawable(context,iconRes); contentDescription=getString(label)
+            setOnClickListener { action() }
+        }
     private fun rounded(color: Int,radius: Int)=MaterialShapeDrawable(ShapeAppearanceModel.builder().setAllCornerSizes(dp(radius).toFloat()).build()).apply { fillColor=ColorStateList.valueOf(color) }
     private fun spaced(width: Int,height: Int)=LinearLayout.LayoutParams(width,height).apply { topMargin=dp(8) }
     private fun dayLabel(date: LocalDate)=date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
@@ -377,7 +404,7 @@ class UsageFragment: Fragment() {
         picker.addOnPositiveButtonClickListener { epoch -> model.date(Instant.ofEpochMilli(epoch).atZone(ZoneOffset.UTC).toLocalDate()) }
         picker.show(parentFragmentManager,"usage_date")
     }
-    private fun showPoint(point: UsagePoint) { Snackbar.make(binding.root,getString(R.string.usage_point_value,point.label,requireContext().actionCount(point.value)),Snackbar.LENGTH_SHORT).show() }
+    private fun showPoint(point: UsagePoint) { Snackbar.make(binding.root,getString(R.string.usage_point_value,point.label,uiContext.actionCount(point.value)),Snackbar.LENGTH_SHORT).show() }
     private fun actionLabel(action: UsageAction)=when(action) {
         UsageAction.SEARCH -> R.string.usage_searches; UsageAction.COPY_MEDIA -> R.string.usage_copies
         UsageAction.COPY_FILENAME -> R.string.usage_filename; UsageAction.PASTE -> R.string.usage_pastes
