@@ -57,12 +57,9 @@ class UsageReportTest {
         assertEquals(UsageSearchMode.NONE,row.searchMode); assertEquals(0L,row.results); assertEquals(0L,row.latencyMillis)
         assertEquals(today.toEpochDay(),row.day); assertEquals(23,row.hour)
     }
-    @Test fun heatmapIntensityDistinguishesHeavyDaysWithoutLettingOutliersFlattenTheYear() {
-        val intensity=UsageIntensity(listOf(0,1,2,3,4,5,6,7,10000))
-        assertEquals((0..4).toList(),listOf(0L,1,3,5,10000).map(intensity::level))
-        assertEquals(listOf(2,4),listOf(3L,8).map(UsageIntensity(listOf(3,8))::level))
-        assertEquals(4,UsageIntensity(listOf(9,9,9)).level(9))
-        assertEquals(0,UsageIntensity(emptyList()).level(0))
+    @Test fun heatmapIntensityUsesFixedBandsAndReachesMaximumOnlyAt120() {
+        val values=listOf(0L,1,21,39,40,79,80,119,120,10000)
+        assertEquals(listOf(0,1,1,1,2,2,3,3,4,4),values.map(UsageIntensity::level))
     }
     @Test fun dashboardSharesOneDateWhileKeepingDayWeekAndAnnualCountsSeparate() {
         val date=LocalDate.of(2027,1,1)

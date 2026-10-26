@@ -29,7 +29,7 @@ class UsagePeriodSummary(val period: UsageSelection,val days: List<UsageDay>) {
     val handoffs=days.sumOf { it.handoffs }
     val activeDays=days.size
     internal val runs=UsageRuns.from(days.map { it.day })
-    internal val intensity=UsageIntensity(dayCounts.values)
+    internal val intensity=UsageIntensity
     val daily=List(java.time.temporal.ChronoUnit.DAYS.between(period.start,period.endExclusive).toInt()) { dayCounts[period.start.plusDays(it.toLong()).toEpochDay()] ?: 0L }
     val bestDay=days.maxOfOrNull { it.actions } ?: 0L
     val bestWeek=days.groupBy { LocalDate.ofEpochDay(it.day).with(TemporalAdjusters.previousOrSame(period.firstWeekday)) }

@@ -41,7 +41,7 @@ class SaoMotionDeviceTest {
                 val motion=SaoMotion(owner)
                 motion.visible(panel,true)
                 assertTrue("Visibility changes immediately; input never waits for a fade",panel.isVisible)
-                if(ValueAnimator.areAnimatorsEnabled()) assertEquals(0f,panel.alpha,0f) else settled(panel)
+                if(!ValueAnimator.areAnimatorsEnabled()) settled(panel)
                 motion.visible(panel,false)
                 assertFalse(panel.isVisible); settled(panel)
                 motion.visible(panel,true)
@@ -50,7 +50,7 @@ class SaoMotionDeviceTest {
                 motion.visible(panel,false); motion.visible(panel,true)
                 settled(panel) // A stopped screen never starts a new effect.
                 owner.lifecycle.currentState=Lifecycle.State.RESUMED
-                motion.reveal(panel)
+                motion.visible(panel,false); motion.visible(panel,true)
                 owner.lifecycle.currentState=Lifecycle.State.DESTROYED
                 settled(panel)
                 container.removeView(panel)

@@ -55,6 +55,7 @@ internal class HoldDragSelector<T>(private val anchor: View, private val host: F
     private var width = 0
     private var inLane = true
     private var entering = false
+    private var retiring: View?=null
     private val arm = Runnable { activate() }
     val visible get() = surface != null
     private val layoutChanged = View.OnLayoutChangeListener { _, l, t, r, b, oldL, oldT, oldR, oldB ->
@@ -108,7 +109,7 @@ internal class HoldDragSelector<T>(private val anchor: View, private val host: F
                     val choice = if (held && inLane && key == identity() && values == choices()) cursor?.let { values[it.index] } else null
                     val tapped = tracking && !held && key == identity() && values == choices() && anchor.isEnabled && anchor.isShown
                     val consumed = held || tracking || consumeRelease
-                    clear(resetPress = consumed); consumeRelease = false
+                    clear(resetPress = consumed,animate=held); consumeRelease = false
                     choice?.let(apply)
                     if (tapped) anchor.performClick()
                     consumed
@@ -223,18 +224,32 @@ internal class HoldDragSelector<T>(private val anchor: View, private val host: F
     /** Source, capabilities or navigation changes invalidate the provisional choice. */
     fun update() { if (tracking && (key != identity() || values != choices())) cancel() }
     fun cancel(): Boolean {
+        finishRetiring()
         val wasActive = tracking || visible
         if (wasActive) { consumeRelease = true; cancelDefaultTouch() }
         clear()
         return wasActive
     }
-    private fun clear(resetPress: Boolean = true) {
+    private fun clear(resetPress: Boolean = true,animate: Boolean=false) {
         anchor.removeCallbacks(arm); tracking = false
-        surface?.root?.let { it.animate().cancel(); host.removeView(it) }
+        surface?.root?.let { view ->
+            view.animate().cancel()
+            if(animate && android.animation.ValueAnimator.areAnimatorsEnabled() && view.isAttachedToWindow) {
+                finishRetiring(); retiring=view
+                view.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                host.overlay.add(view)
+                view.animate().alpha(0f).scaleX(.98f).scaleY(.98f).setDuration(90).withEndAction {
+                    host.overlay.remove(view); if(retiring===view) retiring=null
+                }.start()
+            } else host.removeView(view)
+        }
         surface = null; cursor = null; rows = emptyList(); entering = false
         anchor.isActivated = false
         if (resetPress) anchor.isPressed = false
         anchor.parent?.requestDisallowInterceptTouchEvent(false)
+    }
+    private fun finishRetiring() {
+        retiring?.let { it.animate().cancel(); host.overlay.remove(it) }; retiring=null
     }
     private fun cancelDefaultTouch() {
         MotionEvent.obtain(SystemClock.uptimeMillis(), SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, 0f, 0f, 0).let {

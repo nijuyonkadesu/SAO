@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import androidx.core.view.isVisible
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.navigation.fragment.NavHostFragment
 import androidx.room.Room
@@ -31,13 +32,21 @@ class UsageDeviceTest {
             scenario.onActivity { activity ->
                 val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
                 val fragment=host.childFragmentManager.primaryNavigationFragment as? UsageFragment ?: return@onActivity
-                val model=androidx.lifecycle.ViewModelProvider(fragment)[UsageViewModel::class.java]
+                val model=androidx.lifecycle.ViewModelProvider(activity)[UsageViewModel::class.java]
                 ready=model.state.value.report?.selection==model.selectionState.value && model.selectionState.value.anchor==date &&
                     activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_period)?.text?.isNotBlank()==true
             }
             if(!ready) SystemClock.sleep(40)
         } while(!ready && SystemClock.elapsedRealtime()<deadline)
         assertTrue("Expected the selected report to finish rendering: $date",ready)
+    }
+    private fun scroll(scenario: ActivityScenario<MainActivity>,kind: UsageSections.Kind) {
+        scenario.onActivity { activity ->
+            val list=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_scroll)
+            val adapter=list.adapter as UsageSections
+            (list.layoutManager as androidx.recyclerview.widget.LinearLayoutManager).scrollToPositionWithOffset(adapter.position(kind),0)
+        }
+        instrumentation.waitForIdleSync()
     }
     private fun monthChart(activity: MainActivity): UsageHeatmapView? {
         val carousel=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_month_carousel) ?: return null
@@ -55,7 +64,7 @@ class UsageDeviceTest {
         do {
             scenario.onActivity { activity ->
                 val carousel=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_month_carousel) ?: return@onActivity
-                if(carousel.scrollState!=androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) return@onActivity
+                if(carousel.scrollState!=androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE || carousel.isLayoutRequested || carousel.isComputingLayout || !carousel.isLaidOut) return@onActivity
                 val manager=carousel.layoutManager ?: return@onActivity
                 val snap=com.google.android.material.carousel.CarouselSnapHelper(false)
                 val focused=snap.findSnapView(manager) ?: return@onActivity
@@ -63,7 +72,7 @@ class UsageDeviceTest {
                 val chart=monthChart(activity) ?: return@onActivity
                 val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
                 val fragment=host.childFragmentManager.primaryNavigationFragment!!
-                val model=androidx.lifecycle.ViewModelProvider(fragment)[UsageViewModel::class.java]
+                val model=androidx.lifecycle.ViewModelProvider(activity)[UsageViewModel::class.java]
                 val month=YearMonth.from(chart.period.anchor)
                 if(month==model.calendarMonth.value && (expected==null || expected==month) && chart.isShown && chart.width>0) actual=month
             }
@@ -80,6 +89,7 @@ class UsageDeviceTest {
         }
     }
     private fun toggleCalendar(scenario: ActivityScenario<MainActivity>) {
+        scroll(scenario,UsageSections.Kind.CALENDAR)
         scenario.onActivity { activity -> assertTrue(activity.findViewById<View>(R.id.usage_calendar_scale)
             .performAccessibilityAction(AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD,null)) }
     }
@@ -138,14 +148,12 @@ class UsageDeviceTest {
             awaitReport(scenario)
             scenario.onActivity { it.findViewById<View>(R.id.usage_previous).performClick() }
             awaitReport(scenario,LocalDate.now().minusDays(1))
-            var daily: View?=null
             scenario.onActivity { activity ->
-                daily=activity.findViewById(R.id.usage_daily_chart)
+                assertNull("Offscreen yearly records must not be inflated on entry",activity.findViewById<View>(R.id.usage_records))
             }
             toggleCalendar(scenario)
             awaitMonth(scenario,YearMonth.now())
             scenario.onActivity { activity ->
-                assertSame("Changing calendar mode keeps the other reports intact",daily,activity.findViewById(R.id.usage_daily_chart))
                 assertEquals(UsageRange.MONTH,monthChart(activity)!!.period.range)
                 assertNull("Monthly browsing uses the carousel instead of arrow controls",activity.findViewById<View>(R.id.usage_calendar_previous))
                 assertNull(activity.findViewById<View>(R.id.usage_calendar_next))
@@ -166,27 +174,90 @@ class UsageDeviceTest {
                 repeat(2) { assertTrue(scale.performAccessibilityAction(AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD,null)) }
             }
             awaitMonth(scenario,browsed)
-            scenario.onActivity { activity -> assertSame("Browsing months keeps detailed reports mounted",daily,activity.findViewById(R.id.usage_daily_chart)) }
             var before=""
-            var scroll=0
+            scroll(scenario,UsageSections.Kind.HOURS)
+            var first=0; var offset=0
             scenario.onActivity { activity ->
                 before=activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_period).text.toString()
-                activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollTo(0,700)
-                scroll=activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollY
+                val list=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_scroll)
+                val manager=list.layoutManager as androidx.recyclerview.widget.LinearLayoutManager
+                first=manager.findFirstVisibleItemPosition(); offset=manager.findViewByPosition(first)!!.top
             }
             scenario.recreate(); awaitReport(scenario,LocalDate.now().minusDays(1))
-            awaitMonth(scenario,browsed)
             instrumentation.waitForIdleSync()
             scenario.onActivity { activity ->
                 assertEquals(before,activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_period).text.toString())
-                assertEquals(scroll,activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollY)
-                assertEquals(activity.getString(R.string.usage_month),activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_calendar_scale).text.toString())
-                val ids=listOf(R.id.usage_activity_calendar,R.id.usage_daily_chart,R.id.usage_weekly_chart,R.id.usage_destinations,R.id.usage_breakdown,R.id.usage_records)
-                val tops=ids.map { (activity.findViewById<View>(it).parent as View).top }
-                assertEquals("Reports appear together in one scrolling page",tops.sorted(),tops)
+                val manager=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_scroll).layoutManager as androidx.recyclerview.widget.LinearLayoutManager
+                assertEquals(first,manager.findFirstVisibleItemPosition()); assertEquals(offset,manager.findViewByPosition(first)!!.top)
+                val adapter=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_scroll).adapter!!
+                assertEquals(UsageSections.Kind.entries.map { it.ordinal.toLong() },(0 until adapter.itemCount).map(adapter::getItemId))
+            }
+            scroll(scenario,UsageSections.Kind.CALENDAR); awaitMonth(scenario,browsed)
+        }
+    }
+    @Test fun monthlyFutureDatesAreDrawnGrayAndCannotBeSelected() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario -> scenario.onActivity { activity ->
+            val today=LocalDate.of(2026,10,8)
+            var selected: LocalDate?=null
+            val period=UsageSelection(UsageRange.MONTH,today,java.time.DayOfWeek.MONDAY)
+            val chart=UsageHeatmapView(activity,period,emptyMap(),today,today) { selected=it }
+            val parent=activity.findViewById<android.view.ViewGroup>(android.R.id.content)
+            parent.addView(chart,android.view.ViewGroup.LayoutParams(900,900))
+            chart.measure(View.MeasureSpec.makeMeasureSpec(900,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1400,View.MeasureSpec.AT_MOST))
+            chart.layout(0,0,chart.measuredWidth,chart.measuredHeight)
+            val image=Bitmap.createBitmap(chart.width,chart.height,Bitmap.Config.ARGB_8888)
+            chart.draw(android.graphics.Canvas(image))
+            val rect=chart.bounds(today.withDayOfMonth(31))
+            assertEquals(activity.usageColor(com.google.android.material.R.attr.colorSurfaceContainerHighest),image.getPixel(rect.centerX(),rect.top+3))
+            image.recycle()
+            val provider=chart.accessibilityNodeProvider!!
+            val future=provider.createAccessibilityNodeInfo(30)!!
+            assertFalse(future.isEnabled); assertFalse(future.isClickable)
+            assertFalse(provider.performAction(30,AccessibilityNodeInfoCompat.ACTION_CLICK,null)); assertNull(selected)
+            assertTrue(provider.performAction(7,AccessibilityNodeInfoCompat.ACTION_CLICK,null)); assertEquals(today,selected)
+            parent.removeView(chart)
+        } }
+    }
+
+    @Test fun poppingAnalyticsRetainsReportsAndUpdatesOnlyAffectedSections() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            fun navigate()=scenario.onActivity { activity ->
+                (activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment)
+                    .navController.navigate(R.id.usageFragment)
+            }
+            navigate(); awaitReport(scenario)
+            lateinit var original: UsageViewModel
+            scenario.onActivity { activity ->
+                original=androidx.lifecycle.ViewModelProvider(activity)[UsageViewModel::class.java]
+                val past=UsageSelection(UsageRange.WEEK,LocalDate.now().minusYears(1),original.selectionState.value.firstWeekday)
+                original.date(past.start.plusDays(3))
+            }
+            awaitReport(scenario,original.selectionState.value.anchor)
+            scroll(scenario,UsageSections.Kind.WEEK)
+            var weekly: View?=null
+            scenario.onActivity { activity ->
+                original=androidx.lifecycle.ViewModelProvider(activity)[UsageViewModel::class.java]
+                weekly=activity.findViewById(R.id.usage_weekly_chart)
+                val selected=original.selectionState.value
+                if(selected.anchor!=selected.start) activity.findViewById<View>(R.id.usage_previous).performClick()
+            }
+            awaitReport(scenario,original.selectionState.value.anchor)
+            var prepared: UsageDashboard?=null
+            scenario.onActivity { activity ->
+                assertSame("A day change inside the week preserves its mounted weekly cards",weekly,activity.findViewById(R.id.usage_weekly_chart))
+                prepared=original.state.value.report
+                activity.onBackPressedDispatcher.onBackPressed()
+            }
+            navigate()
+            awaitReport(scenario,original.selectionState.value.anchor)
+            scenario.onActivity { activity ->
+                assertSame(original,androidx.lifecycle.ViewModelProvider(activity)[UsageViewModel::class.java])
+                assertSame("Reopening analytics reuses its prepared report",prepared,original.state.value.report)
+                assertFalse(activity.findViewById<View>(R.id.usage_loading).isVisible)
             }
         }
     }
+
     @Test fun calendarSelectorUsesSharedDelayAndCommitsOnlyOnRelease(): Unit=runBlocking {
         val preferences=EntryPointAccessors.fromApplication(app,one.njk.sao.floating.FloatingTestAccess::class.java).preferences()
         val original=preferences.current().longPressMs
@@ -198,10 +269,7 @@ class UsageDeviceTest {
                     host.navController.navigate(R.id.usageFragment)
                 }
                 awaitReport(scenario)
-                scenario.onActivity { activity ->
-                    val card=activity.findViewById<View>(R.id.usage_activity_calendar).parent as View
-                    activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollTo(0,card.top+activity.findViewById<View>(R.id.usage_content).top)
-                }
+                scroll(scenario,UsageSections.Kind.CALENDAR)
                 val touch=ScaleTouch(scenario)
                 SystemClock.sleep(170)
                 instrumentation.runOnMainSync {
@@ -270,17 +338,14 @@ class UsageDeviceTest {
             File(app.filesDir,"usage-value-settled.png").outputStream().use { settled.compress(Bitmap.CompressFormat.PNG,100,it) }; settled.recycle()
             scenario.onActivity { it.findViewById<View>(R.id.usage_today).performClick() }
             awaitReport(scenario); SystemClock.sleep(350)
-            val sections=listOf(0,R.id.usage_activity_calendar,R.id.usage_daily_chart,R.id.usage_weekly_chart,R.id.usage_destinations,R.id.usage_breakdown,R.id.usage_records)
-            sections.forEachIndexed { index,id ->
-                scenario.onActivity { activity ->
-                    val content=activity.findViewById<android.widget.LinearLayout>(R.id.usage_content)
-                    val y=if(id==0) 0 else (activity.findViewById<View>(id).parent as View).top+content.top
-                    activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollTo(0,y)
-                }
+            val sections=UsageSections.Kind.entries
+            sections.forEachIndexed { index,kind ->
+                scroll(scenario,kind)
                 instrumentation.waitForIdleSync(); SystemClock.sleep(180)
                 val bitmap=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
                 File(app.filesDir,"usage-$index.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }; bitmap.recycle()
             }
+            scroll(scenario,UsageSections.Kind.CALENDAR)
             scenario.onActivity { activity ->
                 val chart=activity.findViewById<UsageHeatmapView>(R.id.usage_heatmap)
                 val rect=chart.bounds(today)
@@ -302,8 +367,6 @@ class UsageDeviceTest {
                 assertTrue("All seven weekday columns fit the monthly viewport",chart.width<=(chart.parent as View).width)
                 val node=chart.accessibilityNodeProvider!!.createAccessibilityNodeInfo(today.minusDays(2).dayOfMonth-1)!!
                 assertTrue(node.isSelected); assertTrue(node.isClickable)
-                val card=activity.findViewById<View>(R.id.usage_activity_calendar).parent as View
-                activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollTo(0,card.top+activity.findViewById<View>(R.id.usage_content).top)
             }
             instrumentation.waitForIdleSync(); SystemClock.sleep(180)
             val month=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
@@ -327,6 +390,7 @@ class UsageDeviceTest {
             repository.flush()
             assertTrue(access.usageDatabase().usage().observeDays().first().any { it.day==today.toEpochDay() })
             assertTrue(access.usageDatabase().usage().observe(today.toEpochDay(),today.plusDays(1).toEpochDay()).first().any { it.action==UsageAction.COPY_FILENAME })
+            scroll(scenario,UsageSections.Kind.PRIVACY)
             scenario.onActivity { activity -> activity.findViewById<View>(R.id.usage_recording).performClick() }
             kotlinx.coroutines.withTimeout(5000) { repository.enabled.first { !it } }
             scenario.onActivity { activity -> activity.findViewById<View>(R.id.usage_clear).performClick() }

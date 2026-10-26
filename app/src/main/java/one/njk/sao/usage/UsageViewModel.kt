@@ -38,9 +38,13 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
     private val history=combine(repository.days,today,weekday) { days,now,first -> historyIndex.update(days,now,first) }
         .flowOn(dispatchers.cpu)
     // Changing a day inside the same week keeps its existing query and prepared breakdowns.
+    private var preparedWeek: UsageWeekDetails?=null
     private val week=selection.map { it.copy(range=UsageRange.WEEK,anchor=it.start) }.distinctUntilChanged()
         .flatMapLatest { period -> repository.buckets(period).map { period to it } }
-        .combine(today) { (period,rows),now -> UsageWeekDetails(period,rows.filter { it.day<=now.toEpochDay() },now) }
+        .combine(today) { (period,rows),now ->
+            preparedWeek?.takeIf { it.period==period && it.today==now && it.buckets==rows }
+                ?: UsageWeekDetails(period,rows.filter { it.day<=now.toEpochDay() },now).also { preparedWeek=it }
+        }
         .flowOn(dispatchers.cpu)
     private val reports=combine(selection,history,week) { selected,past,details ->
         val period=selected.copy(range=UsageRange.WEEK)
@@ -70,9 +74,9 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
     }
     fun enabled(value: Boolean) { viewModelScope.launch { try { repository.enabled(value) } catch(cancelled: CancellationException) { throw cancelled } catch(_: Exception) { /* Repository exposes the error without losing existing graphs. */ } } }
     fun clear() { viewModelScope.launch { try { repository.clear() } catch(cancelled: CancellationException) { throw cancelled } catch(_: Exception) { /* Displayed through repository.failure. */ } } }
-    var scroll: Int
-        get()=saved["usage_scroll"] ?: 0
-        set(value) { saved["usage_scroll"]=value }
+    var listState: android.os.Parcelable?
+        get()=saved["usage_list_state"]
+        set(value) { saved["usage_list_state"]=value }
     var heatmapYear: Int
         get()=saved["usage_heatmap_year"] ?: 0
         set(value) { saved["usage_heatmap_year"]=value }

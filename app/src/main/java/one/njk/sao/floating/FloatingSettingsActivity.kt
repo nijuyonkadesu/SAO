@@ -1,7 +1,5 @@
 package one.njk.sao.floating
 
-import one.njk.sao.ui.SaoMotion
-
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -16,7 +14,6 @@ class FloatingSettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         val binding = ActivityFloatingSettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        SaoMotion(this).enter(binding.root,savedInstanceState!=null)
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom); insets

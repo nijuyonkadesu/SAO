@@ -3,9 +3,10 @@ package one.njk.sao.floating
 import one.njk.sao.source.*
 
 import androidx.core.view.doOnPreDraw
+import androidx.core.view.doOnNextLayout
+import one.njk.sao.ui.LayoutAwareCarouselSnapHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.carousel.CarouselLayoutManager
-import com.google.android.material.carousel.CarouselSnapHelper
 import com.google.android.material.carousel.FullScreenCarouselStrategy
 import com.google.android.material.carousel.HeroCarouselStrategy
 
@@ -19,7 +20,8 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
     private val centerChanged: () -> Unit,
     private val remember: () -> Unit, private val dragging: () -> Unit,
     private val home: Boolean = false) : AutoCloseable {
-    private val snap = CarouselSnapHelper(false)
+    private var strategyChanging=false
+    private val snap = LayoutAwareCarouselSnapHelper(view) { !strategyChanging }
     private var key: PickerBrowseKey? = null
     private var displayed: PickerBrowseKey? = null
     private var submittedItems: List<MediaItem>? = null
@@ -58,14 +60,18 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
         })
     }
 
-    private fun manager(fullScreen: Boolean) = CarouselLayoutManager(
-        if (fullScreen) FullScreenCarouselStrategy() else HeroCarouselStrategy().apply {
+    private fun strategy(fullScreen: Boolean) = if (fullScreen) FullScreenCarouselStrategy() else HeroCarouselStrategy().apply {
+            // setCarouselStrategy does not initialize a replacement on an attached manager.
+            smallItemSizeMin=view.resources.getDimension(com.google.android.material.R.dimen.m3_carousel_small_item_size_min)
+            smallItemSizeMax=view.resources.getDimension(com.google.android.material.R.dimen.m3_carousel_small_item_size_max)
             if(home) {
                 // Leave two narrow previews around the prominent home card.
                 val preview = 32 * view.resources.displayMetrics.density
                 smallItemSizeMin = preview; smallItemSizeMax = preview
             }
-        }).apply {
+        }
+
+    private fun manager(fullScreen: Boolean) = CarouselLayoutManager(strategy(fullScreen)).apply {
         carouselAlignment = CarouselLayoutManager.ALIGNMENT_CENTER
     }
 
@@ -108,12 +114,13 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
         view.stopScroll()
         view.scrollToPosition(position)
         // Read focus only after Material has rebuilt its keylines for the committed list and size.
-        view.doOnPreDraw {
-            if (!closed && version == generation && key == browse && current(browse)) {
+        fun complete() = view.doOnPreDraw {
+            if (!closed && !strategyChanging && version == generation && key == browse && current(browse)) {
                 needsPlacement = false; placing = false
                 recordFocus(); remember()
             }
         }
+        if(strategyChanging) view.doOnNextLayout { complete() } else complete()
     }
 
     fun recordFocus() {
@@ -139,10 +146,13 @@ internal class PickerCarousel(val view: RecyclerView, val adapter: MediaCarousel
     fun useFullScreen(value: Boolean) {
         if (value == fullScreen) return
         recordFocus()
+        view.stopScroll()
         fullScreen = value
         wanted = key?.let(focused) ?: adapter.focusedId
         needsPlacement = true; placing = true
-        view.layoutManager = manager(value)
+        strategyChanging=true
+        view.doOnNextLayout { strategyChanging=false }
+        (view.layoutManager as CarouselLayoutManager).setCarouselStrategy(strategy(value))
         key?.takeIf { it == displayed && committedGeneration == generation && current(it) }?.let { place(generation, it) }
     }
 

@@ -42,7 +42,9 @@ class SearchOptionsViewModel @Inject constructor(private val source: MediaSource
                     peopleJob?.cancel(); placesJob?.cancel(); peopleKey = null; placesKey = null
                     failedPeoplePage = null
                     countriesLoaded = false; statesLoaded = false; statesKey = null; citiesKey = null
-                    mutable.value = SearchOptionsState(sourceId = id)
+                    val previous=mutable.value
+                    mutable.value = SearchOptionsState(sourceId=id,supported=previous.supported,
+                        randomSupported=previous.randomSupported,modes=previous.modes,facets=previous.facets,defaultMode=previous.defaultMode)
                 }
                 // Identity and capability flows may arrive in either order. Never apply another
                 // profile's modes, and never erase restored controls during an initial load.
@@ -54,7 +56,7 @@ class SearchOptionsViewModel @Inject constructor(private val source: MediaSource
     }
 
     fun people(name: String = mutable.value.peopleName, more: Boolean = false, retry: Boolean = false) {
-        if (SearchFacet.PEOPLE !in mutable.value.facets) return
+        if (!mutable.value.loaded || SearchFacet.PEOPLE !in mutable.value.facets) return
         val id = mutable.value.sourceId
         val key = id to name.trim()
         if (more && (mutable.value.peopleLoading || mutable.value.nextPeoplePage == null)) return
@@ -78,7 +80,7 @@ class SearchOptionsViewModel @Inject constructor(private val source: MediaSource
         }
     }
     fun places(country: String?, state: String?, retry: Boolean = false) {
-        if (SearchFacet.PLACES !in mutable.value.facets) return
+        if (!mutable.value.loaded || SearchFacet.PLACES !in mutable.value.facets) return
         val id = mutable.value.sourceId
         val key = Triple(id, country, state)
         if (!retry && key == placesKey) return

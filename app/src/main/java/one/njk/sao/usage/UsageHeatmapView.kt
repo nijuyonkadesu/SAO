@@ -32,7 +32,7 @@ internal fun Context.usageHeatColors(): List<Int> {
 internal class UsageHeatmapView(context: Context,val period: UsageSelection,private val days: Map<Long,Long>,
     private val selected: LocalDate,private val today: LocalDate,
     fixedMonthRows: Boolean=false,
-    private val intensity: UsageIntensity=UsageIntensity(days.values),
+    private val intensity: UsageIntensity=UsageIntensity,
     private val onDate: (LocalDate)->Unit): View(context) {
     private val density=resources.displayMetrics.density
     private val locale=resources.configuration.locales[0]
@@ -63,18 +63,21 @@ internal class UsageHeatmapView(context: Context,val period: UsageSelection,priv
     private val accessibility=object: ExploreByTouchHelper(this) {
         override fun getVirtualViewAt(x: Float,y: Float)=hit(x,y)
         override fun getVisibleVirtualViews(ids: MutableList<Int>) {
-            for(day in 0 until dayCount) if(!first.plusDays(day.toLong()).isAfter(today)) ids.add(day)
+            for(day in 0 until dayCount) if(monthly || !first.plusDays(day.toLong()).isAfter(today)) ids.add(day)
         }
         override fun onPopulateNodeForVirtualView(id: Int,node: AccessibilityNodeInfoCompat) {
             val date=first.plusDays(id.toLong())
-            node.contentDescription=context.getString(R.string.usage_date_activity,
-                date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale)),context.actionCount(days[date.toEpochDay()] ?: 0))
+            val label=date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale))
+            val future=date>today
+            node.contentDescription=if(future) context.getString(R.string.usage_future_date,label) else context.getString(R.string.usage_date_activity,
+                label,context.actionCount(days[date.toEpochDay()] ?: 0))
             node.setBoundsInParent(bounds(date)); node.className="android.widget.Button"
-            node.isSelected=date==selected; node.isClickable=true
-            node.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK)
+            node.isSelected=date==selected; node.isClickable=!future; node.isEnabled=!future
+            if(!future) node.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK)
         }
         override fun onPerformActionForVirtualView(id: Int,action: Int,args: Bundle?): Boolean {
             if(action!=AccessibilityNodeInfoCompat.ACTION_CLICK) return false
+            if(first.plusDays(id.toLong())>today) return false
             onDate(first.plusDays(id.toLong())); sendEventForVirtualView(id,AccessibilityEvent.TYPE_VIEW_CLICKED); return true
         }
         override fun onVirtualViewKeyboardFocusChanged(id: Int,hasFocus: Boolean) {
@@ -121,13 +124,13 @@ internal class UsageHeatmapView(context: Context,val period: UsageSelection,priv
         }
         for(day in 0 until dayCount) {
             val date=first.plusDays(day.toLong())
-            if(date>today) continue
+            if(date>today && !monthly) continue
             val rect=bounds(date)
             val level=intensity.level(days[date.toEpochDay()] ?: 0)
-            paint.color=colors[level]
+            paint.color=if(date>today) context.usageColor(com.google.android.material.R.attr.colorSurfaceContainerHighest) else colors[level]
             canvas.drawRoundRect(rect.left.toFloat(),rect.top.toFloat(),rect.right.toFloat(),rect.bottom.toFloat(),3*density,3*density,paint)
             if(monthly) {
-                paint.color=foregrounds[level]; paint.textAlign=Paint.Align.CENTER
+                paint.color=if(date>today) ColorUtils.setAlphaComponent(foregrounds[0],97) else foregrounds[level]; paint.textAlign=Paint.Align.CENTER
                 canvas.drawText(numbers.format(date.dayOfMonth),rect.exactCenterX(),rect.exactCenterY()-(paint.ascent()+paint.descent())/2,paint)
             }
             if(date==selected || day==accessibility.keyboardFocusedVirtualViewId) {

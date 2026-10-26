@@ -13,7 +13,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerViewAccessibilityDelegate
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.carousel.CarouselLayoutManager
-import com.google.android.material.carousel.CarouselSnapHelper
+import one.njk.sao.ui.LayoutAwareCarouselSnapHelper
 import com.google.android.material.carousel.MaskableFrameLayout
 import com.google.android.material.carousel.UncontainedCarouselStrategy
 import com.google.android.material.textview.MaterialTextView
@@ -33,7 +33,7 @@ internal class UsageMonthCarousel(context: Context,private val dashboard: UsageD
     private val firstMonth=minOf(dashboard.calendarMonths.keys.minOrNull() ?: latest,
         initial,latest.minusMonths(11))
     private val months=ChronoUnit.MONTHS.between(firstMonth,latest).toInt()+1
-    private val snap=CarouselSnapHelper(false)
+    private val snap=LayoutAwareCarouselSnapHelper(this)
     private var itemWidth=0
     private var wanted=initial
     private var placing=true
@@ -106,6 +106,7 @@ internal class UsageMonthCarousel(context: Context,private val dashboard: UsageD
         itemAnimator=null; isNestedScrollingEnabled=false
         layoutManager=CarouselLayoutManager(UncontainedCarouselStrategy()).apply { carouselAlignment=CarouselLayoutManager.ALIGNMENT_CENTER }
         adapter=monthAdapter; snap.attachToRecyclerView(this)
+        addOnLayoutChangeListener { _,_,_,_,_,_,_,_,_ -> post { settle() } }
         setAccessibilityDelegateCompat(object: RecyclerViewAccessibilityDelegate(this) {
             override fun onInitializeAccessibilityNodeInfo(host: View,info: AccessibilityNodeInfoCompat) {
                 super.onInitializeAccessibilityNodeInfo(host,info)

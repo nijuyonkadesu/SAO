@@ -11,6 +11,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil3.ImageLoader
+import coil3.memory.MemoryCache
 import coil3.asDrawable
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
@@ -127,7 +128,15 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         holder.renderedItem = null
         val version = holder.previewVersion
         val context = holder.binding.preview.context
+        val memoryKey=previewMemoryKey(item)
         (holder.binding.preview.drawable as? Animatable)?.stop()
+        // Recreated home holders can display an already decoded static preview in their first frame.
+        if(home && !item.animated) loader.memoryCache?.get(MemoryCache.Key(memoryKey))?.let { cached ->
+            holder.binding.preview.scaleType=android.widget.ImageView.ScaleType.CENTER_CROP
+            holder.binding.preview.setImageDrawable(cached.image.asDrawable(context.resources))
+            holder.renderedItem=item; holder.loadingItem=null
+            return
+        }
         if (home) {
             holder.binding.preview.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
             holder.binding.preview.setImageResource(one.njk.sao.R.drawable.eager)
@@ -137,7 +146,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
                 // A ViewTarget can restart itself on reattach after this source lease ends.
                 // Decode once, then let this holder's current job alone apply the result.
                 val result = source.withPreview(item) { preview ->
-                    loader.execute(ImageRequest.Builder(context).data(preview.data).size(1024, 1024).build())
+                    loader.execute(ImageRequest.Builder(context).data(preview.data).memoryCacheKey(memoryKey).size(1024, 1024).build())
                 }
                 currentCoroutineContext().ensureActive()
                 if (holder.previewVersion != version || !samePreview(holder.item, item) || closed) return@launch
@@ -157,6 +166,12 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         holder.previewVersion++
         holder.loading?.cancel(); holder.loading = null
         holder.loadingItem = null
+    }
+    private fun previewMemoryKey(item: MediaItem)=buildString {
+        append("sao-preview:")
+        val fields=listOf(item.identityKey.encode(),item.id,item.asset,item.mimeType,item.animated.toString(),item.remote?.edited.toString())+
+            item.remote?.cacheKeys.orEmpty().toSortedMap().flatMap { (key,value) -> listOf(key,value) }
+        fields.forEach { append(it.length); append(':'); append(it) }
     }
     private fun samePreview(first: MediaItem?, second: MediaItem) = first != null &&
         first.identityKey == second.identityKey && first.id == second.id && first.asset == second.asset &&

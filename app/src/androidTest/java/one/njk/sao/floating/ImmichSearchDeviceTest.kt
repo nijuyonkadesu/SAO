@@ -363,7 +363,7 @@ class ImmichSearchDeviceTest {
             scenario.onActivity { assertEquals(it.getString(R.string.search_hold_choose_people), it.findViewById<android.widget.TextView>(R.id.hold_choice_hint).text.toString()) }
             SystemClock.sleep(250); assertEquals(0, peopleCalls.get())
             people.send(MotionEvent.ACTION_UP, atY = people.y + people.row * 3)
-            await(scenario, "People requires an inline selection") { it.findViewById<View>(R.id.people_panel).isVisible && it.findViewById<RecyclerView>(R.id.people_list).adapter!!.itemCount == 2 }
+            await(scenario, "People requires an inline selection") { it.findViewById<View>(R.id.people_panel).isVisible && it.findViewById<RecyclerView>(R.id.people_list).let { list -> list.adapter!!.itemCount==2 && list.findViewHolderForAdapterPosition(0)!=null } }
             scenario.onActivity { assertTrue(model(it).query.value.constraints.people.isEmpty()); it.findViewById<View>(R.id.options_back).performClick() }
             val places = hold(scenario, R.id.search_filters)
             places.send(MotionEvent.ACTION_MOVE, atY = places.y + places.row * 2)
@@ -531,7 +531,7 @@ class ImmichSearchDeviceTest {
             scenario.onActivity { it.findViewById<View>(R.id.mode_filename).performClick() }
             await(scenario, "Filename mode must search") { model(it).query.value.mode == SearchMode.FILENAME && !model(it).state.value.loading }
             scenario.onActivity { it.findViewById<View>(R.id.search_filters).performClick() }
-            await(scenario, "People choices must load") { it.findViewById<RecyclerView>(R.id.people_list).adapter!!.itemCount == 2 }
+            await(scenario, "People choices must load") { it.findViewById<RecyclerView>(R.id.people_list).let { list -> list.adapter!!.itemCount==2 && list.findViewHolderForAdapterPosition(0)!=null } }
             scenario.onActivity { it.findViewById<RecyclerView>(R.id.people_list).findViewHolderForAdapterPosition(0)!!.itemView.performClick() }
             await(scenario, "Person must be selected") { model(it).query.value.constraints.people.size == 1 }
             screenshot("search-people-options.png")
@@ -556,6 +556,42 @@ class ImmichSearchDeviceTest {
         }
     }
 
+    @Test fun keyboardMotionKeepsTheCarouselAndFocusAndDismissesImmediately() {
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,null,null)).use { scenario ->
+            await(scenario,"Initial browsing must settle") { !model(it).state.value.loading && model(it).focusedId!=null }
+            var manager: RecyclerView.LayoutManager?=null
+            var focused: MediaIdentity?=null
+            val positions=mutableSetOf<Pair<Int,Int>>()
+            var layouts=0
+            var draws=0
+            var observer: android.view.ViewTreeObserver?=null
+            lateinit var drawing: android.view.ViewTreeObserver.OnDrawListener
+            scenario.onActivity { activity ->
+                val grid=activity.findViewById<RecyclerView>(R.id.media_grid)
+                manager=grid.layoutManager; focused=model(activity).focusedId
+                grid.addOnLayoutChangeListener { _,_,_,_,_,_,_,_,_ -> layouts++ }
+                val panel=activity.findViewById<View>(R.id.picker_panel)
+                drawing=android.view.ViewTreeObserver.OnDrawListener { draws++; positions.add(panel.top to panel.height) }
+                observer=activity.window.decorView.viewTreeObserver.also { it.addOnDrawListener(drawing) }
+                activity.findViewById<View>(R.id.search_toggle).performClick()
+            }
+            await(scenario,"Keyboard must open") { androidx.core.view.ViewCompat.getRootWindowInsets(it.window.decorView)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true }
+            SystemClock.sleep(450)
+            scenario.onActivity { activity ->
+                observer?.takeIf { it.isAlive }?.removeOnDrawListener(drawing)
+                assertSame("IME resizing must retain the layout manager and media holders",manager,activity.findViewById<RecyclerView>(R.id.media_grid).layoutManager)
+                assertEquals(focused,model(activity).focusedId)
+                if(android.animation.ValueAnimator.areAnimatorsEnabled()) {
+                    assertTrue("The card must travel through intermediate keyboard positions: $positions",positions.size>=3)
+                    assertTrue("IME frames must not relayout the carousel on every draw: $layouts layouts / $draws draws",layouts<draws)
+                }
+                activity.findViewById<View>(R.id.search_toggle).performClick()
+                activity.findViewById<View>(R.id.close).performClick()
+                assertTrue("Dismissal never waits for an animation callback",activity.isFinishing)
+            }
+        }
+    }
+
     @Test fun failedPeopleLookupNeedsAnExplicitRetry() {
         rejectPeople.set(true)
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
@@ -569,7 +605,7 @@ class ImmichSearchDeviceTest {
             SystemClock.sleep(500); assertEquals(1, peopleCalls.get())
             rejectPeople.set(false)
             scenario.onActivity { it.findViewById<View>(R.id.people_more).performClick() }
-            await(scenario, "Explicit retry must recover") { it.findViewById<RecyclerView>(R.id.people_list).adapter!!.itemCount == 2 }
+            await(scenario, "Explicit retry must recover") { it.findViewById<RecyclerView>(R.id.people_list).let { list -> list.adapter!!.itemCount==2 && list.findViewHolderForAdapterPosition(0)!=null } }
             assertEquals(2, peopleCalls.get())
         }
     }

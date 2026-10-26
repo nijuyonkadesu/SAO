@@ -55,6 +55,7 @@ class PickerActivity : AppCompatActivity() {
     private lateinit var searchController: PickerSearchController
     private data class SourceGestureChoice(val id: String?, val name: String)
     private lateinit var sourceGesture: HoldDragSelector<SourceGestureChoice>
+    private lateinit var windowMotion: PickerWindowMotion
     private var imeHeight = 0
     private lateinit var binding: ActivityPickerBinding
     private lateinit var dockMarquees: PickerMarquees
@@ -222,7 +223,9 @@ class PickerActivity : AppCompatActivity() {
                     model.backToResults() -> Unit; else -> finish() }
             }
         })
+        windowMotion=PickerWindowMotion(this,binding.root,binding.pickerPanel) { updateCarouselStrategy() }
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            if(isFinishing || isDestroyed) return@setOnApplyWindowInsetsListener insets
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             if (hadIme && ime == 0 && editing && !searchController.visible) collapseSearch()
             hadIme = ime > 0; resize(ime); insets
@@ -259,7 +262,7 @@ class PickerActivity : AppCompatActivity() {
                     if (state.query == model.query.value)
                         carousel.render(state)
                     updatePlayback()
-                    binding.progress.isVisible = busy || state.loading || state.loadingMore
+                    showProgress(busy || state.loading || state.loadingMore)
                     binding.message.isVisible = state.error || (!state.loading && state.items.isEmpty())
                     binding.message.setText(state.errorMessage ?: if (state.error) {
                         if (state.sequenceId != null) R.string.sequence_retry
@@ -316,6 +319,7 @@ class PickerActivity : AppCompatActivity() {
         updatePlayback()
     }
     override fun finish() {
+        if(::windowMotion.isInitialized) windowMotion.freezeForExit()
         super.finish()
         // Restore on the dismissal request, before exit animation / preview cleanup / onStop.
         if (isFinishing) model.pickerVisible(false)
@@ -385,7 +389,8 @@ class PickerActivity : AppCompatActivity() {
     }
     private fun expandSearch() {
         sourceGesture.cancel()
-        showSource(false); showTargets(false); binding.sourceToggle.isVisible = false
+        motion.layout(binding.pickerHeader)
+        showSource(false); showTargets(false); motion.visible(binding.sourceToggle,false)
         editing = true; motion.visible(binding.targetLabel,false); motion.visible(binding.searchField,true)
         renderHeader(); resize(imeHeight)
         binding.search.requestFocus(); binding.search.selectAll()
@@ -395,6 +400,7 @@ class PickerActivity : AppCompatActivity() {
         binding.search.dismissSuggestions()
         if (!editing) return
         searchController.close()
+        motion.layout(binding.pickerHeader)
         editing = false; binding.search.clearFocus(); motion.visible(binding.searchField,false); motion.visible(binding.targetLabel,true)
         WindowCompat.getInsetsController(window, binding.root).hide(WindowInsetsCompat.Type.ime()); renderHeader(); resize(imeHeight)
     }
@@ -434,7 +440,10 @@ class PickerActivity : AppCompatActivity() {
         val desired = binding.sourceToggle.paint.measureText("$label ▾") + 48 * density
         val iconOnly = desired > headerWidth - (96 + 72) * density
         val sourceText = if (iconOnly) "" else "$label ▾"
-        if (binding.sourceToggle.text.toString() != sourceText) binding.sourceToggle.text = sourceText
+        if(binding.sourceToggle.text.toString()!=sourceText) {
+            motion.layout(binding.pickerHeader)
+            binding.sourceToggle.text=sourceText
+        }
         val sourceWidth = if (iconOnly) (48 * density).toInt() else -2
         if (binding.sourceToggle.layoutParams.width != sourceWidth)
             binding.sourceToggle.layoutParams = binding.sourceToggle.layoutParams.apply { width = sourceWidth }
@@ -606,7 +615,7 @@ class PickerActivity : AppCompatActivity() {
         binding.noSourceMessage.setText(if (configured) R.string.source_floating_empty_message else R.string.source_empty_message)
         binding.addFirstSource.setText(if (configured) R.string.source_manage else R.string.source_add)
         binding.noSource.isVisible = empty && !binding.sourcePanel.isVisible && !binding.targetList.isVisible && !searchController.visible
-        if(empty) { binding.message.isVisible=false; binding.progress.isVisible=false }
+        if(empty) { binding.message.isVisible=false; showProgress(false) }
     }
     private fun sourceGestureChoices(): List<SourceGestureChoice> {
         val state = sourcesModel.state.value
@@ -650,7 +659,13 @@ class PickerActivity : AppCompatActivity() {
             if (targetPackage == pkg) { canShareSticker = supported; renderDock() }
         }
     }
+    private fun updateCarouselStrategy() {
+        val density=resources.displayMetrics.density
+        val params=binding.pickerPanel.layoutParams
+        carousel.useFullScreen(editing || imeHeight>0 || params.height<360*density || resources.configuration.fontScale>=1.3f)
+    }
     private fun resize(imeHeight: Int) {
+        if(isFinishing || isDestroyed) return
         this.imeHeight = imeHeight
         val searchPanel = searchController.visible
         val bars = metrics.windowInsets.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
@@ -675,8 +690,6 @@ class PickerActivity : AppCompatActivity() {
         binding.carouselArea.isVisible = searchPanel || !compactEditing
         updatePlayback()
         updateMessageVisibility()
-        val useFullScreen = imeHeight > 0 || shortViewport || largeText
-        carousel.useFullScreen(useFullScreen)
         val twoRows = largeText && width < 560 * density && !tight
         val mode = if (tight) 2 else if (twoRows) 1 else 0
         if (mode != dockLayoutMode) {
@@ -706,24 +719,32 @@ class PickerActivity : AppCompatActivity() {
             }
         }
         binding.dockDivider.isVisible = !searchPanel && !tight
-        if (tight) binding.progress.isVisible = false
+        showProgress(busy || model.state.value.loading || model.state.value.loadingMore)
         val y = bars.top + if (tight) 0 else (12 * density).toInt() + (available-height)/2
         val params = binding.pickerPanel.layoutParams as FrameLayout.LayoutParams
         if (params.width != width || params.height != height || params.topMargin != y) binding.pickerPanel.layoutParams = params.apply {
             this.width = width; this.height = height; gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; topMargin = y
         }
+        if(!::windowMotion.isInitialized || !windowMotion.animating) updateCarouselStrategy()
         binding.pickerHeader.post { if (!isFinishing && !isDestroyed) renderHeader() }
         updateActionAccessibility()
     }
+    private fun showProgress(show: Boolean) {
+        binding.progress.visibility=when {
+            dockLayoutMode==2 -> View.GONE
+            show -> View.VISIBLE
+            else -> View.INVISIBLE
+        }
+    }
     private fun dispatch(action: suspend () -> Unit) {
         if (busy) return
-        busy = true; binding.progress.isVisible = true; renderDock()
+        busy = true; showProgress(true); renderDock()
         lifecycleScope.launch {
             try { action() }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: android.content.ActivityNotFoundException) { inlineFailure(R.string.floating_app_unavailable) }
             catch (error: Exception) { inlineFailure((error as? MediaExportException)?.messageRes ?: R.string.floating_failure) }
-            finally { busy = false; binding.progress.isVisible = model.state.value.loading; renderDock() }
+            finally { busy = false; showProgress(model.state.value.loading); renderDock() }
         }
     }
     private fun inlineFailure(message: Int) { model.copyStatus.value = message }

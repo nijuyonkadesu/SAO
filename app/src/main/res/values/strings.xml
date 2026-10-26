@@ -96,4 +96,5 @@
     <string name="source_trust_publisher">Verified publisher</string>
     <string name="source_trust_user">Unverified publisher · Allowed by you</string>
     <string name="source_trust_untrusted">Unverified publisher · Access not allowed</string>
+    <string name="usage_future_date">%1$s, future date</string>
 </resources>

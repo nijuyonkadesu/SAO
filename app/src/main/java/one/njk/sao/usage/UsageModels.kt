@@ -81,16 +81,15 @@ data class UsageDashboard(val selection: UsageSelection,val weekBuckets: List<Us
     val year=report(UsageRange.YEAR)
 }
 
-/** Relative quartiles keep light/heavy days distinguishable even when a single day is an outlier. */
-internal class UsageIntensity(counts: Collection<Long>) {
-    private val active=counts.filter { it>0 }.sorted()
-    private fun threshold(quarter: Int)=active[(active.size*quarter/4).coerceAtMost(active.lastIndex)]
+/** Fixed bands keep colors comparable across months, years and light usage histories. */
+internal object UsageIntensity {
+    const val MAXIMUM=120L
     fun level(count: Long): Int=when {
-        count<=0 || active.isEmpty() -> 0
-        count>=threshold(3) -> 4
-        count>=threshold(2) -> 3
-        count>=threshold(1) -> 2
-        else -> 1
+        count<=0 -> 0
+        count<40 -> 1
+        count<80 -> 2
+        count<MAXIMUM -> 3
+        else -> 4
     }
 }
 
@@ -107,8 +106,8 @@ data class UsageReport(
 ) {
     private val history=preparedHistory?.takeIf { it.today==today && it.firstWeekday==selection.firstWeekday && it.days===days }
         ?: UsageHistoryIndex().update(days,today,selection.firstWeekday)
-    private val summary=history.summary(selection)
-    private val details=preparedDetails ?: UsageDetails(buckets.filter { it.day>=selection.start.toEpochDay() && it.day<selection.endExclusive.toEpochDay() && it.day<=today.toEpochDay() })
+    internal val summary=history.summary(selection)
+    internal val details=preparedDetails ?: UsageDetails(buckets.filter { it.day>=selection.start.toEpochDay() && it.day<selection.endExclusive.toEpochDay() && it.day<=today.toEpochDay() })
     val periodDays=summary.days
     val dayCounts=summary.dayCounts
     internal val intensity=summary.intensity

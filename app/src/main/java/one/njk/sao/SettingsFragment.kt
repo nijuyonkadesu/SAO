@@ -34,7 +34,7 @@ class SettingsFragment: Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        (view as? ViewGroup)?.isTransitionGroup=true
+        SaoMotion.surface(view)
         binding.apply {
             val chosen = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().toLanguageTags()
             languageSelect.isActivated = chosen.isNotEmpty()

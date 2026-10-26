@@ -34,7 +34,6 @@ class HomeCategoriesActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val binding=ActivityHomeCategoriesBinding.inflate(layoutInflater); setContentView(binding.root)
-        motion.enter(binding.root,savedInstanceState!=null)
         WindowCompat.getInsetsController(window,window.decorView).isAppearanceLightStatusBars =
             resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK != android.content.res.Configuration.UI_MODE_NIGHT_YES
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view,insets ->

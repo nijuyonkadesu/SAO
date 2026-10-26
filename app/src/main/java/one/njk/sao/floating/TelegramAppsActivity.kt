@@ -1,7 +1,5 @@
 package one.njk.sao.floating
 
-import one.njk.sao.ui.SaoMotion
-
 import one.njk.sao.source.*
 
 import android.os.Bundle
@@ -30,7 +28,6 @@ class TelegramAppsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityTelegramAppsBinding.inflate(layoutInflater); setContentView(binding.root)
-        SaoMotion(this).enter(binding.root,savedInstanceState!=null)
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
             view.setPadding(bars.left + dp(16), bars.top, bars.right + dp(16), bars.bottom); insets

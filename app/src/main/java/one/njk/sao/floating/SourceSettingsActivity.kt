@@ -1,7 +1,5 @@
 package one.njk.sao.floating
 
-import one.njk.sao.ui.SaoMotion
-
 
 import android.os.Bundle
 import android.content.ActivityNotFoundException
@@ -43,7 +41,6 @@ class SourceSettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val binding = ActivitySourceSettingsBinding.inflate(layoutInflater); setContentView(binding.root)
-        SaoMotion(this).enter(binding.root,savedInstanceState!=null)
         val padding = (24 * resources.displayMetrics.density).toInt()
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())

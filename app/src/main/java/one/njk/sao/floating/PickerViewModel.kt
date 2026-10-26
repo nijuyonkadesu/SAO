@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -59,6 +60,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
             SearchQueryState.decode(savedState[QUERY_CONSTRAINTS]), savedState[QUERY_RANDOM]), MediaIdentity.decode(savedState[FOCUSED_ID]))
         else session.snapshot()
     private val queryState = MutableStateFlow(initial.query)
+    private var typingQuery: MediaQuery?=null
     val query = queryState.asStateFlow()
     private var searchFocusedId: MediaIdentity? = initial.focusedId
     val focusedId: MediaIdentity? get() = if (sequence.state.value == null) searchFocusedId else sequence.focusedId
@@ -166,8 +168,9 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
                 if(pickerShowing && !state.value.error && !state.value.loading && !state.value.loadingMore && query.value.randomRequest==null && session.results(source.identity.first(),query.value)!=null) pageRequests.trySend(true)
             }
     } }
-    private val resultsState = combine(query.debounce(180), source.identity, refresh) { value, id, _ -> value to id }
-        .flatMapLatest { (query, sourceId) -> flow {
+    private val resultsState = combine(query.debounce { if(it==typingQuery) 180L else 0L }, source.identity, source.capabilities, refresh) { value,id,capabilities,revision ->
+        if(capabilities.sourceId==id && (!capabilities.searchOptions || value.mode in capabilities.modes)) Triple(value,id,revision) else null
+    }.filterNotNull().distinctUntilChanged().flatMapLatest { (query, sourceId, _) -> flow {
             while (pageRequests.tryReceive().isSuccess) { /* Drop requests from the old result set. */ }
             requestingPage = false
             if (session.ownsSequence(visibilityOwner) && (appliedSource != null && appliedSource != sourceId ||
@@ -258,15 +261,16 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         // Stable remote asset identity avoids duplicates if its revision changes between pages.
         items.distinctBy { it.identityKey }
     }
-    private fun searchQuery(value: MediaQuery) {
+    private fun searchQuery(value: MediaQuery,typing: Boolean=false) {
         if (!session.ownsSequence(visibilityOwner) || query.value == value) return
         backToResults()
+        typingQuery=value.takeIf { typing }
         queryState.value = value; searchFocusedId = null
         rememberBrowsing()
     }
     fun search(text: String) {
         // EditText's saved-view restoration can emit the same empty text as a random batch.
-        if (text != query.value.text) searchQuery(query.value.copy(text = text, randomRequest = null))
+        if (text != query.value.text) searchQuery(query.value.copy(text = text, randomRequest = null),typing=true)
     }
     fun emojiShortcut(text: String) { searchQuery(query.value.copy(text=text,filter=null,randomRequest=null)) }
     fun filter(value: String?) { searchQuery(query.value.copy(filter = value)) }

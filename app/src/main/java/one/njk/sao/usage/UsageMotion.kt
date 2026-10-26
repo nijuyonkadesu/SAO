@@ -20,7 +20,8 @@ import com.google.android.material.transition.MaterialFadeThrough
 
 /** Presentation only: no timers while idle, persisted state, or interpolated usage counts. */
 internal class UsageMotion(private val root: ViewGroup): AutoCloseable {
-    private data class Key(val group: Int,val metric: Int)
+    private data class Key(val scope: Int,val group: Int,val metric: Int)
+    private var scope=0
     private val values=mutableMapOf<Key,MaterialTextView>()
     private var previous=emptyMap<Key,String>()
     private val running=mutableSetOf<ValueChange>()
@@ -29,20 +30,21 @@ internal class UsageMotion(private val root: ViewGroup): AutoCloseable {
     private val easing=MotionUtils.resolveThemeInterpolator(root.context,com.google.android.material.R.attr.motionEasingEmphasizedInterpolator,
         android.view.animation.AccelerateDecelerateInterpolator())
 
-    fun beginUpdate() {
-        stop()
-        previous=values.filterValues { it.isAttachedToWindow && it.getGlobalVisibleRect(Rect()) }.mapValues { it.value.text.toString() }
-        values.clear()
+    fun beginUpdate(scope: Int) {
+        this.scope=scope
+        running.filter { it.scope==scope }.forEach { it.finish() }
+        previous=values.filter { (key,view) -> key.scope==scope && view.isAttachedToWindow && view.getGlobalVisibleRect(Rect()) }.mapValues { it.value.text.toString() }
+        values.keys.removeAll { it.scope==scope }
     }
     fun endUpdate() { previous=emptyMap() }
     fun value(group: Int,metric: Int,value: String,factory: (String)->MaterialTextView): View {
-        val key=Key(group,metric)
+        val key=Key(scope,group,metric)
         val target=factory(value)
         values[key]=target
         val before=previous[key]
         if(before==null || before==value || !ValueAnimator.areAnimatorsEnabled()) return target
         val frame=FrameLayout(root.context).apply { addView(target,FrameLayout.LayoutParams(-1,-2)) }
-        val change=ValueChange(frame,target,before,factory)
+        val change=ValueChange(frame,target,before,factory,scope)
         running.add(change)
         frame.doOnPreDraw { change.start() }
         return frame
@@ -80,7 +82,7 @@ internal class UsageMotion(private val root: ViewGroup): AutoCloseable {
 
     /** The old text is an overlay, so only the final value determines layout and accessibility. */
     private inner class ValueChange(val frame: FrameLayout,val target: MaterialTextView,
-        val before: String,val factory: (String)->MaterialTextView) {
+        val before: String,val factory: (String)->MaterialTextView,val scope: Int) {
         private var animator: ValueAnimator?=null
         private var finished=false
         fun start() {

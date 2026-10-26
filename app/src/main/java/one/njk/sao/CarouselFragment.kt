@@ -62,7 +62,7 @@ class CarouselFragment : Fragment(), MenuProvider {
         return binding.root
     }
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        (view as? ViewGroup)?.isTransitionGroup=true
+        SaoMotion.surface(view)
         motion=SaoMotion(viewLifecycleOwner)
         (requireActivity() as MenuHost).addMenuProvider(this,viewLifecycleOwner,Lifecycle.State.RESUMED)
         val adapter = MediaCarouselAdapter(loader,viewLifecycleOwner.lifecycleScope,source,
@@ -116,34 +116,13 @@ class CarouselFragment : Fragment(), MenuProvider {
             startActivity(Intent.createChooser(MediaDelivery.intent(media,null,item.title),getString(R.string.home_share)))
             usage.record(mediaUsage(UsageAction.SHARE,UsageSurface.HOME,item,route=UsageRoute.ATTACHMENT))
         } } }
+        renderHome(model.state.value)
         viewLifecycleOwner.lifecycleScope.launch { viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             adapter.playing = true
             try { coroutineScope {
                 launch { source.changes.sample(1000).collect { model.refreshCurrent() } }
                 launch { preferences.options.collect { holdMs=it.longPressMs.toLong() } }
-                launch { model.state.collect { state ->
-                    if(binding.carouselRecyclerView.scrollState==androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE)
-                        previews.update(PickerBrowseKey(state.browse.sourceId,state.browse.query,null),state.browse.items,
-                            state.browse.items.indexOfFirst { it.identityKey==model.focusedId }.coerceAtLeast(0))
-                    else previews.pause()
-                    carousel.render(state.browse)
-                    if(categories != state.categories) {
-                        categories = state.categories
-                        binding.categories.apply {
-                            removeAllViews(); isSingleSelection=true; isSelectionRequired=true
-                            state.categories.forEach { category ->
-                                addView(Chip(context).apply {
-                                    id=View.generateViewId(); text=category.label; isCheckable=true
-                                    tag=category.id; setOnClickListener { model.chooseCategory(category.id) }
-                                })
-                            }
-                        }
-                    }
-                    for(i in 0 until binding.categories.childCount) (binding.categories.getChildAt(i) as Chip).apply {
-                        isChecked = tag == state.categoryId
-                    }
-                    renderStatus(); renderActions()
-                } }
+                launch { model.state.collect(::renderHome) }
                 launch { sources.state.collect { state ->
                     collectionGesture?.update()
                     binding.type.text = getString(R.string.collection,state.browsingCatalog.selected?.displayName(requireContext()) ?: getString(R.string.picker_source_none))
@@ -151,6 +130,29 @@ class CarouselFragment : Fragment(), MenuProvider {
                 } }
             } } finally { previews.pause(); carousel.pause() }
         } }
+    }
+    private fun renderHome(state: one.njk.sao.viewmodels.HomeState) {
+        if(binding.carouselRecyclerView.scrollState==androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE)
+            previews.update(PickerBrowseKey(state.browse.sourceId,state.browse.query,null),state.browse.items,
+                state.browse.items.indexOfFirst { it.identityKey==model.focusedId }.coerceAtLeast(0))
+        else previews.pause()
+        carousel.render(state.browse)
+        if(categories != state.categories) {
+            categories = state.categories
+            binding.categories.apply {
+                removeAllViews(); isSingleSelection=true; isSelectionRequired=true
+                state.categories.forEach { category ->
+                    addView(Chip(context).apply {
+                        id=View.generateViewId(); text=category.label; isCheckable=true
+                        tag=category.id; setOnClickListener { model.chooseCategory(category.id) }
+                    })
+                }
+            }
+        }
+        for(i in 0 until binding.categories.childCount) (binding.categories.getChildAt(i) as Chip).apply {
+            isChecked = tag == state.categoryId
+        }
+        renderStatus(); renderActions()
     }
     override fun onResume() { super.onResume(); sources.refreshExtensions() }
     override fun onStop() { collectionGesture?.cancel(); super.onStop() }

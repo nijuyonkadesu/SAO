@@ -99,19 +99,20 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
                 updating = true
                 if (panel.peopleName.text.toString() != state.peopleName) panel.peopleName.setText(state.peopleName)
                 people.submitList(state.people)
-                modes.forEach { (id, mode) -> panel.root.findViewById<Chip>(id).isEnabled = mode in state.modes }
+                modes.forEach { (id, mode) -> panel.root.findViewById<Chip>(id).isEnabled = state.loaded && mode in state.modes }
                 panel.typeStatus.isVisible = state.supported && SearchMode.CONTEXT !in state.modes
                 panel.typeStatus.setText(R.string.search_context_unavailable)
                 mapOf(R.id.section_people to SearchFacet.PEOPLE,R.id.section_places to SearchFacet.PLACES,R.id.section_media to SearchFacet.MEDIA)
-                    .forEach { (id,facet) -> panel.root.findViewById<Chip>(id).isEnabled=facet in state.facets }
+                    .forEach { (id,facet) -> panel.root.findViewById<Chip>(id).isEnabled=state.loaded && facet in state.facets }
                 for (index in 0 until panel.mediaChoices.childCount) {
-                    panel.mediaChoices.getChildAt(index).isEnabled = SearchFacet.MEDIA in state.facets
+                    panel.mediaChoices.getChildAt(index).isEnabled = state.loaded && SearchFacet.MEDIA in state.facets
                 }
-                if (state.modes.isNotEmpty() && picker.query.value.mode !in state.modes) picker.searchMode(state.defaultMode)
+                if (state.loaded && state.modes.isNotEmpty() && picker.query.value.mode !in state.modes) picker.searchMode(state.defaultMode)
 
                 binding.queryMode.isVisible = state.supported
                 binding.searchFilters.isVisible = state.supported
-                binding.searchFilters.isEnabled = state.facets.isNotEmpty()
+                binding.queryMode.isEnabled = state.loaded
+                binding.searchFilters.isEnabled = state.loaded && state.facets.isNotEmpty()
                 binding.searchLucky.isVisible = state.randomSupported
                 panel.searchModes.isVisible = state.supported
                 panel.typeDescription.isVisible = state.supported
@@ -166,11 +167,10 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
     }
     fun open(section: Int = R.id.section_type) {
         cancelGesture()
-        if (!controlsAvailable) return
+        if (!controlsAvailable || !options.state.value.loaded) return
         val opening=!visible
-        panel.root.isVisible = true; visibilityChanged(true)
+        motion.visible(panel.root,true); visibilityChanged(true)
         showSection(if (supported) section else R.id.section_type,animate=!opening); renderQuery(); hideKeyboard()
-        if(opening) motion.reveal(panel.root)
     }
     fun close() {
         cancelGesture()
@@ -234,7 +234,7 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
         updating = false
     }
     fun renderLoading(state: PickerState) {
-        val enabled = options.state.value.randomSupported && !state.loading && !state.loadingMore && state.query == picker.query.value
+        val enabled = options.state.value.loaded && options.state.value.randomSupported && !state.loading && !state.loadingMore && state.query == picker.query.value
         binding.searchLucky.isEnabled = enabled
         panel.optionsLucky.isEnabled = enabled
     }
