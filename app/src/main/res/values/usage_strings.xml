@@ -63,7 +63,7 @@
     <string name="usage_best_month">Best month</string>
     <string name="usage_records">Your milestones</string>
     <string name="usage_year_streak">Best streak this year</string>
-    <string name="usage_heatmap_hint">Color shows daily usage. Swipe to browse; tap a day for details.</string>
+    <string name="usage_heatmap_hint">Swipe through the year; continue at an edge to switch years. Tap a day for details.</string>
     <string name="usage_less">Less</string>
     <string name="usage_more">More</string>
     <string name="usage_empty">Search, copy or share media with SAO to fill these charts. Earlier activity cannot be reconstructed.</string>

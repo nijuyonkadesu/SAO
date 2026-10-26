@@ -86,6 +86,12 @@ class UsageReportTest {
         assertEquals(10L,dashboard.calendarMonths.getValue(java.time.YearMonth.of(2024,2)).actions)
         assertEquals(3L,beforeLeapDay.calendarMonths.getValue(java.time.YearMonth.of(2024,2)).actions)
         assertFalse(dashboard.calendarMonths.containsKey(java.time.YearMonth.of(2024,3)))
+        val years=dashboard.copy(days=dashboard.days+listOf(day("2023-12-30",4),day("2023-12-31",5))).calendarYears
+        assertEquals(9L,years.getValue(2023).actions); assertEquals(2,years.getValue(2023).activeDays)
+        assertEquals(2,years.getValue(2023).streak.best)
+        assertEquals(109L,years.getValue(2024).actions); assertEquals(3,years.getValue(2024).activeDays)
+        assertEquals(2,years.getValue(2024).streak.best)
+        assertEquals(102L,beforeLeapDay.calendarYears.getValue(2024).actions)
         assertEquals(31,UsageReport(UsageSelection(UsageRange.MONTH,today,DayOfWeek.SUNDAY),emptyList(),emptyList(),today).daily.size)
     }
 }

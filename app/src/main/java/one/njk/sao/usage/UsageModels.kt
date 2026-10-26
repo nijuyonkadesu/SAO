@@ -60,8 +60,10 @@ data class UsageSelection(val range: UsageRange, val anchor: LocalDate, val firs
 
 /** One date drives the entire dashboard. Only its week needs detailed buckets. */
 data class UsageDashboard(val selection: UsageSelection,val weekBuckets: List<UsageBucket>,val days: List<UsageDay>,val today: LocalDate) {
-    val calendarMonths=days.filter { it.day<=today.toEpochDay() }.groupBy { YearMonth.from(LocalDate.ofEpochDay(it.day)) }
-        .mapValues { (_,days) -> UsageMonthSummary(days) }
+    private val recordedDays=days.filter { it.day<=today.toEpochDay() }
+    private fun summary(days: List<UsageDay>)=UsageCalendarSummary(days,UsageReport.streak(days.map { it.day },today))
+    val calendarMonths=recordedDays.groupBy { YearMonth.from(LocalDate.ofEpochDay(it.day)) }.mapValues { summary(it.value) }
+    val calendarYears=recordedDays.groupBy { LocalDate.ofEpochDay(it.day).year }.mapValues { summary(it.value) }
     private fun report(range: UsageRange): UsageReport {
         val period=selection.copy(range=range)
         val buckets=if(range==UsageRange.YEAR || range==UsageRange.MONTH) emptyList() else weekBuckets.filter {
@@ -76,11 +78,11 @@ data class UsageDashboard(val selection: UsageSelection,val weekBuckets: List<Us
 }
 
 /** Prepared with the dashboard on the CPU dispatcher, never during RecyclerView binding. */
-data class UsageMonthSummary(val days: List<UsageDay>) {
+data class UsageCalendarSummary(val days: List<UsageDay>,val streak: UsageStreak) {
     val dayCounts=days.associate { it.day to it.actions }
     val actions=days.sumOf { it.actions }
     val activeDays=days.size
-    companion object { val EMPTY=UsageMonthSummary(emptyList()) }
+    companion object { val EMPTY=UsageCalendarSummary(emptyList(),UsageStreak()) }
 }
 
 /** Relative quartiles keep light/heavy days distinguishable even when a single day is an outlier. */

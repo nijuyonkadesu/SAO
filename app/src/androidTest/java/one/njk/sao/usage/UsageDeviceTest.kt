@@ -39,8 +39,8 @@ class UsageDeviceTest {
         } while(!ready && SystemClock.elapsedRealtime()<deadline)
         assertTrue("Expected the selected report to finish rendering: $date",ready)
     }
-    private fun monthChart(activity: MainActivity): UsageHeatmapView? {
-        val carousel=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_month_carousel) ?: return null
+    private fun calendarChart(activity: MainActivity,mode: UsageCalendarMode): UsageHeatmapView? {
+        val carousel=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(if(mode==UsageCalendarMode.MONTH) R.id.usage_month_carousel else R.id.usage_year_carousel) ?: return null
         val root=com.google.android.material.carousel.CarouselSnapHelper(false).findSnapView(carousel.layoutManager) ?: return null
         fun chart(view: View): UsageHeatmapView? {
             if(view is UsageHeatmapView) return view
@@ -49,27 +49,32 @@ class UsageDeviceTest {
         }
         return chart(root)
     }
-    private fun awaitMonth(scenario: ActivityScenario<MainActivity>,expected: YearMonth?=null): YearMonth {
+    private fun monthChart(activity: MainActivity)=calendarChart(activity,UsageCalendarMode.MONTH)
+    private fun yearChart(activity: MainActivity)=calendarChart(activity,UsageCalendarMode.YEAR)
+    private fun awaitMonth(scenario: ActivityScenario<MainActivity>,expected: YearMonth?=null)=YearMonth.from(awaitPeriod(scenario,UsageCalendarMode.MONTH,expected?.atDay(1)))
+    private fun awaitYear(scenario: ActivityScenario<MainActivity>,expected: Int)=awaitPeriod(scenario,UsageCalendarMode.YEAR,LocalDate.of(expected,1,1)).year
+    private fun awaitPeriod(scenario: ActivityScenario<MainActivity>,mode: UsageCalendarMode,expected: LocalDate?=null): LocalDate {
         val deadline=SystemClock.elapsedRealtime()+8000
-        var actual: YearMonth?=null
+        var actual: LocalDate?=null
         do {
             scenario.onActivity { activity ->
-                val carousel=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_month_carousel) ?: return@onActivity
+                val carousel=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(if(mode==UsageCalendarMode.MONTH) R.id.usage_month_carousel else R.id.usage_year_carousel) ?: return@onActivity
                 if(carousel.scrollState!=androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) return@onActivity
                 val manager=carousel.layoutManager ?: return@onActivity
                 val snap=com.google.android.material.carousel.CarouselSnapHelper(false)
                 val focused=snap.findSnapView(manager) ?: return@onActivity
                 if(snap.calculateDistanceToFinalSnap(manager,focused)?.any { kotlin.math.abs(it)>1 }==true) return@onActivity
-                val chart=monthChart(activity) ?: return@onActivity
+                val chart=calendarChart(activity,mode) ?: return@onActivity
                 val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
                 val fragment=host.childFragmentManager.primaryNavigationFragment!!
                 val model=androidx.lifecycle.ViewModelProvider(fragment)[UsageViewModel::class.java]
-                val month=YearMonth.from(chart.period.anchor)
-                if(month==model.calendarMonth.value && (expected==null || expected==month) && chart.isShown && chart.width>0) actual=month
+                val period=chart.period.anchor
+                val selected=if(mode==UsageCalendarMode.MONTH) model.calendarMonth.value.atDay(1) else LocalDate.of(model.calendarYear.value,1,1)
+                if(period==selected && (expected==null || expected==period) && chart.isShown && chart.width>0) actual=period
             }
             if(actual==null) SystemClock.sleep(40)
         } while(actual==null && SystemClock.elapsedRealtime()<deadline)
-        assertNotNull("The carousel must settle on its displayed month: $expected",actual)
+        assertNotNull("The carousel must settle on its displayed period: $expected",actual)
         return actual!!
     }
     private fun scrollMonth(scenario: ActivityScenario<MainActivity>,previous: Boolean) {
@@ -83,16 +88,17 @@ class UsageDeviceTest {
         scenario.onActivity { activity -> assertTrue(activity.findViewById<View>(R.id.usage_calendar_scale)
             .performAccessibilityAction(AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD,null)) }
     }
-    private inner class ScaleTouch(scenario: ActivityScenario<MainActivity>) {
+    private inner class CalendarTouch(scenario: ActivityScenario<MainActivity>,target: (MainActivity)->View={ it.findViewById(R.id.usage_calendar_scale) },edgeDrag: Boolean=false) {
         private lateinit var activity: MainActivity
         private val down=SystemClock.uptimeMillis()
         var x=0f; var y=0f
         init {
             scenario.onActivity {
                 activity=it
-                val button=it.findViewById<View>(R.id.usage_calendar_scale)
+                val button=target(it)
                 val location=IntArray(2).also(button::getLocationInWindow)
-                x=location[0]+button.width/2f; y=location[1]+button.height/2f
+                val fraction=if(edgeDrag) { if(button.layoutDirection==View.LAYOUT_DIRECTION_RTL) .85f else .15f } else .5f
+                x=location[0]+button.width*fraction; y=location[1]+button.height/2f
             }
             send(MotionEvent.ACTION_DOWN)
         }
@@ -147,8 +153,6 @@ class UsageDeviceTest {
             scenario.onActivity { activity ->
                 assertSame("Changing calendar mode keeps the other reports intact",daily,activity.findViewById(R.id.usage_daily_chart))
                 assertEquals(UsageRange.MONTH,monthChart(activity)!!.period.range)
-                assertNull("Monthly browsing uses the carousel instead of arrow controls",activity.findViewById<View>(R.id.usage_calendar_previous))
-                assertNull(activity.findViewById<View>(R.id.usage_calendar_next))
             }
             scrollMonth(scenario,previous=true)
             awaitMonth(scenario,YearMonth.now().minusMonths(1))
@@ -202,7 +206,7 @@ class UsageDeviceTest {
                     val card=activity.findViewById<View>(R.id.usage_activity_calendar).parent as View
                     activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollTo(0,card.top+activity.findViewById<View>(R.id.usage_content).top)
                 }
-                val touch=ScaleTouch(scenario)
+                val touch=CalendarTouch(scenario)
                 SystemClock.sleep(170)
                 instrumentation.runOnMainSync {
                     assertNull(android.view.inspector.WindowInspector.getGlobalWindowViews().firstNotNullOfOrNull { it.findViewById<View>(R.id.hold_choice_card) })
@@ -230,6 +234,89 @@ class UsageDeviceTest {
                 }
             }
         } finally { preferences.longPressMs(original) }
+    }
+    @Test fun yearStripScrollsBeforeCarouselAndRestoresBothPositions(): Unit=runBlocking {
+        val today=LocalDate.now()
+        val year=today.year-1 // A complete year keeps the gesture check valid even in early January.
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
+                host.navController.navigate(R.id.usageFragment)
+            }
+            awaitReport(scenario); awaitYear(scenario,today.year)
+            scenario.onActivity { activity -> assertTrue(activity.findViewById<View>(R.id.usage_year_carousel)
+                .performAccessibilityAction(AccessibilityNodeInfoCompat.ACTION_SCROLL_BACKWARD,null)) }
+            awaitYear(scenario,year)
+            val density=app.resources.displayMetrics.density
+            var direction=1f
+            var daily: View?=null
+            var stripBefore=0
+            scenario.onActivity { activity ->
+                daily=activity.findViewById(R.id.usage_daily_chart)
+                val card=activity.findViewById<View>(R.id.usage_activity_calendar).parent as View
+                activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollTo(0,card.top+activity.findViewById<View>(R.id.usage_content).top)
+                val strip=yearChart(activity)!!.parent as android.widget.HorizontalScrollView
+                direction=if(strip.layoutDirection==View.LAYOUT_DIRECTION_RTL) -1f else 1f
+                strip.scrollTo((strip.getChildAt(0).width-strip.width)/2,0); stripBefore=strip.scrollX
+            }
+            val inner=CalendarTouch(scenario,{ yearChart(it)!!.parent as View },edgeDrag=true)
+            for(step in 1..6) { inner.send(MotionEvent.ACTION_MOVE,atX=inner.x+direction*72*density*step/6); SystemClock.sleep(16) }
+            scenario.onActivity { activity ->
+                assertNotEquals("The inner strip moves before its carousel",stripBefore,(yearChart(activity)!!.parent as View).scrollX)
+                assertEquals(androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE,activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_year_carousel).scrollState)
+            }
+            SystemClock.sleep(120); inner.send(MotionEvent.ACTION_UP,atX=inner.x+direction*72*density)
+            awaitYear(scenario,year)
+            scenario.onActivity { activity ->
+                val strip=yearChart(activity)!!.parent as android.widget.HorizontalScrollView
+                val maximum=strip.getChildAt(0).width-strip.width
+                strip.scrollTo(if(direction>0) (32*density).toInt() else maximum-(32*density).toInt(),0)
+            }
+            val edge=CalendarTouch(scenario,{ yearChart(it)!!.parent as View },edgeDrag=true)
+            for(step in 1..4) { edge.send(MotionEvent.ACTION_MOVE,atX=edge.x+direction*24*density*step/4); SystemClock.sleep(16) }
+            scenario.onActivity { activity ->
+                assertTrue("The carousel waits until the strip reaches its edge",(yearChart(activity)!!.parent as View).canScrollHorizontally(if(direction>0) -1 else 1))
+                assertEquals(androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE,activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_year_carousel).scrollState)
+            }
+            for(step in 1..20) { edge.send(MotionEvent.ACTION_MOVE,atX=edge.x+direction*(24+236*step/20f)*density); SystemClock.sleep(16) }
+            SystemClock.sleep(120); edge.send(MotionEvent.ACTION_UP,atX=edge.x+direction*260*density)
+            awaitYear(scenario,year-1); awaitReport(scenario,today)
+            var offset=0
+            scenario.onActivity { activity ->
+                assertSame("Browsing years keeps detailed reports mounted",daily,activity.findViewById(R.id.usage_daily_chart))
+                val strip=yearChart(activity)!!.parent as android.widget.HorizontalScrollView
+                strip.scrollTo((strip.getChildAt(0).width-strip.width)/3,0); offset=strip.scrollX
+            }
+            if(InstrumentationRegistry.getArguments().getString("captureUsage")=="true") {
+                val bitmap=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+                File(app.filesDir,"usage-year-neighbors.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }; bitmap.recycle()
+            }
+            scenario.recreate(); awaitReport(scenario,today); awaitYear(scenario,year-1)
+            scenario.onActivity { activity -> assertEquals("Each year's strip position survives recreation",offset,(yearChart(activity)!!.parent as View).scrollX) }
+            toggleCalendar(scenario); awaitMonth(scenario,YearMonth.now())
+            toggleCalendar(scenario); awaitYear(scenario,year-1)
+            scenario.onActivity { activity -> assertEquals(offset,(yearChart(activity)!!.parent as View).scrollX) }
+            scenario.onActivity { activity ->
+                val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
+                val model=androidx.lifecycle.ViewModelProvider(host.childFragmentManager.primaryNavigationFragment!!)[UsageViewModel::class.java]
+                model.date(today)
+            }
+            awaitYear(scenario,today.year)
+            scenario.onActivity { activity ->
+                val chart=yearChart(activity)!!
+                val strip=chart.parent as android.widget.HorizontalScrollView
+                strip.scrollTo(if(direction>0) chart.width-strip.width else 0,0)
+                val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
+                androidx.lifecycle.ViewModelProvider(host.childFragmentManager.primaryNavigationFragment!!)[UsageViewModel::class.java].date(today.withDayOfYear(1))
+            }
+            awaitReport(scenario,today.withDayOfYear(1)); awaitYear(scenario,today.year)
+            scenario.onActivity { activity ->
+                val chart=yearChart(activity)!!
+                val strip=chart.parent as View
+                val expected=(chart.bounds(today.withDayOfYear(1)).centerX()-strip.width/2).coerceIn(0,(chart.width-strip.width).coerceAtLeast(0))
+                assertEquals("A new selected date recenters its year, ignoring retired cards' scroll snapshots",expected,strip.scrollX)
+            }
+        }
     }
     @Test fun seededReportsCanBeCapturedWithoutProductionSeedData(): Unit=runBlocking {
         if(InstrumentationRegistry.getArguments().getString("captureUsage")!="true") return@runBlocking
@@ -282,7 +369,7 @@ class UsageDeviceTest {
                 File(app.filesDir,"usage-$index.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }; bitmap.recycle()
             }
             scenario.onActivity { activity ->
-                val chart=activity.findViewById<UsageHeatmapView>(R.id.usage_heatmap)
+                val chart=yearChart(activity)!!
                 val rect=chart.bounds(today)
                 assertTrue("Cells are compact chart entries",rect.width()<24*app.resources.displayMetrics.density)
                 val scroll=chart.parent as android.widget.HorizontalScrollView
