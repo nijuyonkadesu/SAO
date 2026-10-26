@@ -2,6 +2,7 @@ package one.njk.sao.usage
 
 import android.graphics.Bitmap
 import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.View
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.navigation.fragment.NavHostFragment
@@ -78,6 +79,31 @@ class UsageDeviceTest {
             assertTrue("Months remain browsable with accessibility actions",carousel.performAccessibilityAction(action,null))
         }
     }
+    private fun toggleCalendar(scenario: ActivityScenario<MainActivity>) {
+        scenario.onActivity { activity -> assertTrue(activity.findViewById<View>(R.id.usage_calendar_scale)
+            .performAccessibilityAction(AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD,null)) }
+    }
+    private inner class ScaleTouch(scenario: ActivityScenario<MainActivity>) {
+        private lateinit var activity: MainActivity
+        private val down=SystemClock.uptimeMillis()
+        var x=0f; var y=0f
+        init {
+            scenario.onActivity {
+                activity=it
+                val button=it.findViewById<View>(R.id.usage_calendar_scale)
+                val location=IntArray(2).also(button::getLocationInWindow)
+                x=location[0]+button.width/2f; y=location[1]+button.height/2f
+            }
+            send(MotionEvent.ACTION_DOWN)
+        }
+        fun send(action: Int,atX: Float=x,atY: Float=y) {
+            instrumentation.runOnMainSync {
+                MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,atX,atY,0).let {
+                    it.source=android.view.InputDevice.SOURCE_TOUCHSCREEN; activity.dispatchTouchEvent(it); it.recycle()
+                }
+            }
+        }
+    }
     @Test fun incrementsPauseAndClearAreOrderedAndDoNotReplayQueuedEvents(): Unit=runBlocking {
         val db=Room.inMemoryDatabaseBuilder(app,UsageDatabase::class.java).build()
         val repository=UsageRepository(db,FloatingDispatchers())
@@ -115,8 +141,8 @@ class UsageDeviceTest {
             var daily: View?=null
             scenario.onActivity { activity ->
                 daily=activity.findViewById(R.id.usage_daily_chart)
-                activity.findViewById<View>(R.id.usage_calendar_month).performClick()
             }
+            toggleCalendar(scenario)
             awaitMonth(scenario,YearMonth.now())
             scenario.onActivity { activity ->
                 assertSame("Changing calendar mode keeps the other reports intact",daily,activity.findViewById(R.id.usage_daily_chart))
@@ -135,6 +161,11 @@ class UsageDeviceTest {
             }
             val browsed=awaitMonth(scenario)
             assertTrue("A hard fling can pass multiple months",java.time.temporal.ChronoUnit.MONTHS.between(browsed,YearMonth.now())>1)
+            scenario.onActivity { activity ->
+                val scale=activity.findViewById<View>(R.id.usage_calendar_scale)
+                repeat(2) { assertTrue(scale.performAccessibilityAction(AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD,null)) }
+            }
+            awaitMonth(scenario,browsed)
             scenario.onActivity { activity -> assertSame("Browsing months keeps detailed reports mounted",daily,activity.findViewById(R.id.usage_daily_chart)) }
             var before=""
             var scroll=0
@@ -149,12 +180,56 @@ class UsageDeviceTest {
             scenario.onActivity { activity ->
                 assertEquals(before,activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_period).text.toString())
                 assertEquals(scroll,activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollY)
-                assertTrue(activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_calendar_month).isChecked)
+                assertEquals(activity.getString(R.string.usage_month),activity.findViewById<com.google.android.material.button.MaterialButton>(R.id.usage_calendar_scale).text.toString())
                 val ids=listOf(R.id.usage_activity_calendar,R.id.usage_daily_chart,R.id.usage_weekly_chart,R.id.usage_destinations,R.id.usage_breakdown,R.id.usage_records)
                 val tops=ids.map { (activity.findViewById<View>(it).parent as View).top }
                 assertEquals("Reports appear together in one scrolling page",tops.sorted(),tops)
             }
         }
+    }
+    @Test fun calendarSelectorUsesSharedDelayAndCommitsOnlyOnRelease(): Unit=runBlocking {
+        val preferences=EntryPointAccessors.fromApplication(app,one.njk.sao.floating.FloatingTestAccess::class.java).preferences()
+        val original=preferences.current().longPressMs
+        preferences.longPressMs(400)
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
+                    host.navController.navigate(R.id.usageFragment)
+                }
+                awaitReport(scenario)
+                scenario.onActivity { activity ->
+                    val card=activity.findViewById<View>(R.id.usage_activity_calendar).parent as View
+                    activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.usage_scroll).scrollTo(0,card.top+activity.findViewById<View>(R.id.usage_content).top)
+                }
+                val touch=ScaleTouch(scenario)
+                SystemClock.sleep(170)
+                instrumentation.runOnMainSync {
+                    assertNull(android.view.inspector.WindowInspector.getGlobalWindowViews().firstNotNullOfOrNull { it.findViewById<View>(R.id.hold_choice_card) })
+                }
+                SystemClock.sleep(300)
+                var row=0f
+                scenario.onActivity { activity ->
+                    val viewport=activity.findViewById<View>(R.id.hold_choice_viewport)
+                    assertNotNull("The shared 400 ms delay opens the selector",viewport)
+                    row=viewport.height.toFloat()/(activity.findViewById<android.widget.LinearLayout>(R.id.hold_choice_rows).childCount-2)
+                }
+                touch.send(MotionEvent.ACTION_MOVE,atY=touch.y-row*3)
+                scenario.onActivity { activity ->
+                    assertEquals("Dragging loops without committing",activity.getString(R.string.usage_year),activity.findViewById<android.widget.TextView>(R.id.usage_calendar_scale).text.toString())
+                }
+                if(InstrumentationRegistry.getArguments().getString("captureUsage")=="true") {
+                    val bitmap=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+                    File(app.filesDir,"usage-scale-held.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }; bitmap.recycle()
+                }
+                touch.send(MotionEvent.ACTION_UP,atY=touch.y-row*3)
+                awaitMonth(scenario,YearMonth.now())
+                scenario.onActivity { activity ->
+                    assertEquals(activity.getString(R.string.usage_month),activity.findViewById<android.widget.TextView>(R.id.usage_calendar_scale).text.toString())
+                    assertNull(activity.findViewById<View>(R.id.hold_choice_card))
+                }
+            }
+        } finally { preferences.longPressMs(original) }
     }
     @Test fun seededReportsCanBeCapturedWithoutProductionSeedData(): Unit=runBlocking {
         if(InstrumentationRegistry.getArguments().getString("captureUsage")!="true") return@runBlocking
@@ -180,6 +255,21 @@ class UsageDeviceTest {
             }
             instrumentation.waitForIdleSync(); SystemClock.sleep(350)
             awaitReport(scenario)
+            scenario.onActivity { it.findViewById<View>(R.id.usage_previous).performClick() }
+            awaitReport(scenario,today.minusDays(1))
+            SystemClock.sleep(80)
+            val changing=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            File(app.filesDir,"usage-value-changing.png").outputStream().use { changing.compress(Bitmap.CompressFormat.PNG,100,it) }; changing.recycle()
+            SystemClock.sleep(350)
+            scenario.onActivity { activity ->
+                val value=activity.findViewById<android.widget.TextView>(R.id.usage_day_total)
+                assertEquals(java.text.NumberFormat.getIntegerInstance(activity.resources.configuration.locales[0]).format(24L),value.text.toString())
+                assertEquals(1f,value.alpha,0f); assertEquals(0f,value.translationY,0f)
+            }
+            val settled=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            File(app.filesDir,"usage-value-settled.png").outputStream().use { settled.compress(Bitmap.CompressFormat.PNG,100,it) }; settled.recycle()
+            scenario.onActivity { it.findViewById<View>(R.id.usage_today).performClick() }
+            awaitReport(scenario); SystemClock.sleep(350)
             val sections=listOf(0,R.id.usage_activity_calendar,R.id.usage_daily_chart,R.id.usage_weekly_chart,R.id.usage_destinations,R.id.usage_breakdown,R.id.usage_records)
             sections.forEachIndexed { index,id ->
                 scenario.onActivity { activity ->
@@ -204,7 +294,7 @@ class UsageDeviceTest {
                 assertTrue(scroll.width>0)
             }
             awaitReport(scenario,today.minusDays(2))
-            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_month).performClick() }
+            toggleCalendar(scenario)
             awaitMonth(scenario,YearMonth.from(today.minusDays(2)))
             scenario.onActivity { activity ->
                 val chart=monthChart(activity)!!

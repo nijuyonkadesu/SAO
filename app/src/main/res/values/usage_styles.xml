@@ -10,18 +10,4 @@
         <item name="android:minHeight">48dp</item>
         <item name="android:textAppearance">@style/TextAppearance.Material3.LabelLarge.Emphasized</item>
     </style>
-    <style name="Widget.SAO.Usage.CalendarChoice" parent="Widget.Material3Expressive.Button.OutlinedButton">
-        <item name="android:minHeight">48dp</item>
-        <item name="android:textAppearance">@style/TextAppearance.Material3.LabelLarge.Emphasized</item>
-        <item name="android:textColor">@color/usage_choice_foreground</item>
-        <item name="backgroundTint">@color/usage_choice_background</item>
-        <item name="strokeWidth">0dp</item>
-        <item name="icon">@drawable/ic_picker_check</item>
-        <item name="iconTint">@color/usage_choice_foreground</item>
-        <item name="iconSize">18dp</item>
-        <item name="iconPadding">6dp</item>
-        <item name="iconGravity">textStart</item>
-        <item name="android:paddingStart">12dp</item>
-        <item name="android:paddingEnd">12dp</item>
-    </style>
 </resources>

@@ -8,6 +8,12 @@
     <string name="usage_next_month">Next month</string>
     <string name="usage_month">Month</string>
     <string name="usage_year">Year</string>
+    <string name="usage_scale_title">Calendar scale</string>
+    <string name="usage_scale_choose">Choose calendar scale</string>
+    <string name="usage_scale_next">Next calendar scale</string>
+    <string name="usage_scale_previous">Previous calendar scale</string>
+    <string name="usage_scale_release">Release to switch calendar scale</string>
+    <string name="usage_scale_selected">%1$s. Choose calendar scale.</string>
     <string name="usage_month_hint">Swipe between months. Choose a date for hourly activity.</string>
     <string name="usage_jump_today">Today</string>
     <string name="usage_date_selection">%1$s. Choose a date.</string>

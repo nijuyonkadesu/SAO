@@ -8,10 +8,12 @@ import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.Gravity
 import androidx.appcompat.view.ContextThemeWrapper
+import androidx.appcompat.widget.PopupMenu
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.GridLayout
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
@@ -24,7 +26,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
-import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.datepicker.CalendarConstraints
 import com.google.android.material.datepicker.DateValidatorPointBackward
@@ -35,9 +36,14 @@ import com.google.android.material.shape.ShapeAppearanceModel
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textview.MaterialTextView
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import one.njk.sao.R
 import one.njk.sao.databinding.FragmentUsageBinding
+import one.njk.sao.floating.FloatingOptions
+import one.njk.sao.floating.FloatingPreferences
+import one.njk.sao.floating.HoldDragSelector
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
@@ -45,6 +51,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.format.TextStyle
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class UsageFragment: Fragment() {
@@ -52,6 +59,12 @@ class UsageFragment: Fragment() {
     private val binding get()=requireNotNull(_binding)
     private val uiContext: Context get()=binding.root.context
     private val model: UsageViewModel by viewModels()
+    @Inject lateinit var preferences: FloatingPreferences
+    private var holdMs=FloatingOptions.DEFAULT_LONG_PRESS_MS.toLong()
+    private var _motion: UsageMotion?=null
+    private val motion get()=requireNotNull(_motion)
+    private var scaleGesture: HoldDragSelector<UsageCalendarMode>?=null
+    private var scaleMenu: PopupMenu?=null
     private var rendered: UsageDashboard?=null
     private var renderedCalendarMode: UsageCalendarMode?=null
     private var monthCarousel: UsageMonthCarousel?=null
@@ -75,6 +88,7 @@ class UsageFragment: Fragment() {
         return binding.root
     }
     override fun onViewCreated(view: View,savedInstanceState: Bundle?) {
+        _motion=UsageMotion(binding.usageContent)
         binding.usagePrevious.setOnClickListener { model.step(-1) }
         binding.usageNext.setOnClickListener { model.step(1) }
         binding.usagePeriod.setOnClickListener { chooseDate() }
@@ -85,6 +99,7 @@ class UsageFragment: Fragment() {
                 .setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.usage_clear) { _,_ -> model.clear() }.show()
         }
         viewLifecycleOwner.lifecycleScope.launch { viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            launch { preferences.options.map { it.longPressMs }.distinctUntilChanged().collect { holdMs=it.toLong() } }
             launch { model.selectionState.collect { selected ->
                 val date=dayLabel(selected.anchor)
                 binding.usagePeriod.text=date
@@ -119,9 +134,14 @@ class UsageFragment: Fragment() {
         },ContextCompat.RECEIVER_NOT_EXPORTED)
     }
     override fun onResume() { super.onResume(); model.refresh(locale) }
-    override fun onStop() { requireContext().unregisterReceiver(datesChanged); super.onStop() }
+    override fun onStop() {
+        scaleGesture?.cancel(); scaleMenu?.dismiss(); motion.stop()
+        requireContext().unregisterReceiver(datesChanged); super.onStop()
+    }
     override fun onDestroyView() {
         model.scroll=binding.usageScroll.scrollY
+        scaleGesture?.dispose(); scaleGesture=null; scaleMenu?.dismiss(); scaleMenu=null
+        motion.close(); _motion=null
         monthCarousel?.close(); monthCarousel=null
         rendered=null; renderedCalendarMode=null; _binding=null; super.onDestroyView()
     }
@@ -130,6 +150,7 @@ class UsageFragment: Fragment() {
         rendered=report
         binding.usageNext.isEnabled=report.selection.anchor<report.today
         binding.usageToday.isVisible=report.selection.anchor!=report.today
+        motion.beginUpdate()
         binding.usageContent.removeAllViews()
         hero(report)
         calendar(report)
@@ -139,6 +160,7 @@ class UsageFragment: Fragment() {
         week(report.week)
         breakdown(report.week)
         records(report)
+        motion.endUpdate()
         val current=binding
         val focusDay=showDay; showDay=false
         current.usageScroll.post {
@@ -154,47 +176,67 @@ class UsageFragment: Fragment() {
             tone=Tone.PRIMARY)
         val total=LinearLayout(uiContext).apply { gravity=Gravity.CENTER_VERTICAL }
         column.addView(total)
-        total.addView(text(numbers.format(report.actions),tone=Tone.PRIMARY,appearance=com.google.android.material.R.style.TextAppearance_Material3_DisplayLarge_Emphasized))
+        total.addView(motion.value(R.string.usage_today,R.string.usage_actions,numbers.format(report.actions)) {
+            text(it,tone=Tone.PRIMARY,appearance=com.google.android.material.R.style.TextAppearance_Material3_DisplayLarge_Emphasized).apply { id=R.id.usage_day_total }
+        })
         total.addView(text(getString(R.string.usage_actions),tone=Tone.PRIMARY),LinearLayout.LayoutParams(-2,-2).apply { marginStart=dp(12) })
         if(dashboard.days.isEmpty()) column.addView(text(getString(R.string.usage_empty),tone=Tone.PRIMARY),spaced(-1,-2))
         metrics(column,listOf(R.string.usage_searches to numbers.format(report.searches),R.string.usage_copies to numbers.format(report.copies),
-            R.string.usage_handoffs to numbers.format(report.handoffs)),listOf(Tone.SURFACE,Tone.SECONDARY,Tone.TERTIARY))
+            R.string.usage_handoffs to numbers.format(report.handoffs)),listOf(Tone.SURFACE,Tone.SECONDARY,Tone.TERTIARY),group=R.string.usage_today)
+    }
+    private fun calendarLabel(mode: UsageCalendarMode)=getString(if(mode==UsageCalendarMode.MONTH) R.string.usage_month else R.string.usage_year)
+    private fun chooseCalendarScale(anchor: View) {
+        scaleGesture?.cancel(); scaleMenu?.dismiss()
+        val menu=PopupMenu(uiContext,anchor)
+        UsageCalendarMode.entries.forEach { mode ->
+            menu.menu.add(0,mode.ordinal+1,mode.ordinal,calendarLabel(mode)).apply { isCheckable=true; isChecked=mode==model.calendarMode.value }
+        }
+        menu.menu.setGroupCheckable(0,true,true)
+        menu.setOnMenuItemClickListener { item -> model.calendarMode(UsageCalendarMode.entries[item.itemId-1]); true }
+        menu.setOnDismissListener { if(scaleMenu===it) scaleMenu=null }
+        scaleMenu=menu; menu.show()
     }
     private fun calendar(dashboard: UsageDashboard) {
         val mode=model.calendarMode.value
+        val previousMode=renderedCalendarMode
         renderedCalendarMode=mode
         val monthly=mode==UsageCalendarMode.MONTH
         val report=if(monthly) dashboard.month else dashboard.year
         val column=binding.usageContent.findViewById<LinearLayout>(R.id.usage_activity_calendar) ?: section(R.string.usage_calendar)
         column.id=R.id.usage_activity_calendar
-        monthCarousel?.close(); monthCarousel=null
-        var modes=column.getChildAt(1) as? MaterialButtonToggleGroup
-        if(modes==null) {
-            modes=LayoutInflater.from(uiContext).inflate(R.layout.view_usage_calendar_modes,column,false) as MaterialButtonToggleGroup
-            modes.check(if(monthly) R.id.usage_calendar_month else R.id.usage_calendar_year)
-            for(id in listOf(R.id.usage_calendar_month,R.id.usage_calendar_year)) modes.findViewById<MaterialButton>(id).apply {
-                icon=if(isChecked) ContextCompat.getDrawable(context,R.drawable.ic_picker_check) else null
-            }
-            modes.addOnButtonCheckedListener { group,id,checked ->
-                group.findViewById<MaterialButton>(id).icon=if(checked) ContextCompat.getDrawable(group.context,R.drawable.ic_picker_check) else null
-                if(checked) model.calendarMode(if(id==R.id.usage_calendar_month) UsageCalendarMode.MONTH else UsageCalendarMode.YEAR)
-            }
-            column.addView(modes,spaced(-1,-2))
+        val oldCarousel=monthCarousel
+        oldCarousel?.stopScroll(); monthCarousel=null
+        var scale=column.findViewById<MaterialButton>(R.id.usage_calendar_scale)
+        if(scale==null) {
+            scaleGesture?.dispose(); scaleMenu?.dismiss()
+            column.removeViewAt(0)
+            val header=LayoutInflater.from(uiContext).inflate(R.layout.view_usage_calendar_header,column,false)
+            column.addView(header,0)
+            scale=header.findViewById(R.id.usage_calendar_scale)
+            scale.minWidth=maxOf(scale.minWidth,kotlin.math.ceil(UsageCalendarMode.entries.maxOf { scale.paint.measureText(calendarLabel(it)) }
+                +scale.paddingLeft+scale.paddingRight+scale.iconSize+scale.iconPadding).toInt())
+            scale.setOnClickListener { chooseCalendarScale(it) }
+            scaleGesture=HoldDragSelector(scale,requireActivity().findViewById<FrameLayout>(android.R.id.content),
+                choices={ UsageCalendarMode.entries },selected={ model.calendarMode.value },label=::calendarLabel,
+                identity={ model.selectionState.value to model.calendarMode.value },apply=model::calendarMode,
+                title=R.string.usage_scale_title,chooseAction=R.string.usage_scale_choose,
+                nextAction=R.string.usage_scale_next,previousAction=R.string.usage_scale_previous,
+                opening={ scaleMenu?.dismiss() },hint={ getString(R.string.usage_scale_release) },holdDelay={ holdMs })
         }
-        val selectedMode=if(monthly) R.id.usage_calendar_month else R.id.usage_calendar_year
-        if(modes.checkedButtonId!=selectedMode) modes.check(selectedMode)
-        // Leave the switcher mounted so its native checked/pressed shape animation can finish.
-        while(column.childCount>2) column.removeViewAt(2)
+        scale.text=calendarLabel(mode)
+        scale.contentDescription=getString(R.string.usage_scale_selected,calendarLabel(mode))
+        scaleGesture?.update()
+        val body=LinearLayout(uiContext).apply { orientation=LinearLayout.VERTICAL }
         if(monthly) {
             val carousel=UsageMonthCarousel(uiContext,dashboard,model.calendarMonth.value,model::browseMonth,::selectUsageDay) { parent,month ->
                 val average=NumberFormat.getNumberInstance(locale).apply { maximumFractionDigits=1 }.format(if(month.activeDays==0) 0.0 else month.actions.toDouble()/month.activeDays)
                 metrics(parent,listOf(R.string.usage_actions to numbers.format(month.actions),R.string.usage_active_days to numbers.format(month.activeDays),R.string.usage_average_day to average))
             }
             monthCarousel=carousel
-            column.addView(carousel,spaced(-1,-2))
+            body.addView(carousel,LinearLayout.LayoutParams(-1,-2))
         } else {
             val controls=LinearLayout(uiContext).apply { gravity=Gravity.CENTER_VERTICAL }
-            column.addView(controls)
+            body.addView(controls)
             controls.addView(iconButton(R.drawable.ic_usage_previous,R.string.usage_previous_year) { model.stepYear(-1) }.apply { id=R.id.usage_calendar_previous })
             val label=NumberFormat.getIntegerInstance(locale).apply { isGroupingUsed=false }.format(report.selection.anchor.year)
             controls.addView(text(label,true).apply { id=R.id.usage_calendar_period; gravity=Gravity.CENTER },LinearLayout.LayoutParams(0,-2,1f))
@@ -204,7 +246,7 @@ class UsageFragment: Fragment() {
             val chart=UsageHeatmapView(uiContext,report.selection,report.periodDays.associate { it.day to it.actions },
                 dashboard.selection.anchor,dashboard.today,onDate=::selectUsageDay).apply { id=R.id.usage_heatmap }
             val scroll=HorizontalScrollView(uiContext).apply { isHorizontalScrollBarEnabled=false; addView(chart,ViewGroup.LayoutParams(-2,-2)) }
-            column.addView(scroll,spaced(-1,-2))
+            body.addView(scroll,spaced(-1,-2))
             scroll.post {
                 if(chart.isAttachedToWindow) {
                     val x=if(model.heatmapYear==chart.year && model.heatmapDate==dashboard.selection.anchor.toEpochDay()) model.heatmapScroll else chart.bounds(dashboard.selection.anchor).centerX()-scroll.width/2
@@ -217,12 +259,13 @@ class UsageFragment: Fragment() {
         }
         val legend=LinearLayout(uiContext).apply { gravity=Gravity.END or Gravity.CENTER_VERTICAL; importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO }
         legend.addView(text(getString(R.string.usage_less)).apply { setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelSmall) })
-        uiContext.usageHeatColors().forEach { color -> legend.addView(View(uiContext).apply { background=rounded(color,3) },LinearLayout.LayoutParams(dp(12),dp(12)).apply { marginStart=dp(4) }) }
+        uiContext.usageHeatColors().forEach { color -> legend.addView(View(uiContext).apply { background=rounded(color,3); importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO },LinearLayout.LayoutParams(dp(12),dp(12)).apply { marginStart=dp(4) }) }
         legend.addView(text(getString(R.string.usage_more)).apply { setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelSmall) },LinearLayout.LayoutParams(-2,-2).apply { marginStart=dp(6) })
-        column.addView(legend,spaced(-1,-2))
-        column.addView(text(getString(if(monthly) R.string.usage_month_hint else R.string.usage_heatmap_hint)),spaced(-1,-2))
-        if(!monthly) metrics(column,listOf(R.string.usage_active_days to dayCount(report.activeDays),
-            R.string.usage_current_streak to dayCount(report.streak.current),R.string.usage_best_streak to dayCount(report.streak.best)))
+        body.addView(legend,spaced(-1,-2))
+        body.addView(text(getString(if(monthly) R.string.usage_month_hint else R.string.usage_heatmap_hint)),spaced(-1,-2))
+        if(!monthly) metrics(body,listOf(R.string.usage_active_days to dayCount(report.activeDays),
+            R.string.usage_current_streak to dayCount(report.streak.current),R.string.usage_best_streak to dayCount(report.streak.best)),group=R.string.usage_calendar)
+        motion.calendar(column,body,previousMode!=null && previousMode!=mode) { oldCarousel?.close() }
     }
     private fun selectUsageDay(date: LocalDate) {
         if(date==model.selectionState.value.anchor) binding.usageScroll.smoothScrollTo(0,(binding.root.findViewById<View>(R.id.usage_daily_chart).parent as View).top+binding.usageContent.top)
@@ -232,7 +275,7 @@ class UsageFragment: Fragment() {
         val period=getString(R.string.usage_week_range,shortDate(report.selection.start),dayLabel(report.selection.endExclusive.minusDays(1)))
         section(R.string.usage_daily_trend,period).apply {
             id=R.id.usage_weekly_chart
-            metrics(this,listOf(R.string.usage_actions to numbers.format(report.actions),R.string.usage_handoffs to numbers.format(report.handoffs)),listOf(Tone.SECONDARY,Tone.TERTIARY))
+            metrics(this,listOf(R.string.usage_actions to numbers.format(report.actions),R.string.usage_handoffs to numbers.format(report.handoffs)),listOf(Tone.SECONDARY,Tone.TERTIARY),group=R.string.usage_daily_trend)
             val points=report.daily.mapIndexed { index,value -> UsagePoint(report.selection.start.plusDays(index.toLong()).dayOfWeek.getDisplayName(TextStyle.SHORT,locale),value) }
             addView(UsageTrendView(context,points,true) { index -> model.date(report.selection.start.plusDays(index.toLong())) },spaced(-1,dp(180)))
         }
@@ -277,7 +320,7 @@ class UsageFragment: Fragment() {
         if(searches.isNotEmpty()) section(R.string.usage_search_health,getString(R.string.usage_week_scope)).apply {
             val count=searches.sumOf { it.occurrences }
             metrics(this,listOf(R.string.usage_search_results to numbers.format(searches.sumOf { it.results }),
-                R.string.usage_search_latency to getString(R.string.usage_milliseconds,numbers.format(searches.sumOf { it.latencyMillis }/count))),listOf(Tone.SECONDARY,Tone.PRIMARY))
+                R.string.usage_search_latency to getString(R.string.usage_milliseconds,numbers.format(searches.sumOf { it.latencyMillis }/count))),listOf(Tone.SECONDARY,Tone.PRIMARY),group=R.string.usage_search_health)
             searches.groupBy { it.searchMode }.entries.sortedByDescending { (_,rows) -> rows.sumOf { it.occurrences } }.forEach { (mode,rows) ->
                 val label=when(mode) {
                     UsageSearchMode.FILENAME -> R.string.search_mode_filename; UsageSearchMode.DESCRIPTION -> R.string.search_mode_description
@@ -293,7 +336,7 @@ class UsageFragment: Fragment() {
         section(R.string.usage_records,NumberFormat.getIntegerInstance(locale).apply { isGroupingUsed=false }.format(report.selection.anchor.year)).apply {
             id=R.id.usage_records
             metrics(this,listOf(R.string.usage_actions to numbers.format(report.actions),R.string.usage_searches to numbers.format(report.searches),
-                R.string.usage_copies to numbers.format(report.copies),R.string.usage_handoffs to numbers.format(report.handoffs)))
+                R.string.usage_copies to numbers.format(report.copies),R.string.usage_handoffs to numbers.format(report.handoffs)),group=R.string.usage_records)
             subheading(this,R.string.usage_busiest)
             row(this,getString(R.string.usage_best_day),uiContext.actionCount(report.bestDay))
             row(this,getString(R.string.usage_best_week),uiContext.actionCount(report.bestWeek))
@@ -303,7 +346,7 @@ class UsageFragment: Fragment() {
             row(this,getString(R.string.usage_average_day),average)
             subheading(this,R.string.usage_lifetime)
             metrics(this,listOf(R.string.usage_actions to numbers.format(dashboard.days.sumOf { it.actions }),R.string.usage_active_days to dayCount(dashboard.days.size),
-                R.string.usage_searches to numbers.format(dashboard.days.sumOf { it.searches }),R.string.usage_copies to numbers.format(dashboard.days.sumOf { it.copies })),listOf(Tone.SURFACE))
+                R.string.usage_searches to numbers.format(dashboard.days.sumOf { it.searches }),R.string.usage_copies to numbers.format(dashboard.days.sumOf { it.copies })),listOf(Tone.SURFACE),group=R.string.usage_lifetime)
         }
     }
     private fun section(title: Int,subtitle: String?=null,tone: Tone?=null): LinearLayout {
@@ -333,7 +376,7 @@ class UsageFragment: Fragment() {
         setTextColor(context.usageColor(tone?.foreground ?: if(title) com.google.android.material.R.attr.colorOnSurface else com.google.android.material.R.attr.colorOnSurfaceVariant))
         if(title) ViewCompat.setAccessibilityHeading(this,true)
     }
-    private fun metrics(parent: LinearLayout,values: List<Pair<Int,String>>,tones: List<Tone> = listOf(Tone.PRIMARY,Tone.SECONDARY,Tone.TERTIARY)) {
+    private fun metrics(parent: LinearLayout,values: List<Pair<Int,String>>,tones: List<Tone> = listOf(Tone.PRIMARY,Tone.SECONDARY,Tone.TERTIARY),group: Int?=null) {
         val columns=when { resources.configuration.fontScale>1.5f -> 1; values.size==3 -> if(resources.configuration.screenWidthDp>=360) 3 else 1; else -> 2 }
         val grid=GridLayout(uiContext).apply { columnCount=columns }
         parent.addView(grid,spaced(-1,-2))
@@ -350,7 +393,8 @@ class UsageFragment: Fragment() {
                 orientation=LinearLayout.VERTICAL; setPadding(dp(12),dp(12),dp(12),dp(12))
                 addView(text(getString(label),tone=tone,appearance=com.google.android.material.R.style.TextAppearance_Material3_LabelMedium_Emphasized))
                 addView(android.widget.Space(context),LinearLayout.LayoutParams(0,0,1f))
-                addView(text(value,tone=tone,appearance=com.google.android.material.R.style.TextAppearance_Material3_HeadlineSmall_Emphasized),spaced(-1,-2))
+                val factory={ formatted: String -> text(formatted,tone=tone,appearance=com.google.android.material.R.style.TextAppearance_Material3_HeadlineSmall_Emphasized) }
+                addView(if(group==null) factory(value) else motion.value(group,label,value,factory),spaced(-1,-2))
             })
         }
     }

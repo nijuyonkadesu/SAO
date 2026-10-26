@@ -1,4 +1,5 @@
 <resources>
+    <item type="id" name="usage_day_total" />
     <item type="id" name="usage_activity_calendar" />
     <item type="id" name="usage_heatmap" />
     <item type="id" name="usage_month_carousel" />
