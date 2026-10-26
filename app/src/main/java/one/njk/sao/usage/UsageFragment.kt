@@ -14,6 +14,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.GridLayout
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -46,7 +47,6 @@ import one.njk.sao.floating.HoldDragSelector
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
-import java.time.YearMonth
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -67,7 +67,7 @@ class UsageFragment: Fragment() {
     private var scaleMenu: PopupMenu?=null
     private var rendered: UsageDashboard?=null
     private var renderedCalendarMode: UsageCalendarMode?=null
-    private var calendarCarousel: UsageCalendarCarousel?=null
+    private var monthCarousel: UsageMonthCarousel?=null
     private var names: Map<String,String> = emptyMap()
     private var showDay=false
     private val locale get()=resources.configuration.locales[0]
@@ -122,11 +122,8 @@ class UsageFragment: Fragment() {
             } }
             launch { model.calendarMonth.collect { month ->
                 if(renderedCalendarMode==UsageCalendarMode.MONTH) {
-                    calendarCarousel?.showPeriod(month.atDay(1))
+                    monthCarousel?.showMonth(month)
                 }
-            } }
-            launch { model.calendarYear.collect { year ->
-                if(renderedCalendarMode==UsageCalendarMode.YEAR) calendarCarousel?.showPeriod(LocalDate.of(year,1,1))
             } }
         } }
     }
@@ -137,9 +134,7 @@ class UsageFragment: Fragment() {
         },ContextCompat.RECEIVER_NOT_EXPORTED)
     }
     override fun onResume() { super.onResume(); model.refresh(locale) }
-    override fun onSaveInstanceState(outState: Bundle) { calendarCarousel?.rememberStrips(); super.onSaveInstanceState(outState) }
     override fun onStop() {
-        calendarCarousel?.rememberStrips()
         scaleGesture?.cancel(); scaleMenu?.dismiss(); motion.stop()
         requireContext().unregisterReceiver(datesChanged); super.onStop()
     }
@@ -147,7 +142,7 @@ class UsageFragment: Fragment() {
         model.scroll=binding.usageScroll.scrollY
         scaleGesture?.dispose(); scaleGesture=null; scaleMenu?.dismiss(); scaleMenu=null
         motion.close(); _motion=null
-        calendarCarousel?.close(); calendarCarousel=null
+        monthCarousel?.close(); monthCarousel=null
         rendered=null; renderedCalendarMode=null; _binding=null; super.onDestroyView()
     }
     private fun render(report: UsageDashboard) {
@@ -206,10 +201,11 @@ class UsageFragment: Fragment() {
         val previousMode=renderedCalendarMode
         renderedCalendarMode=mode
         val monthly=mode==UsageCalendarMode.MONTH
+        val report=if(monthly) dashboard.month else dashboard.year
         val column=binding.usageContent.findViewById<LinearLayout>(R.id.usage_activity_calendar) ?: section(R.string.usage_calendar)
         column.id=R.id.usage_activity_calendar
-        val oldCarousel=calendarCarousel
-        oldCarousel?.stopScroll(); calendarCarousel=null
+        val oldCarousel=monthCarousel
+        oldCarousel?.stopScroll(); monthCarousel=null
         var scale=column.findViewById<MaterialButton>(R.id.usage_calendar_scale)
         if(scale==null) {
             scaleGesture?.dispose(); scaleMenu?.dismiss()
@@ -231,25 +227,44 @@ class UsageFragment: Fragment() {
         scale.contentDescription=getString(R.string.usage_scale_selected,calendarLabel(mode))
         scaleGesture?.update()
         val body=LinearLayout(uiContext).apply { orientation=LinearLayout.VERTICAL }
-        val initial=if(monthly) model.calendarMonth.value.atDay(1) else LocalDate.of(model.calendarYear.value,1,1)
-        val carousel=UsageCalendarCarousel(uiContext,dashboard,mode,initial,
-            onPeriod={ date -> if(monthly) model.browseMonth(YearMonth.from(date)) else model.browseYear(date.year) },
-            onDate=::selectUsageDay,yearOffset=model::yearScroll,
-            rememberYearOffset={ year,offset -> model.rememberYearScroll(year,offset,dashboard.selection.anchor) }) { parent,summary ->
-            val third=if(monthly) {
-                val average=NumberFormat.getNumberInstance(locale).apply { maximumFractionDigits=1 }.format(if(summary.activeDays==0) 0.0 else summary.actions.toDouble()/summary.activeDays)
-                R.string.usage_average_day to average
-            } else R.string.usage_best_streak to dayCount(summary.streak.best)
-            metrics(parent,listOf(R.string.usage_actions to numbers.format(summary.actions),R.string.usage_active_days to numbers.format(summary.activeDays),third))
+        if(monthly) {
+            val carousel=UsageMonthCarousel(uiContext,dashboard,model.calendarMonth.value,model::browseMonth,::selectUsageDay) { parent,month ->
+                val average=NumberFormat.getNumberInstance(locale).apply { maximumFractionDigits=1 }.format(if(month.activeDays==0) 0.0 else month.actions.toDouble()/month.activeDays)
+                metrics(parent,listOf(R.string.usage_actions to numbers.format(month.actions),R.string.usage_active_days to numbers.format(month.activeDays),R.string.usage_average_day to average))
+            }
+            monthCarousel=carousel
+            body.addView(carousel,LinearLayout.LayoutParams(-1,-2))
+        } else {
+            val controls=LinearLayout(uiContext).apply { gravity=Gravity.CENTER_VERTICAL }
+            body.addView(controls)
+            controls.addView(iconButton(R.drawable.ic_usage_previous,R.string.usage_previous_year) { model.stepYear(-1) }.apply { id=R.id.usage_calendar_previous })
+            val label=NumberFormat.getIntegerInstance(locale).apply { isGroupingUsed=false }.format(report.selection.anchor.year)
+            controls.addView(text(label,true).apply { id=R.id.usage_calendar_period; gravity=Gravity.CENTER },LinearLayout.LayoutParams(0,-2,1f))
+            controls.addView(iconButton(R.drawable.ic_usage_next,R.string.usage_next_year) { model.stepYear(1) }.apply {
+                id=R.id.usage_calendar_next; isEnabled=report.selection.endExclusive<=dashboard.today
+            })
+            val chart=UsageHeatmapView(uiContext,report.selection,report.periodDays.associate { it.day to it.actions },
+                dashboard.selection.anchor,dashboard.today,onDate=::selectUsageDay).apply { id=R.id.usage_heatmap }
+            val scroll=HorizontalScrollView(uiContext).apply { isHorizontalScrollBarEnabled=false; addView(chart,ViewGroup.LayoutParams(-2,-2)) }
+            body.addView(scroll,spaced(-1,-2))
+            scroll.post {
+                if(chart.isAttachedToWindow) {
+                    val x=if(model.heatmapYear==chart.year && model.heatmapDate==dashboard.selection.anchor.toEpochDay()) model.heatmapScroll else chart.bounds(dashboard.selection.anchor).centerX()-scroll.width/2
+                    scroll.scrollTo(x.coerceAtLeast(0),0)
+                    scroll.setOnScrollChangeListener { _: View,x: Int,_: Int,_: Int,_: Int ->
+                        model.heatmapYear=chart.year; model.heatmapDate=dashboard.selection.anchor.toEpochDay(); model.heatmapScroll=x
+                    }
+                }
+            }
         }
-        calendarCarousel=carousel
-        body.addView(carousel,LinearLayout.LayoutParams(-1,-2))
         val legend=LinearLayout(uiContext).apply { gravity=Gravity.END or Gravity.CENTER_VERTICAL; importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO }
         legend.addView(text(getString(R.string.usage_less)).apply { setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelSmall) })
         uiContext.usageHeatColors().forEach { color -> legend.addView(View(uiContext).apply { background=rounded(color,3); importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO },LinearLayout.LayoutParams(dp(12),dp(12)).apply { marginStart=dp(4) }) }
         legend.addView(text(getString(R.string.usage_more)).apply { setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelSmall) },LinearLayout.LayoutParams(-2,-2).apply { marginStart=dp(6) })
         body.addView(legend,spaced(-1,-2))
         body.addView(text(getString(if(monthly) R.string.usage_month_hint else R.string.usage_heatmap_hint)),spaced(-1,-2))
+        if(!monthly) metrics(body,listOf(R.string.usage_active_days to dayCount(report.activeDays),
+            R.string.usage_current_streak to dayCount(report.streak.current),R.string.usage_best_streak to dayCount(report.streak.best)),group=R.string.usage_calendar)
         motion.calendar(column,body,previousMode!=null && previousMode!=mode) { oldCarousel?.close() }
     }
     private fun selectUsageDay(date: LocalDate) {
@@ -332,8 +347,6 @@ class UsageFragment: Fragment() {
             subheading(this,R.string.usage_lifetime)
             metrics(this,listOf(R.string.usage_actions to numbers.format(dashboard.days.sumOf { it.actions }),R.string.usage_active_days to dayCount(dashboard.days.size),
                 R.string.usage_searches to numbers.format(dashboard.days.sumOf { it.searches }),R.string.usage_copies to numbers.format(dashboard.days.sumOf { it.copies })),listOf(Tone.SURFACE),group=R.string.usage_lifetime)
-            row(this,getString(R.string.usage_current_streak),dayCount(report.streak.current))
-            row(this,getString(R.string.usage_best_streak),dayCount(report.streak.best))
         }
     }
     private fun section(title: Int,subtitle: String?=null,tone: Tone?=null): LinearLayout {
@@ -405,6 +418,11 @@ class UsageFragment: Fragment() {
         row.addView(text(label),LinearLayout.LayoutParams(0,-2,1f).apply { marginEnd=dp(8) })
         row.addView(text(value,tone=Tone.SURFACE,appearance=com.google.android.material.R.style.TextAppearance_Material3_LabelLarge_Emphasized),LinearLayout.LayoutParams(-2,-2))
     }
+    private fun iconButton(iconRes: Int,label: Int,action: ()->Unit)=
+        (LayoutInflater.from(uiContext).inflate(R.layout.view_usage_navigation_button,binding.usageContent,false) as MaterialButton).apply {
+            icon=ContextCompat.getDrawable(context,iconRes); contentDescription=getString(label)
+            setOnClickListener { action() }
+        }
     private fun rounded(color: Int,radius: Int)=MaterialShapeDrawable(ShapeAppearanceModel.builder().setAllCornerSizes(dp(radius).toFloat()).build()).apply { fillColor=ColorStateList.valueOf(color) }
     private fun spaced(width: Int,height: Int)=LinearLayout.LayoutParams(width,height).apply { topMargin=dp(8) }
     private fun dayLabel(date: LocalDate)=date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))

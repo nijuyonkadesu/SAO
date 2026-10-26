@@ -29,9 +29,6 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
     val calendarMode=calendar.asStateFlow()
     private val month=MutableStateFlow(runCatching { YearMonth.parse(saved.get<String>("usage_calendar_month")) }.getOrDefault(YearMonth.from(anchor)))
     val calendarMonth=month.asStateFlow()
-    private val year=MutableStateFlow(saved["usage_calendar_year"] ?: anchor.year)
-    val calendarYear=year.asStateFlow()
-    private val yearScrolls=saved.get<HashMap<Int,Int>>("usage_year_scrolls") ?: hashMapOf()
     private val today=MutableStateFlow(LocalDate.now())
     val sourceNames=profiles.snapshots.map { snapshot -> snapshot.catalog.profiles.associate { it.id to it.name } }
         .catch { error -> if(error is CancellationException) throw error; emit(emptyMap()) }
@@ -50,25 +47,13 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
     }
     fun date(value: LocalDate) {
         val actual=value.coerceAtMost(today.value)
-        if(actual!=selection.value.anchor) { yearScrolls.clear(); saved["usage_year_scrolls"]=HashMap(yearScrolls) }
         saved["usage_anchor"]=actual.toString()
         selection.value=selection.value.copy(anchor=actual)
         browseMonth(YearMonth.from(actual))
-        browseYear(actual.year)
     }
     fun step(direction: Long)=date(selection.value.anchor.plusDays(direction))
     fun calendarMode(value: UsageCalendarMode) { saved["usage_calendar_mode"]=value.name; calendar.value=value }
-    fun browseYear(value: Int) {
-        val actual=value.coerceIn(java.time.Year.MIN_VALUE,today.value.year)
-        saved["usage_calendar_year"]=actual; year.value=actual
-    }
-    fun yearScroll(value: Int): Int?=yearScrolls[value]
-    fun rememberYearScroll(value: Int,offset: Int,anchor: LocalDate) {
-        val actual=offset.coerceAtLeast(0)
-        if(anchor!=selection.value.anchor || yearScrolls[value]==actual) return
-        yearScrolls[value]=actual
-        saved["usage_year_scrolls"]=HashMap(yearScrolls)
-    }
+    fun stepYear(direction: Long)=date(selection.value.anchor.plusYears(direction))
     fun browseMonth(value: YearMonth) {
         val actual=value.coerceAtMost(YearMonth.from(today.value))
         saved["usage_calendar_month"]=actual.toString(); month.value=actual
@@ -78,4 +63,13 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
     var scroll: Int
         get()=saved["usage_scroll"] ?: 0
         set(value) { saved["usage_scroll"]=value }
+    var heatmapYear: Int
+        get()=saved["usage_heatmap_year"] ?: 0
+        set(value) { saved["usage_heatmap_year"]=value }
+    var heatmapDate: Long
+        get()=saved["usage_heatmap_date"] ?: Long.MIN_VALUE
+        set(value) { saved["usage_heatmap_date"]=value }
+    var heatmapScroll: Int
+        get()=saved["usage_heatmap_scroll"] ?: 0
+        set(value) { saved["usage_heatmap_scroll"]=value }
 }
