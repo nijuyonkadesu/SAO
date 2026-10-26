@@ -96,7 +96,7 @@ class CatalogRepository @Inject constructor(@ApplicationContext private val cont
         val archive=manager.getPackageArchiveInfo(file.path,PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SERVICES or PackageManager.GET_META_DATA)
             ?: throw CatalogFailure(CatalogIssue.INVALID)
         val signer=archive.signingInfo?.apkContentsSigners?.map { MessageDigest.getInstance("SHA-256").digest(it.toByteArray()).hex() }?.sorted()?.joinToString(",")
-        if(signer!=entry.signerSha256 || entry.repositoryUrl==ExtensionCatalog.URL && signer!=SourceSignatures.identity(context,context.packageName)) throw CatalogFailure(CatalogIssue.SIGNATURE)
+        if(signer!=entry.signerSha256 || !ExtensionCatalog.acceptsSigner(entry.repositoryUrl,signer)) throw CatalogFailure(CatalogIssue.SIGNATURE)
         if(archive.packageName!=entry.packageName || archive.longVersionCode!=entry.versionCode || archive.versionName!=entry.versionName)
             throw CatalogFailure(CatalogIssue.INVALID)
         val services=archive.services.orEmpty()

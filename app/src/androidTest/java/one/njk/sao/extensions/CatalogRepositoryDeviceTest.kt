@@ -1,5 +1,9 @@
 package one.njk.sao.extensions
 
+import android.content.ClipboardManager
+import android.content.pm.PackageManager
+import android.view.LayoutInflater
+import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
@@ -8,6 +12,9 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.SocketPolicy
 import okio.Buffer
 import one.njk.sao.source.SourceSignatures
+import one.njk.sao.MainActivity
+import one.njk.sao.R
+import one.njk.sao.databinding.ItemInstalledExtensionBinding
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -15,11 +22,14 @@ import org.junit.Test
 import java.io.File
 import java.security.MessageDigest
 
-/** Synthetic metadata and a supplied development APK; no private servers or media. */
+/** Synthetic metadata and a supplied release APK; no private servers or media. */
 class CatalogRepositoryDeviceTest {
     private val app=InstrumentationRegistry.getInstrumentation().targetContext
-    private val signer get()=SourceSignatures.identity(app,app.packageName)
-    private val file get()=File(app.cacheDir,"catalog_fixture.apk").also { org.junit.Assume.assumeTrue("Stage a development FindThatMeme APK in cache/catalog_fixture.apk",it.isFile) }
+    private val hostSigner get()=SourceSignatures.identity(app,app.packageName)
+    private val signer get()=requireNotNull(app.packageManager.getPackageArchiveInfo(file.path,PackageManager.GET_SIGNING_CERTIFICATES))
+        .signingInfo!!.apkContentsSigners.map { signature -> MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
+            .joinToString("") { "%02x".format(it.toInt() and 255) } }.sorted().joinToString(",")
+    private val file get()=File(app.cacheDir,"catalog_fixture.apk").also { org.junit.Assume.assumeTrue("Stage a release-signed FindThatMeme APK in cache/catalog_fixture.apk",it.isFile) }
     private fun artifact(bytes: ByteArray)=ExtensionArtifact("universal","https://github.com/nijuyonkadesu/SAO-extensions/releases/download/test/findthatmeme.apk",
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) },bytes.size.toLong())
     private fun entry(bytes: ByteArray): CatalogExtension {
@@ -27,6 +37,7 @@ class CatalogRepositoryDeviceTest {
         return CatalogExtension("findthatmeme",info.packageName,"Meme fixture","Synthetic catalog",info.longVersionCode,info.versionName!!,1,30,signer,"development",listOf(artifact(bytes)))
     }
     private fun requireUpgradableFixture() {
+        assertEquals("Use the official release signing certificate",ExtensionCatalog.PUBLISHER_SHA256,signer)
         val target=entry(file.readBytes())
         val installed=try { app.packageManager.getPackageInfo(target.packageName,0).longVersionCode } catch(_: android.content.pm.PackageManager.NameNotFoundException) { -1L }
         org.junit.Assume.assumeTrue("The fixture must be newer than the installed APK (or absent on a disposable test device)",installed<target.versionCode)
@@ -34,7 +45,7 @@ class CatalogRepositoryDeviceTest {
     private fun json(entry: CatalogExtension): JSONObject=JSONObject().put("schemaVersion",1).put("extensions",JSONArray().put(JSONObject()
         .put("id",entry.id).put("packageName",entry.packageName).put("name",entry.name).put("description",entry.description)
         .put("versionCode",entry.versionCode).put("versionName",entry.versionName).put("apiVersion",1).put("minSdk",30)
-        .put("signerSha256",signer).put("artifacts",JSONArray().put(JSONObject().put("abi","universal").put("url",entry.artifacts.single().url)
+        .put("signerSha256",entry.signerSha256).put("artifacts",JSONArray().put(JSONObject().put("abi","universal").put("url",entry.artifacts.single().url)
             .put("sha256",entry.artifacts.single().sha256).put("size",entry.artifacts.single().size)))))
     private fun http(server: MockWebServer)=CatalogHttp(OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
         chain.proceed(chain.request().newBuilder().url(server.url("/fixture")).build())
@@ -42,14 +53,55 @@ class CatalogRepositoryDeviceTest {
     private suspend fun failure(issue: CatalogIssue,block: suspend ()->Unit) {
         try { block(); fail("Invalid update was accepted") } catch(error: CatalogFailure) { assertEquals(issue,error.issue) }
     }
+    private fun officialEntry()=CatalogExtension("findthatmeme","one.njk.sao.extension.findthatmeme","Meme fixture","Synthetic catalog",
+        1,"1.0",1,30,ExtensionCatalog.PUBLISHER_SHA256,"stable",listOf(artifact(byteArrayOf(1))))
+
+    @Test fun officialCatalogTrustIsIndependentOfHostSigningAndDoesNotApproveSourceAccess() {
+        val metadata=json(officialEntry())
+        for(publisher in listOf(ExtensionCatalog.PUBLISHER_SHA256,"b".repeat(64),"c".repeat(64))) {
+            val decoded=ExtensionCatalog.decode(metadata.toString(),publisher).single()
+            assertEquals(ExtensionCatalog.PUBLISHER_SHA256,decoded.signerSha256)
+            assertEquals(publisher==ExtensionCatalog.PUBLISHER_SHA256,decoded.publisherVerified)
+        }
+        // A debug host must not trust its own certificate as an official catalog publisher.
+        metadata.getJSONArray("extensions").getJSONObject(0).put("signerSha256",hostSigner)
+        if(hostSigner!=ExtensionCatalog.PUBLISHER_SHA256)
+            assertThrows(IllegalArgumentException::class.java) { ExtensionCatalog.decode(metadata.toString(),hostSigner) }
+    }
+
+    @Test fun extensionCardCopiesItsCurrentDownloadLinkAndClearsItWithoutCatalogMetadata() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario -> scenario.onActivity { activity ->
+            val binding=ItemInstalledExtensionBinding.inflate(LayoutInflater.from(activity))
+            val clipboard=activity.getSystemService(ClipboardManager::class.java)
+            fun bind(entry: CatalogExtension?)=bindInstall(binding,entry,null,InstallRowState(),true,{},{})
+            val first=officialEntry()
+            bind(first)
+            assertTrue(binding.root.performLongClick())
+            assertEquals(first.artifacts.single().url,clipboard.primaryClip!!.getItemAt(0).text.toString())
+            assertTrue(binding.root.createAccessibilityNodeInfo().actionList.any {
+                it.id==android.view.accessibility.AccessibilityNodeInfo.ACTION_LONG_CLICK &&
+                    it.label==activity.getString(R.string.extension_copy_download_link)
+            })
+            val changed=first.copy(artifacts=listOf(first.artifacts.single().copy(url="https://cdn.example.invalid/new.apk")))
+            bind(changed)
+            assertTrue(binding.root.performLongClick())
+            assertEquals(changed.artifacts.single().url,clipboard.primaryClip!!.getItemAt(0).text.toString())
+            bind(null)
+            assertFalse(binding.root.isLongClickable)
+            assertTrue(binding.root.createAccessibilityNodeInfo().actionList.none {
+                it.id==android.view.accessibility.AccessibilityNodeInfo.ACTION_LONG_CLICK
+            })
+        } }
+    }
+
     @Test fun catalogRejectsUnapprovedPublishersWrongPackagesDuplicateEntriesAndUnsafeUrls() {
         val row=entry(file.readBytes()); val valid=json(row)
-        assertEquals(row.packageName,ExtensionCatalog.decode(valid.toString(),signer).single().packageName)
+        assertEquals(row.packageName,ExtensionCatalog.decode(valid.toString(),hostSigner).single().packageName)
         val icon="https://raw.githubusercontent.com/nijuyonkadesu/SAO-extensions/repo/icons/findthatmeme.svg"
         val decorated=JSONObject(valid.toString()).apply { getJSONArray("extensions").getJSONObject(0).put("iconUrl",icon) }
-        assertEquals(icon,ExtensionCatalog.decode(decorated.toString(),signer).single().iconUrl)
+        assertEquals(icon,ExtensionCatalog.decode(decorated.toString(),hostSigner).single().iconUrl)
         decorated.getJSONArray("extensions").getJSONObject(0).put("iconUrl","https://unrelated.example/icon.svg")
-        assertNull(ExtensionCatalog.decode(decorated.toString(),signer).single().iconUrl)
+        assertNull(ExtensionCatalog.decode(decorated.toString(),hostSigner).single().iconUrl)
 
         for(change in listOf<(JSONObject)->Unit>(
             { it.put("schemaVersion",2) },
@@ -60,7 +112,7 @@ class CatalogRepositoryDeviceTest {
             { it.getJSONArray("extensions").getJSONObject(0).getJSONArray("artifacts").getJSONObject(0).put("size",ExtensionCatalog.MAX_APK_BYTES+1) }
         )) {
             val bad=JSONObject(valid.toString()).also(change)
-            try { ExtensionCatalog.decode(bad.toString(),signer); fail("Invalid catalog accepted") } catch(_: IllegalArgumentException) { }
+            try { ExtensionCatalog.decode(bad.toString(),hostSigner); fail("Invalid catalog accepted") } catch(_: IllegalArgumentException) { }
         }
     }
     @Test fun downloadedApkMustMatchHashPackageVersionSigningCertificateAndProtocol(): Unit=runBlocking {

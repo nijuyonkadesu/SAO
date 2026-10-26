@@ -44,6 +44,9 @@
     <string name="extension_catalog_loading">Checking supported extensions…</string>
     <string name="extension_catalog_network">Could not check for extensions. Your installed sources remain available.</string>
     <string name="extension_catalog_invalid">This catalog could not be verified. Your installed sources remain available.</string>
+    <string name="extension_copy_download_link">Copy download link</string>
+    <string name="extension_download_link">Extension download link</string>
+    <string name="extension_download_link_copied">Download link copied</string>
     <string name="extension_check_updates">Check for updates</string>
     <string name="extension_install">Install</string>
     <string name="extension_update">Update</string>

@@ -1,7 +1,13 @@
 package one.njk.sao.extensions
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.os.Build
 import android.text.format.Formatter
+import android.view.View
+import android.widget.Toast
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
 import androidx.core.view.isVisible
 import one.njk.sao.R
 import one.njk.sao.databinding.ItemInstalledExtensionBinding
@@ -35,6 +41,8 @@ internal fun CatalogState.installRow(packageName: String): InstallRowState {
 internal fun bindInstall(binding: ItemInstalledExtensionBinding,entry: CatalogExtension?,installed: InstalledExtensionApp?,
     state: InstallRowState,interactive: Boolean,install: (CatalogExtension)->Unit,cancel: ()->Unit) {
     val context=binding.root.context
+    val artifact=entry?.artifact(Build.SUPPORTED_ABIS.toList())
+    bindDownloadLink(binding.root,artifact?.url)
     val active=entry!=null && state.active
     val action=entry?.action(installed?.versionCode,installed?.signer,Build.VERSION.SDK_INT,Build.SUPPORTED_ABIS.toList())
     val failure=state.failure
@@ -43,7 +51,7 @@ internal fun bindInstall(binding: ItemInstalledExtensionBinding,entry: CatalogEx
     binding.installProgress.isVisible=active
     binding.installProgress.isIndeterminate=active && state.phase!=InstallPhase.DOWNLOADING
     if(active && state.phase==InstallPhase.DOWNLOADING) binding.installProgress.setProgressCompat(state.progress,false)
-    val size=entry?.artifact(Build.SUPPORTED_ABIS.toList())?.let { Formatter.formatShortFileSize(context,it.size) }.orEmpty()
+    val size=artifact?.let { Formatter.formatShortFileSize(context,it.size) }.orEmpty()
     binding.installStatus.text=when {
         failure!=null -> context.getString(failure)
         active -> context.getString(when(state.phase) {
@@ -65,4 +73,19 @@ internal fun bindInstall(binding: ItemInstalledExtensionBinding,entry: CatalogEx
     binding.installExtension.isEnabled=interactive && (!state.busy || cancellable)
     binding.installExtension.contentDescription=context.getString(if(cancellable) R.string.extension_cancel_name else if(action==CatalogAction.UPDATE) R.string.extension_update_name else R.string.extension_install_name,entry?.name.orEmpty())
     binding.installExtension.setOnClickListener { if(cancellable) cancel() else entry?.let(install) }
+}
+
+/** Shared by installed and available cards; rebinding clears a recycled card's previous link. */
+private fun bindDownloadLink(view: View,url: String?) {
+    view.setOnLongClickListener(url?.let { link -> View.OnLongClickListener {
+        val context=it.context
+        context.getSystemService(ClipboardManager::class.java).setPrimaryClip(
+            ClipData.newPlainText(context.getString(R.string.extension_download_link),link))
+        if(Build.VERSION.SDK_INT<33) Toast.makeText(context,R.string.extension_download_link_copied,Toast.LENGTH_SHORT).show()
+        true
+    } })
+    view.isLongClickable=url!=null
+    if(url==null) ViewCompat.removeAccessibilityAction(view,AccessibilityActionCompat.ACTION_LONG_CLICK.id)
+    else ViewCompat.replaceAccessibilityAction(view,AccessibilityActionCompat.ACTION_LONG_CLICK,
+        view.context.getString(R.string.extension_copy_download_link)) { target,_ -> target.performLongClick() }
 }
