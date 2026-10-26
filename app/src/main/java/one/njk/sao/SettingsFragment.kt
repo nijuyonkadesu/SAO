@@ -1,9 +1,13 @@
 package one.njk.sao
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
+import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import dagger.hilt.android.AndroidEntryPoint
@@ -52,6 +56,13 @@ class SettingsFragment: Fragment() {
             nsfwToggle.setOnClickListener { viewModel.toggleNsfwMode() }
             exportingToggle.setOnClickListener { viewModel.exportFav() }
             homeCategories.setOnClickListener { startActivity(android.content.Intent(requireContext(),one.njk.sao.floating.HomeCategoriesActivity::class.java)) }
+            donate.setOnClickListener {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, "https://buymeacoffee.com/nijuyonkadesu".toUri()))
+                } catch (_: ActivityNotFoundException) {
+                    Toast.makeText(requireContext(), R.string.donation_link_unavailable, Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 

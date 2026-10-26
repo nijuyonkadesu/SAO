@@ -171,5 +171,14 @@
             android:text="@string/about_sao_desc"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:layout_marginTop="8dp" />
+        <com.google.android.material.chip.Chip
+            android:id="@+id/donate"
+            style="@style/Widget.SAO.Settings.ActionChip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:checkable="false"
+            android:text="@string/donation_buy_coffee"
+            app:chipIcon="@drawable/ic_settings_favorite" />
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

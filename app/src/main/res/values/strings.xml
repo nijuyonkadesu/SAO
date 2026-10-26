@@ -32,6 +32,9 @@
     <string name="language">Language</string>
     <string name="language_desc">Cultured men, otaku, or however you want to call yourself, it\'s your feel, in your language</string>
     <string name="about_sao">About SAO</string>
+    <!-- Donation link to the Buy Me a Coffee website. -->
+    <string name="donation_buy_coffee">Buy me a coffee</string>
+    <string name="donation_link_unavailable">No app is available to open this link.</string>
     <string name="about_sao_desc">I’m not running a cutthroat $200bn company, SAO is purely built in my free time, to go on a date with my beautiful Material3 components (✿◡‿◡), a complete roller coaster ride is what I would like to describe, just like how it would be in irl ~~ hue hue \n- 24k🍂</string>
     <string name="source_all_toggle">All sources (experimental)</string>
     <string name="source_all_description">Adds All to your sources. Browse shuffled results from every installed profile; original files stay with their source.</string>
