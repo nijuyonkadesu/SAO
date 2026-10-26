@@ -54,6 +54,10 @@ class UsageDeviceTest {
             scenario.onActivity { activity ->
                 val carousel=activity.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.usage_month_carousel) ?: return@onActivity
                 if(carousel.scrollState!=androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) return@onActivity
+                val manager=carousel.layoutManager ?: return@onActivity
+                val snap=com.google.android.material.carousel.CarouselSnapHelper(false)
+                val focused=snap.findSnapView(manager) ?: return@onActivity
+                if(snap.calculateDistanceToFinalSnap(manager,focused)?.any { kotlin.math.abs(it)>1 }==true) return@onActivity
                 val chart=monthChart(activity) ?: return@onActivity
                 val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
                 val fragment=host.childFragmentManager.primaryNavigationFragment!!
@@ -204,6 +208,13 @@ class UsageDeviceTest {
             instrumentation.waitForIdleSync(); SystemClock.sleep(180)
             val month=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
             File(app.filesDir,"usage-month.png").outputStream().use { month.compress(Bitmap.CompressFormat.PNG,100,it) }; month.recycle()
+            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_previous).performClick() }
+            awaitMonth(scenario,YearMonth.from(today.minusDays(2)).minusMonths(1))
+            instrumentation.waitForIdleSync()
+            val neighbors=requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            File(app.filesDir,"usage-month-neighbors.png").outputStream().use { neighbors.compress(Bitmap.CompressFormat.PNG,100,it) }; neighbors.recycle()
+            scenario.onActivity { it.findViewById<View>(R.id.usage_calendar_next).performClick() }
+            awaitMonth(scenario,YearMonth.from(today.minusDays(2)))
             scenario.onActivity { activity ->
                 assertTrue(monthChart(activity)!!.accessibilityNodeProvider!!.performAction(0,
                     androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK,null))

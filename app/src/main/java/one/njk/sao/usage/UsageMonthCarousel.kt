@@ -49,7 +49,11 @@ internal class UsageMonthCarousel(context: Context,private val dashboard: UsageD
             root.addView(card,ViewGroup.LayoutParams(-1,-2))
             val column=LinearLayout(parent.context).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(8),dp(8),dp(8),dp(12)) }
             card.addView(column)
-            return MonthHolder(root,column)
+            val stats=LinearLayout(parent.context).apply { orientation=LinearLayout.VERTICAL }
+            return MonthHolder(root,card,column,stats).also { holder ->
+                root.setOnMaskChangedListener { holder.alignStatistics() }
+                root.addOnLayoutChangeListener { _,_,_,_,_,_,_,_,_ -> holder.alignStatistics() }
+            }
         }
         override fun onBindViewHolder(holder: MonthHolder,position: Int) {
             val month=firstMonth.plusMonths(position.toLong())
@@ -60,19 +64,42 @@ internal class UsageMonthCarousel(context: Context,private val dashboard: UsageD
                 dashboard.selection.anchor,dashboard.today,fixedMonthRows=true) { date ->
                 if(position==focal && scrollState==SCROLL_STATE_IDLE) onDate(date)
             },LinearLayout.LayoutParams(-1,-2))
-            statistics(holder.column,report)
+            holder.stats.removeAllViews()
+            holder.stats.translationX=0f
+            holder.column.addView(holder.stats,LinearLayout.LayoutParams(-1,-2))
+            statistics(holder.stats,report)
+            holder.alignStatistics()
             holder.itemView.importantForAccessibility=if(position==focal) View.IMPORTANT_FOR_ACCESSIBILITY_AUTO else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         }
     }
-    private class MonthHolder(root: View,val column: LinearLayout): ViewHolder(root)
+    private inner class MonthHolder(val frame: MaskableFrameLayout,val card: MaterialCardView,val column: LinearLayout,val stats: LinearLayout): ViewHolder(frame) {
+        fun alignStatistics() {
+            val mask=frame.maskRectF
+            val left=card.left+column.left+stats.left.toFloat()
+            val right=left+stats.width
+            // Move only once the mask reaches the row, keeping its own tile insets.
+            // Physical coordinates make the same rule work in both layout directions.
+            stats.translationX=when {
+                focal!=NO_POSITION && bindingAdapterPosition==focal -> 0f
+                frame.width==0 || stats.width==0 || mask.isEmpty -> 0f
+                frame.x+mask.centerX()<this@UsageMonthCarousel.width/2f -> minOf(0f,mask.right-right)
+                else -> maxOf(0f,mask.left-left)
+            }
+        }
+    }
     init {
         id=R.id.usage_month_carousel
         itemAnimator=null; isNestedScrollingEnabled=false
         layoutManager=CarouselLayoutManager(UncontainedCarouselStrategy()).apply { carouselAlignment=CarouselLayoutManager.ALIGNMENT_CENTER }
         adapter=monthAdapter; snap.attachToRecyclerView(this)
         addOnScrollListener(object: OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView,dx: Int,dy: Int) {
+                // Material updates the mask before offsetting the child. Read its final side
+                // after that offset, within the same frame, without requesting another layout.
+                for(index in 0 until childCount) (getChildViewHolder(getChildAt(index)) as MonthHolder).alignStatistics()
+            }
             override fun onScrollStateChanged(recyclerView: RecyclerView,state: Int) {
-                if(state==SCROLL_STATE_DRAGGING) setFocal(NO_POSITION)
+                if(state!=SCROLL_STATE_IDLE) setFocal(NO_POSITION)
                 if(state==SCROLL_STATE_IDLE) post { settle() }
             }
         })
@@ -98,6 +125,7 @@ internal class UsageMonthCarousel(context: Context,private val dashboard: UsageD
         focal=position
         for(index in 0 until childCount) getChildAt(index).let { child ->
             child.importantForAccessibility=if(getChildAdapterPosition(child)==position) View.IMPORTANT_FOR_ACCESSIBILITY_AUTO else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            (getChildViewHolder(child) as MonthHolder).alignStatistics()
         }
     }
     private fun settle() {
