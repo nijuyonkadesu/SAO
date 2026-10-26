@@ -32,6 +32,7 @@ internal fun Context.usageHeatColors(): List<Int> {
 internal class UsageHeatmapView(context: Context,val period: UsageSelection,private val days: Map<Long,Long>,
     private val selected: LocalDate,private val today: LocalDate,
     fixedMonthRows: Boolean=false,
+    private val intensity: UsageIntensity=UsageIntensity(days.values),
     private val onDate: (LocalDate)->Unit): View(context) {
     private val density=resources.displayMetrics.density
     private val locale=resources.configuration.locales[0]
@@ -45,7 +46,6 @@ internal class UsageHeatmapView(context: Context,val period: UsageSelection,priv
     private val columns=if(monthly) 7 else weeks
     private val rows=if(monthly) { if(fixedMonthRows) 6 else weeks } else 7
     private val colors=context.usageHeatColors()
-    private val intensity=UsageIntensity(days.values)
     private val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize=context.usageSp(11f) }
     private val numbers=java.text.NumberFormat.getIntegerInstance(locale)
     private val pitch=if(monthly) maxOf(32*density,(1..31).maxOf { paint.measureText(numbers.format(it)) }+8*density,

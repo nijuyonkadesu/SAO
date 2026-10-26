@@ -243,8 +243,8 @@ class UsageFragment: Fragment() {
             controls.addView(iconButton(R.drawable.ic_usage_next,R.string.usage_next_year) { model.stepYear(1) }.apply {
                 id=R.id.usage_calendar_next; isEnabled=report.selection.endExclusive<=dashboard.today
             })
-            val chart=UsageHeatmapView(uiContext,report.selection,report.periodDays.associate { it.day to it.actions },
-                dashboard.selection.anchor,dashboard.today,onDate=::selectUsageDay).apply { id=R.id.usage_heatmap }
+            val chart=UsageHeatmapView(uiContext,report.selection,report.dayCounts,
+                dashboard.selection.anchor,dashboard.today,intensity=report.intensity,onDate=::selectUsageDay).apply { id=R.id.usage_heatmap }
             val scroll=HorizontalScrollView(uiContext).apply { isHorizontalScrollBarEnabled=false; addView(chart,ViewGroup.LayoutParams(-2,-2)) }
             body.addView(scroll,spaced(-1,-2))
             scroll.post {
@@ -316,20 +316,18 @@ class UsageFragment: Fragment() {
                 }),numbers.format(it.count)) }
             }
         }
-        val searches=report.buckets.filter { it.action==UsageAction.SEARCH }
-        if(searches.isNotEmpty()) section(R.string.usage_search_health,getString(R.string.usage_week_scope)).apply {
-            val count=searches.sumOf { it.occurrences }
-            metrics(this,listOf(R.string.usage_search_results to numbers.format(searches.sumOf { it.results }),
-                R.string.usage_search_latency to getString(R.string.usage_milliseconds,numbers.format(searches.sumOf { it.latencyMillis }/count))),listOf(Tone.SECONDARY,Tone.PRIMARY),group=R.string.usage_search_health)
-            searches.groupBy { it.searchMode }.entries.sortedByDescending { (_,rows) -> rows.sumOf { it.occurrences } }.forEach { (mode,rows) ->
+        report.searchHealth?.let { searches -> section(R.string.usage_search_health,getString(R.string.usage_week_scope)).apply {
+            metrics(this,listOf(R.string.usage_search_results to numbers.format(searches.results),
+                R.string.usage_search_latency to getString(R.string.usage_milliseconds,numbers.format(searches.latencyMillis/searches.count))),listOf(Tone.SECONDARY,Tone.PRIMARY),group=R.string.usage_search_health)
+            searches.modes.forEach { (mode,count) ->
                 val label=when(mode) {
                     UsageSearchMode.FILENAME -> R.string.search_mode_filename; UsageSearchMode.DESCRIPTION -> R.string.search_mode_description
                     UsageSearchMode.PATH -> R.string.search_mode_path; UsageSearchMode.OCR -> R.string.search_mode_ocr
                     UsageSearchMode.RANDOM -> R.string.usage_random; UsageSearchMode.CONTEXT -> R.string.search_mode_context; UsageSearchMode.NONE -> R.string.usage_searches
                 }
-                row(this,getString(label),numbers.format(rows.sumOf { it.occurrences }))
+                row(this,getString(label),numbers.format(count))
             }
-        }
+        } }
     }
     private fun records(dashboard: UsageDashboard) {
         val report=dashboard.year
@@ -345,8 +343,8 @@ class UsageFragment: Fragment() {
             val average=NumberFormat.getNumberInstance(locale).apply { maximumFractionDigits=1 }.format(if(report.activeDays==0) 0.0 else report.actions.toDouble()/report.activeDays)
             row(this,getString(R.string.usage_average_day),average)
             subheading(this,R.string.usage_lifetime)
-            metrics(this,listOf(R.string.usage_actions to numbers.format(dashboard.days.sumOf { it.actions }),R.string.usage_active_days to dayCount(dashboard.days.size),
-                R.string.usage_searches to numbers.format(dashboard.days.sumOf { it.searches }),R.string.usage_copies to numbers.format(dashboard.days.sumOf { it.copies })),listOf(Tone.SURFACE),group=R.string.usage_lifetime)
+            metrics(this,listOf(R.string.usage_actions to numbers.format(dashboard.lifetime.actions),R.string.usage_active_days to dayCount(dashboard.lifetime.activeDays),
+                R.string.usage_searches to numbers.format(dashboard.lifetime.searches),R.string.usage_copies to numbers.format(dashboard.lifetime.copies)),listOf(Tone.SURFACE),group=R.string.usage_lifetime)
         }
     }
     private fun section(title: Int,subtitle: String?=null,tone: Tone?=null): LinearLayout {

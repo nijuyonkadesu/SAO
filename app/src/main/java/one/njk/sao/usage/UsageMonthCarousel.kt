@@ -27,7 +27,7 @@ import java.time.temporal.ChronoUnit
 @SuppressLint("ViewConstructor") // Data and callbacks belong to this screen instance.
 internal class UsageMonthCarousel(context: Context,private val dashboard: UsageDashboard,initial: YearMonth,
     private val onMonth: (YearMonth)->Unit,private val onDate: (LocalDate)->Unit,
-    private val statistics: (LinearLayout,UsageMonthSummary)->Unit): RecyclerView(context),AutoCloseable {
+    private val statistics: (LinearLayout,UsagePeriodSummary)->Unit): RecyclerView(context),AutoCloseable {
     private fun dp(value: Int)=(resources.displayMetrics.density*value).toInt()
     private val latest=YearMonth.from(dashboard.today)
     private val firstMonth=minOf(dashboard.calendarMonths.keys.minOrNull() ?: latest,
@@ -64,7 +64,7 @@ internal class UsageMonthCarousel(context: Context,private val dashboard: UsageD
         override fun onBindViewHolder(holder: MonthHolder,position: Int) {
             val month=firstMonth.plusMonths(position.toLong())
             val period=dashboard.selection.copy(range=UsageRange.MONTH,anchor=month.atDay(1))
-            val report=dashboard.calendarMonths[month] ?: UsageMonthSummary.EMPTY
+            val report=dashboard.calendarMonths[month] ?: UsagePeriodSummary.EMPTY
             holder.column.removeAllViews()
             holder.column.addView(MaterialTextView(context).apply {
                 text=month.atDay(1).format(DateTimeFormatter.ofPattern("LLLL yyyy",resources.configuration.locales[0]))
@@ -75,7 +75,7 @@ internal class UsageMonthCarousel(context: Context,private val dashboard: UsageD
                 marginStart=dp(8); marginEnd=dp(8); topMargin=dp(4); bottomMargin=dp(12)
             })
             holder.column.addView(UsageHeatmapView(context,period,report.dayCounts,
-                dashboard.selection.anchor,dashboard.today,fixedMonthRows=true) { date ->
+                dashboard.selection.anchor,dashboard.today,fixedMonthRows=true,intensity=report.intensity) { date ->
                 if(position==focal && scrollState==SCROLL_STATE_IDLE) onDate(date)
             },LinearLayout.LayoutParams(-1,-2))
             holder.stats.removeAllViews()

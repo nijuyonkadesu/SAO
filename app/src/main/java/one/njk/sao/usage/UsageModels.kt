@@ -3,11 +3,13 @@ package one.njk.sao.usage
 import one.njk.sao.source.MediaItem
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.YearMonth
 import java.time.temporal.TemporalAdjusters
 import java.util.UUID
 
-enum class UsageAction { SEARCH, COPY_MEDIA, COPY_FILENAME, PASTE, SHARE, STICKER, DOWNLOAD, BOOKMARK }
+enum class UsageAction {
+    SEARCH, COPY_MEDIA, COPY_FILENAME, PASTE, SHARE, STICKER, DOWNLOAD, BOOKMARK;
+    val isHandoff get()=this==PASTE || this==SHARE || this==STICKER
+}
 enum class UsageSurface { HOME, PICKER }
 enum class UsageMedia { NONE, IMAGE, ANIMATION, VIDEO }
 enum class UsageTarget { NONE, WHATSAPP, TELEGRAM, DISCORD, INSTAGRAM, OTHER }
@@ -58,29 +60,25 @@ data class UsageSelection(val range: UsageRange, val anchor: LocalDate, val firs
     }
 }
 
-/** One date drives the entire dashboard. Only its week needs detailed buckets. */
-data class UsageDashboard(val selection: UsageSelection,val weekBuckets: List<UsageBucket>,val days: List<UsageDay>,val today: LocalDate) {
-    val calendarMonths=days.filter { it.day<=today.toEpochDay() }.groupBy { YearMonth.from(LocalDate.ofEpochDay(it.day)) }
-        .mapValues { (_,days) -> UsageMonthSummary(days) }
+/** One date selects already prepared history and a single loaded week's details. */
+data class UsageDashboard(val selection: UsageSelection,val weekBuckets: List<UsageBucket>,val days: List<UsageDay>,val today: LocalDate,
+    private val preparedHistory: UsageHistory?=null,private val preparedWeek: UsageWeekDetails?=null) {
+    private val history=preparedHistory?.takeIf { it.today==today && it.firstWeekday==selection.firstWeekday && it.days===days }
+        ?: UsageHistoryIndex().update(days,today,selection.firstWeekday)
+    private val weekPeriod=selection.copy(range=UsageRange.WEEK)
+    private val details=preparedWeek?.takeIf { it.today==today && it.period.start==weekPeriod.start && it.period.endExclusive==weekPeriod.endExclusive && it.buckets===weekBuckets }
+        ?: UsageWeekDetails(weekPeriod,weekBuckets.filter { it.day>=weekPeriod.start.toEpochDay() && it.day<weekPeriod.endExclusive.toEpochDay() && it.day<=today.toEpochDay() },today)
+    val calendarMonths=history.months
+    val lifetime=history.lifetime
     private fun report(range: UsageRange): UsageReport {
         val period=selection.copy(range=range)
-        val buckets=if(range==UsageRange.YEAR || range==UsageRange.MONTH) emptyList() else weekBuckets.filter {
-            it.day>=period.start.toEpochDay() && it.day<period.endExclusive.toEpochDay()
-        }
-        return UsageReport(period,buckets,days,today)
+        val breakdown=details.details(period)
+        return UsageReport(period,breakdown.buckets,history.days,today,history,breakdown)
     }
     val day=report(UsageRange.DAY)
     val week=report(UsageRange.WEEK)
     val month=report(UsageRange.MONTH)
     val year=report(UsageRange.YEAR)
-}
-
-/** Prepared with the dashboard on the CPU dispatcher, never during RecyclerView binding. */
-data class UsageMonthSummary(val days: List<UsageDay>) {
-    val dayCounts=days.associate { it.day to it.actions }
-    val actions=days.sumOf { it.actions }
-    val activeDays=days.size
-    companion object { val EMPTY=UsageMonthSummary(emptyList()) }
 }
 
 /** Relative quartiles keep light/heavy days distinguishable even when a single day is an outlier. */
@@ -96,7 +94,6 @@ internal class UsageIntensity(counts: Collection<Long>) {
     }
 }
 
-data class UsageDay(val day: Long, val actions: Long, val searches: Long, val copies: Long, val handoffs: Long)
 data class UsageShare<T>(val key: T, val count: Long)
 data class UsageStreak(val current: Int = 0, val best: Int = 0)
 
@@ -105,40 +102,35 @@ data class UsageReport(
     val buckets: List<UsageBucket>,
     val days: List<UsageDay>,
     val today: LocalDate,
+    private val preparedHistory: UsageHistory?=null,
+    private val preparedDetails: UsageDetails?=null,
 ) {
-    val periodDays = days.filter { it.day >= selection.start.toEpochDay() && it.day < selection.endExclusive.toEpochDay() && it.day<=today.toEpochDay() }
-    val actions = periodDays.sumOf { it.actions }
-    val searches = periodDays.sumOf { it.searches }
-    val copies = periodDays.sumOf { it.copies }
-    val handoffs = periodDays.sumOf { it.handoffs }
-    val activeDays = periodDays.size
-    val streak = streak(days.map { it.day },today)
-    val periodStreak = streak(periodDays.map { it.day },today)
-    val hourly = List(24) { hour -> buckets.filter { it.hour==hour }.sumOf { it.occurrences } }
-    val daily = (0 until java.time.temporal.ChronoUnit.DAYS.between(selection.start,selection.endExclusive).toInt()).map { offset ->
-        val day=selection.start.plusDays(offset.toLong()).toEpochDay()
-        periodDays.firstOrNull { it.day==day }?.actions ?: 0L
-    }
-    val targets = shares(buckets.filter { it.action in handoffActions && it.outcome==UsageOutcome.ACCEPTED }) { if(it.target==UsageTarget.NONE) UsageTarget.OTHER else it.target }
-    val media = shares(buckets.filter { it.media!=UsageMedia.NONE }) { it.media }
-    val sources = shares(buckets.filter { it.sourceId.isNotEmpty() }) { it.sourceId }
-    val actionCounts = shares(buckets) { it.action }
-    val outcomes = shares(buckets.filter { it.action in handoffActions }) { it.outcome }
-    val bestDay = periodDays.maxOfOrNull { it.actions } ?: 0
-    val bestWeek = periodDays.groupBy { LocalDate.ofEpochDay(it.day).with(TemporalAdjusters.previousOrSame(selection.firstWeekday)) }
-        .values.maxOfOrNull { group -> group.sumOf { it.actions } } ?: 0
-    val bestMonth = periodDays.groupBy { LocalDate.ofEpochDay(it.day).month }.values.maxOfOrNull { group -> group.sumOf { it.actions } } ?: 0
-
+    private val history=preparedHistory?.takeIf { it.today==today && it.firstWeekday==selection.firstWeekday && it.days===days }
+        ?: UsageHistoryIndex().update(days,today,selection.firstWeekday)
+    private val summary=history.summary(selection)
+    private val details=preparedDetails ?: UsageDetails(buckets.filter { it.day>=selection.start.toEpochDay() && it.day<selection.endExclusive.toEpochDay() && it.day<=today.toEpochDay() })
+    val periodDays=summary.days
+    val dayCounts=summary.dayCounts
+    internal val intensity=summary.intensity
+    val actions=summary.actions
+    val searches=summary.searches
+    val copies=summary.copies
+    val handoffs=summary.handoffs
+    val activeDays=summary.activeDays
+    val streak=history.streak
+    val periodStreak=summary.runs.at(today)
+    val hourly=details.hourly
+    val daily=summary.daily
+    val targets=details.targets
+    val media=details.media
+    val sources=details.sources
+    val actionCounts=details.actions
+    val outcomes=details.outcomes
+    val searchHealth=details.searchHealth
+    val bestDay=summary.bestDay
+    val bestWeek=summary.bestWeek
+    val bestMonth=summary.bestMonth
     companion object {
-        val handoffActions = setOf(UsageAction.PASTE,UsageAction.SHARE,UsageAction.STICKER)
-        fun streak(input: List<Long>,today: LocalDate): UsageStreak {
-            val sorted=input.distinct().filter { it<=today.toEpochDay() }.sorted()
-            var best=0; var run=0; var previous: Long?=null
-            sorted.forEach { day -> run=if(previous!=null && day==previous!!+1) run+1 else 1; best=maxOf(best,run); previous=day }
-            val current=if(sorted.lastOrNull() in listOf(today.toEpochDay(),today.toEpochDay()-1)) run else 0
-            return UsageStreak(current,best)
-        }
-        private fun <T> shares(rows: List<UsageBucket>,key: (UsageBucket)->T) = rows.groupBy(key)
-            .map { (id,values) -> UsageShare(id,values.sumOf { it.occurrences }) }.sortedByDescending { it.count }
+        fun streak(input: List<Long>,today: LocalDate)=UsageRuns.from(input.distinct().filter { it<=today.toEpochDay() }.sorted()).at(today)
     }
 }

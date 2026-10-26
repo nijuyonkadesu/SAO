@@ -36,8 +36,8 @@ class UsageRepository @Inject constructor(database: UsageDatabase,dispatchers: F
     private val failed=MutableStateFlow(false)
     val failure=failed.asStateFlow()
     val enabled=dao.observeControl().map { it?.enabled ?: true }.distinctUntilChanged()
-    val days=dao.observeDays()
-    fun buckets(selection: UsageSelection)=dao.observe(selection.start.toEpochDay(),selection.endExclusive.toEpochDay())
+    val days=dao.observeDays().distinctUntilChanged()
+    fun buckets(selection: UsageSelection)=dao.observe(selection.start.toEpochDay(),selection.endExclusive.toEpochDay()).distinctUntilChanged()
     private val writer by lazy { scope.launch {
         var collecting: Boolean?=null
         for(command in commands) {
@@ -78,6 +78,6 @@ class UsageRepository @Inject constructor(database: UsageDatabase,dispatchers: F
 @InstallIn(SingletonComponent::class)
 object UsageModule {
     @Provides @Singleton fun database(@ApplicationContext context: Context): UsageDatabase =
-        Room.databaseBuilder(context,UsageDatabase::class.java,"usage.db").build()
+        Room.databaseBuilder(context,UsageDatabase::class.java,"usage.db").addMigrations(UsageDatabase.MIGRATION_1_2).build()
     @Provides fun recorder(repository: UsageRepository): UsageRecorder = repository
 }

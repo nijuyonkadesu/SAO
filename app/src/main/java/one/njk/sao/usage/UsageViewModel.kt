@@ -33,14 +33,24 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
     val sourceNames=profiles.snapshots.map { snapshot -> snapshot.catalog.profiles.associate { it.id to it.name } }
         .catch { error -> if(error is CancellationException) throw error; emit(emptyMap()) }
         .stateIn(viewModelScope,SharingStarted.WhileSubscribed(0),emptyMap())
-    val state=combine(selection,today) { selected,now -> selected to now }.flatMapLatest { (selected,now) ->
-        combine(repository.buckets(selected),repository.days,repository.enabled,repository.failure) { buckets,days,enabled,error ->
-            UsageUiState(UsageDashboard(selected,buckets,days.filter { it.day<=now.toEpochDay() },now),enabled,error)
-        }.flowOn(dispatchers.cpu).catch { error ->
-            if(error is CancellationException) throw error
-            emit(UsageUiState(error=true))
-        }
-    }.stateIn(viewModelScope,SharingStarted.WhileSubscribed(0),UsageUiState())
+    private val historyIndex=UsageHistoryIndex()
+    private val weekday=selection.map { it.firstWeekday }.distinctUntilChanged()
+    private val history=combine(repository.days,today,weekday) { days,now,first -> historyIndex.update(days,now,first) }
+        .flowOn(dispatchers.cpu)
+    // Changing a day inside the same week keeps its existing query and prepared breakdowns.
+    private val week=selection.map { it.copy(range=UsageRange.WEEK,anchor=it.start) }.distinctUntilChanged()
+        .flatMapLatest { period -> repository.buckets(period).map { period to it } }
+        .combine(today) { (period,rows),now -> UsageWeekDetails(period,rows.filter { it.day<=now.toEpochDay() },now) }
+        .flowOn(dispatchers.cpu)
+    private val reports=combine(selection,history,week) { selected,past,details ->
+        val period=selected.copy(range=UsageRange.WEEK)
+        if(details.period.start!=period.start || details.period.endExclusive!=period.endExclusive ||
+            details.period.firstWeekday!=selected.firstWeekday || past.firstWeekday!=selected.firstWeekday || details.today!=past.today || !details.matches(past)) null
+        else UsageDashboard(selected,details.buckets,past.days,past.today,past,details)
+    }.filterNotNull().flowOn(dispatchers.cpu)
+    val state=combine(reports,repository.enabled,repository.failure) { report,enabled,error -> UsageUiState(report,enabled,error) }
+        .catch { error -> if(error is CancellationException) throw error; emit(UsageUiState(error=true)) }
+        .stateIn(viewModelScope,SharingStarted.WhileSubscribed(0),UsageUiState())
     fun refresh(locale: Locale) {
         today.value=LocalDate.now()
         selection.value=selection.value.copy(firstWeekday=WeekFields.of(locale).firstDayOfWeek)
