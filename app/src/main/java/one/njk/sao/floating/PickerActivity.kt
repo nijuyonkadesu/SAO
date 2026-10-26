@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.ui.SaoMotion
+
 import one.njk.sao.source.*
 import one.njk.sao.usage.*
 
@@ -38,6 +40,7 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class PickerActivity : AppCompatActivity() {
+    private val motion by lazy { SaoMotion(this) }
     @Inject lateinit var imageLoader: ImageLoader
     @Inject lateinit var exports: MediaExports
     @Inject lateinit var source: MediaSource
@@ -140,7 +143,7 @@ class PickerActivity : AppCompatActivity() {
         }
         resultsCarousel = createCarousel(binding.mediaGrid, false)
         sequenceCarousel = createCarousel(binding.sequenceGrid, true)
-        searchController = PickerSearchController(this, binding, model, searchOptions, source, imageLoader,
+        searchController = PickerSearchController(this, binding, model, searchOptions, source, imageLoader,motion,
             visibilityChanged = { visible ->
                 if (visible) binding.search.dismissSuggestions()
                 if (visible) { showSource(false); showTargets(false); binding.message.isVisible = false }
@@ -383,7 +386,7 @@ class PickerActivity : AppCompatActivity() {
     private fun expandSearch() {
         sourceGesture.cancel()
         showSource(false); showTargets(false); binding.sourceToggle.isVisible = false
-        editing = true; binding.targetLabel.isVisible = false; binding.searchField.isVisible = true
+        editing = true; motion.visible(binding.targetLabel,false); motion.visible(binding.searchField,true)
         renderHeader(); resize(imeHeight)
         binding.search.requestFocus(); binding.search.selectAll()
         WindowCompat.getInsetsController(window, binding.search).show(WindowInsetsCompat.Type.ime())
@@ -392,7 +395,7 @@ class PickerActivity : AppCompatActivity() {
         binding.search.dismissSuggestions()
         if (!editing) return
         searchController.close()
-        editing = false; binding.search.clearFocus(); binding.searchField.isVisible = false; binding.targetLabel.isVisible = true
+        editing = false; binding.search.clearFocus(); motion.visible(binding.searchField,false); motion.visible(binding.targetLabel,true)
         WindowCompat.getInsetsController(window, binding.root).hide(WindowInsetsCompat.Type.ime()); renderHeader(); resize(imeHeight)
     }
     private fun renderHeader() {
@@ -568,14 +571,14 @@ class PickerActivity : AppCompatActivity() {
         chip.minWidth = modeChipWidth
     }
     private fun showTargets(show: Boolean) {
-        if (show) { sourceGesture.cancel(); searchController.close(); binding.sourcePanel.isVisible = false }
-        binding.targetList.isVisible = show; showCarousels()
+        if (show) { sourceGesture.cancel(); searchController.close(); motion.visible(binding.sourcePanel,false) }
+        motion.visible(binding.targetList,show); showCarousels()
         updatePlayback()
         if (show) binding.message.isVisible = false
     }
     private fun showSource(show: Boolean) {
-        if (show) { sourceGesture.cancel(); searchController.close(); binding.targetList.isVisible = false }
-        binding.sourcePanel.isVisible = show; showCarousels()
+        if (show) { sourceGesture.cancel(); searchController.close(); motion.visible(binding.targetList,false) }
+        motion.visible(binding.sourcePanel,show); showCarousels()
         updatePlayback()
         binding.message.isVisible = catalog.selected!=null && !show && !binding.targetList.isVisible && !searchController.visible &&
             (model.state.value.error || (!model.state.value.loading && model.state.value.items.isEmpty()))

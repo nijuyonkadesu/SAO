@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.ui.SaoMotion
+
 import one.njk.sao.source.*
 
 import android.view.inputmethod.EditorInfo
@@ -22,7 +24,7 @@ import one.njk.sao.databinding.ActivityPickerBinding
 /** Native inline search controls; only the active section is shown. Delivery remains in the dock. */
 internal class PickerSearchController(private val activity: AppCompatActivity, private val binding: ActivityPickerBinding,
     private val picker: PickerViewModel, private val options: SearchOptionsViewModel,
-    source: MediaSource, loader: ImageLoader, private val visibilityChanged: (Boolean) -> Unit,
+    source: MediaSource, loader: ImageLoader, private val motion: SaoMotion, private val visibilityChanged: (Boolean) -> Unit,
     private val redraw: () -> Unit, private val randomRequested: () -> Unit, private val beforeGesture: () -> Unit = {}) {
     private val panel = binding.searchOptionsPanel
     private var updating = false
@@ -165,24 +167,26 @@ internal class PickerSearchController(private val activity: AppCompatActivity, p
     fun open(section: Int = R.id.section_type) {
         cancelGesture()
         if (!controlsAvailable) return
+        val opening=!visible
         panel.root.isVisible = true; visibilityChanged(true)
-        showSection(if (supported) section else R.id.section_type); renderQuery(); hideKeyboard()
+        showSection(if (supported) section else R.id.section_type,animate=!opening); renderQuery(); hideKeyboard()
+        if(opening) motion.reveal(panel.root)
     }
     fun close() {
         cancelGesture()
         if (!visible) return
-        panel.root.isVisible = false; panel.peopleName.clearFocus(); visibilityChanged(false)
+        motion.visible(panel.root,false); panel.peopleName.clearFocus(); visibilityChanged(false)
     }
-    private fun showSection(requested: Int) {
+    private fun showSection(requested: Int,animate: Boolean=true) {
         val facet = mapOf(R.id.section_people to SearchFacet.PEOPLE, R.id.section_places to SearchFacet.PLACES,
             R.id.section_media to SearchFacet.MEDIA)[requested]
         val value = requested.takeIf { facet == null || facet in options.state.value.facets } ?: R.id.section_type
         section = value
         updating = true; panel.optionsSections.check(value); updating = false
-        panel.typePanel.isVisible = value == R.id.section_type
-        panel.peoplePanel.isVisible = value == R.id.section_people
-        panel.placesPanel.isVisible = value == R.id.section_places
-        panel.mediaPanel.isVisible = value == R.id.section_media
+        motion.visible(panel.typePanel,value == R.id.section_type,animate)
+        motion.visible(panel.peoplePanel,value == R.id.section_people,animate)
+        motion.visible(panel.placesPanel,value == R.id.section_places,animate)
+        motion.visible(panel.mediaPanel,value == R.id.section_media,animate)
         if (value == R.id.section_people) options.people()
         if (value == R.id.section_places) options.places(constraints.country, constraints.state)
     }

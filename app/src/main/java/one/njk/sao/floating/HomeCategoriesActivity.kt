@@ -1,5 +1,7 @@
 package one.njk.sao.floating
 
+import one.njk.sao.ui.SaoMotion
+
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.OnBackPressedCallback
@@ -25,12 +27,14 @@ import one.njk.sao.source.*
 /** SAO owns home presentation; extension settings continue to own credentials and domain configuration. */
 @AndroidEntryPoint
 class HomeCategoriesActivity : AppCompatActivity() {
+    private val motion by lazy { SaoMotion(this) }
     private val model: HomeCategoriesViewModel by viewModels()
     private val sources: SourceProfilesViewModel by viewModels()
     override fun onResume() { super.onResume(); sources.refreshExtensions() }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val binding=ActivityHomeCategoriesBinding.inflate(layoutInflater); setContentView(binding.root)
+        motion.enter(binding.root,savedInstanceState!=null)
         WindowCompat.getInsetsController(window,window.decorView).isAppearanceLightStatusBars =
             resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK != android.content.res.Configuration.UI_MODE_NIGHT_YES
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view,insets ->
@@ -102,7 +106,7 @@ class HomeCategoriesActivity : AppCompatActivity() {
                     }) }
                 }
                 for(index in 0 until binding.categoryChoices.childCount) binding.categoryChoices.getChildAt(index).isEnabled=!state.saving
-                binding.editor.isVisible=draft!=null
+                motion.visible(binding.editor,draft!=null)
                 back.isEnabled=draft!=null && !state.saving
                 if(draft!=null) {
                     if(binding.label.text.toString()!=draft.label) binding.label.setText(draft.label)

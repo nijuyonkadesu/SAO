@@ -1,5 +1,7 @@
 package one.njk.sao
 
+import one.njk.sao.ui.SaoMotion
+
 import android.content.Intent
 import one.njk.sao.floating.displayName
 import android.os.Bundle
@@ -51,12 +53,17 @@ class CarouselFragment : Fragment(), MenuProvider {
     private var busy = false
     private var titleHold: ResultHoldAction? = null
     private var collectionGesture: HoldDragSelector<SourceProfile>? = null
+    private var motion: SaoMotion?=null
+
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); SaoMotion.navigation(this) }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentCarouselBinding.inflate(inflater,container,false)
         return binding.root
     }
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        (view as? ViewGroup)?.isTransitionGroup=true
+        motion=SaoMotion(viewLifecycleOwner)
         (requireActivity() as MenuHost).addMenuProvider(this,viewLifecycleOwner,Lifecycle.State.RESUMED)
         val adapter = MediaCarouselAdapter(loader,viewLifecycleOwner.lifecycleScope,source,
             prefetch=model::loadMore,home=true) { item ->
@@ -154,7 +161,7 @@ class CarouselFragment : Fragment(), MenuProvider {
         val emptySource=sourceState.loaded && sourceState.browsingCatalog.selected==null
         val ready=sourceState.loaded && state.sourceId==sourceState.browsingCatalog.identity && !state.loading
         val shown=emptySource || ready && (state.error || state.items.isEmpty())
-        binding.homeStatusPanel.isVisible=shown
+        motion?.visible(binding.homeStatusPanel,shown)
         binding.homeStatus.isVisible=shown
         binding.homeErrorActions.isVisible=ready && state.error && !emptySource
         binding.homeRetry.isEnabled=!state.loadingMore
@@ -194,7 +201,7 @@ class CarouselFragment : Fragment(), MenuProvider {
             finally { busy=false; renderActions() }
         }
     }
-    override fun onDestroyView() { filenameRequest.next(); titleHold?.cancel(); titleHold=null; collectionGesture?.dispose(); collectionGesture=null; carousel.close(); categories=null; _binding=null; super.onDestroyView() }
+    override fun onDestroyView() { motion?.close(); motion=null; filenameRequest.next(); titleHold?.cancel(); titleHold=null; collectionGesture?.dispose(); collectionGesture=null; carousel.close(); categories=null; _binding=null; super.onDestroyView() }
     override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) { menuInflater.inflate(R.menu.top_app_bar,menu) }
     override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when(menuItem.itemId) {
         R.id.usage -> { findNavController().navigate(R.id.usageFragment); true }

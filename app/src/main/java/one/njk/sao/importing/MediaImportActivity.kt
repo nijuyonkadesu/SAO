@@ -1,5 +1,7 @@
 package one.njk.sao.importing
 
+import one.njk.sao.ui.SaoMotion
+
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -42,6 +44,7 @@ class MediaImportActivity: AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); enableEdgeToEdge()
         binding=ActivityMediaImportBinding.inflate(layoutInflater); setContentView(binding.root)
+        SaoMotion(this).enter(binding.root,savedInstanceState!=null)
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view,insets ->
             val bars=insets.getInsets(WindowInsetsCompat.Type.systemBars()); view.setPadding(bars.left,bars.top,bars.right,bars.bottom); insets
         }

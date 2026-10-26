@@ -1,5 +1,7 @@
 package one.njk.sao.usage
 
+import one.njk.sao.ui.SaoMotion
+
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -82,12 +84,14 @@ class UsageFragment: Fragment() {
         TERTIARY(com.google.android.material.R.attr.colorTertiaryContainer,com.google.android.material.R.attr.colorOnTertiaryContainer),
         SURFACE(com.google.android.material.R.attr.colorSurfaceContainerHigh,com.google.android.material.R.attr.colorOnSurface)
     }
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); SaoMotion.navigation(this) }
     override fun onCreateView(inflater: LayoutInflater,container: ViewGroup?,state: Bundle?): View {
         val themed=DynamicColors.wrapContextIfAvailable(ContextThemeWrapper(requireContext(),R.style.Theme_SAO_Usage))
         _binding=FragmentUsageBinding.inflate(inflater.cloneInContext(themed),container,false)
         return binding.root
     }
     override fun onViewCreated(view: View,savedInstanceState: Bundle?) {
+        (view as? ViewGroup)?.isTransitionGroup=true
         _motion=UsageMotion(binding.usageContent)
         binding.usagePrevious.setOnClickListener { model.step(-1) }
         binding.usageNext.setOnClickListener { model.step(1) }

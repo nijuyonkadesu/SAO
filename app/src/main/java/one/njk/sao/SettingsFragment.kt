@@ -1,5 +1,7 @@
 package one.njk.sao
 
+import one.njk.sao.ui.SaoMotion
+
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
@@ -20,6 +22,7 @@ class SettingsFragment: Fragment() {
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = requireNotNull(_binding)
     private val viewModel: ArtsViewModel by activityViewModels()
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); SaoMotion.navigation(this) }
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -31,6 +34,7 @@ class SettingsFragment: Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        (view as? ViewGroup)?.isTransitionGroup=true
         binding.apply {
             val chosen = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().toLanguageTags()
             languageSelect.isActivated = chosen.isNotEmpty()

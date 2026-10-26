@@ -8,6 +8,7 @@
     <fragment
         android:id="@+id/homeFragment"
         android:name="one.njk.sao.CarouselFragment"
+        android:label="@string/app_name"
         tools:layout="@layout/fragment_carousel">
         <action
             android:id="@+id/action_HomeFragment_to_settingsFragment"
