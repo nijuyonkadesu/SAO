@@ -486,10 +486,9 @@ class PickerActivity : AppCompatActivity() {
             NativeBridgeRegistry.supports(targetPackage, nativeSession, mime)) ExportRendition.MEDIA else null
     }
     private fun nativeMediaMime(item: MediaItem): String {
-        val original = item.mimeType
-        if(target==MessagingTarget.INSTAGRAM && item.isVideo &&
-            NativeBridgeRegistry.supports(targetPackage,nativeSession,"image/gif")) return "image/gif"
-        return VideoCompatibility.mime(original) { NativeBridgeRegistry.supports(targetPackage, nativeSession, it) }
+        return NativeMediaFormat.mime(item.mimeType,target==MessagingTarget.INSTAGRAM) {
+            NativeBridgeRegistry.supports(targetPackage,nativeSession,it)
+        }
     }
     private fun renderDock() {
         if (!::binding.isInitialized) return

@@ -53,3 +53,8 @@ The 447 fixture was mapped from the device's installed APK, not inferred from it
 version string. Both 447 and 451 pass 42 boolean checks, including independent GIF
 readiness and missing-session diagnostics. The probe still uses its own synthetic
 session/controller objects; it never reads the installed app's account or chat data.
+
+The subsequent physical 447 test confirmed original MP4 send/playback, but the local
+converted-GIF path returned HTTP 404 despite passing this probe. See the
+[technical investigation](../../docs/instagram-native-debugging.md) for APK/DEX tracing,
+Vector setup, ADB verification, test boundaries and the corrected routing assumptions.

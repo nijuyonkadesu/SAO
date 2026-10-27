@@ -101,7 +101,7 @@ class VideoDeviceTest {
                     override fun setActive(active: Boolean, generation: Long) = Unit
                     override fun snapshot(beginSelection: Boolean) = android.os.Bundle().apply {
                         putString("session", "video-ui"); putLong("created", SystemClock.elapsedRealtime())
-                        putStringArray("mime_types", if (videoEnabled) arrayOf("image/jpeg", "video/mp4") else arrayOf("image/jpeg"))
+                        putStringArray("mime_types", if (videoEnabled) arrayOf("image/jpeg", "video/mp4", "image/gif") else arrayOf("image/jpeg"))
                         putBoolean("resumed", true)
                     }
                     override fun insert(uri: android.net.Uri, mimeType: String, session: String, requestId: Long): Int {

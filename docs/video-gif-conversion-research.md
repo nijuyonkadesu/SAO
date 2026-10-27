@@ -46,8 +46,13 @@ the container validator uses the input's actual end timestamp for the final dela
 which gifski otherwise infers from the preceding frame interval. Identical frames
 may be merged while preserving their display duration.
 
-Instagram Paste chooses GIF for videos only when the selected native conversation
-advertises the verified GIF capability. The separate DM action keeps original-video
+Instagram Paste prefers the original native video format, then a supported video
+compatibility export. It chooses GIF only when neither video route is advertised
+and the selected native conversation advertises GIF. Structural GIF compatibility
+does not prove server delivery: a physical 447 attempt failed with HTTP 404, while
+the user confirmed original MP4 send/playback after the priority correction. See the
+[investigation and corrected assumptions](instagram-native-debugging.md#8-http-404-incorrect-assumptions-and-correction).
+The separate DM action keeps original-video
 attachment available. Other apps, Copy, ordinary sharing and uploads retain their
 existing export policies. GIF cache keys are separate from original/MP4 renditions.
 An unsupported native GIF contract remains disabled; conversion alone cannot enable

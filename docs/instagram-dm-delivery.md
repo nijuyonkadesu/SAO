@@ -6,6 +6,13 @@ certificate in the verified signing lineage. APKs and proprietary decompilation
 remain outside the repository. No logged-in account, real conversation or media
 send was used during emulator verification.
 
+**Physical-device result, 2026-10-27:** the user confirmed original MP4 Paste sends
+and plays on Instagram 447.0.0.55.81 with Vector. A sender-side thumbnail is missing;
+recipient-side rendering was not independently inspected. Converted-GIF sending
+failed with HTTP 404 and remains unresolved. Native original video now takes priority
+over GIF conversion. See the [technical investigation and reproduction steps](instagram-native-debugging.md)
+for the class mappings, hook configuration, ADB commands, evidence and corrected assumptions.
+
 ## Non-root DM attachment
 
 SAO recognizes `com.instagram.android` through foreground detection and the existing
@@ -53,11 +60,12 @@ editor lease also leaves Paste disabled.
 ### Native video insertion
 
 A verified gallery sender adds `video/mp4` and `video/webm` to the session.
-When the GIF route is unavailable, explicit **Paste** or **DM** sends the selected video directly to the original DM through that sender,
+Explicit **Paste** or **DM** prefers the selected video's original format and sends it directly to the original DM through that sender,
 without opening the recipient picker. It does not pass a video to the bitmap keyboard
 handler. No video is sent by selecting, copying or browsing. Upload/server acceptance
-still belongs to Instagram; authenticated video delivery through Vector needs a phone
-check. Unsupported contracts and formats keep the DM recipient-picker route.
+still belongs to Instagram; the user confirmed original MP4 delivery/playback on 447.
+Other inspected builds and WebM retain structural/test coverage without that phone
+confirmation. Unsupported contracts and formats keep the DM recipient-picker route.
 There is no exact-version gate: class ownership and constructor/field/method shapes
 control availability. Verified contracts cover 435.0.0.37.76, 447.0.0.55.81 and 451.0.0.53.80;
 unknown shapes remain unavailable. The 435/447 senders have an additional boolean argument
@@ -117,8 +125,10 @@ gating, copied recipient key, actual animated pending metadata/file path, media
 command recipient and byte preservation. It never initializes an authenticated
 uploader or invokes a native send. Device tests cover URI/byte-stream equivalence,
 invalid input, copy limits, partial-file cleanup, off-Main work, submitted-file
-lifetime and shared video staging. **Authenticated GIF upload/delivery through Vector
-still needs a rooted-device check.** GIF capability is absent for unverified shapes,
+lifetime and shared video staging. **The physical 447 converted-GIF attempt failed
+with HTTP 404 after native dispatch; GIF delivery remains unresolved.** The request
+URL was not captured, so static endpoint inspection does not establish which route
+returned the error. GIF capability is absent for unverified shapes,
 including the older 435 contract; its existing photo/video routes remain available.
 
 The host verifies the lease before preparation, revalidates it on Main afterward,
@@ -171,7 +181,7 @@ the editor, clearing/replacing its media listener, or changing capabilities revo
 
 Both Binder directions check the installed package/UID. SAO grants its own FileProvider
 URI to the scoped host, closes the picker so that the original chat can regain focus,
-and waits for focus using bounded IO polling. It dispatches once and never retries a
+and waits for focus using a bounded event-driven state subscription. It dispatches once and never retries a
 send or falls back to another recipient. Main-thread session validation runs immediately
 before invoking the native handler. Subsequent decode/upload/sending work belongs to
 Instagram; a true return means that its handler accepted the request, not confirmed
@@ -223,9 +233,12 @@ probe still never invokes an authenticated sending listener.
 
 ## Video-to-GIF Paste
 
-When a bound Instagram conversation advertises native GIF uploads, Paste converts
-MP4/WebM through Android's decoder and the host's gifski encoder, then gives the
-resulting `image/gif` URI to that same recipient-bound upload adapter. This capability
+Paste first prefers the original MIME accepted by the native sender, then an
+available video compatibility export. Only when neither video path is advertised
+but the bound conversation advertises GIF does Paste convert MP4/WebM through
+Android's decoder and the host's gifski encoder, then give the resulting `image/gif`
+URI to the recipient-bound upload adapter. This fallback remains unverified for
+server delivery: the physical 447 attempt returned HTTP 404. This capability
 is independent of the gallery video sender. The inspected 447/451 contracts read their
 UserSession from the verified DM controller and still respect media restrictions,
 chat changes and one-use leases. Unknown contracts, including the older 435 GIF
@@ -240,8 +253,8 @@ The DM button retains the original-video attachment route when Paste uses GIF.
 Generated-media tests verify actual GIF bytes, RGBA row padding, colors, orientation,
 duration, source/cache separation, cancellation cleanup and GIF-only MP4 Paste.
 The real-class probe also verifies that GIF remains available without a gallery
-sender. It never invokes authenticated upload/send; delivery still needs a rooted
-device with Vector and the compatible native client.
+sender. It never invokes authenticated upload/send; delivery cannot be inferred
+from these tests.
 
 ### Installed 447 build (2026-10-27)
 
@@ -255,8 +268,9 @@ control activation. No version-number bypass or guessed MIME field is used.
 
 The exact 447 APK and original 451 APK each pass 42 native-class checks, including
 GIF availability without the gallery sender. Ten focused device tests cover
-conversion, explicit Paste, photo/video coexistence and recipient leases. Actual
-framework delivery still needs the physical device; no test dispatches a message.
+conversion, explicit Paste, photo/video coexistence and recipient leases. The physical
+device subsequently confirmed original MP4 send/playback after native-video priority
+was restored; converted GIF failed with HTTP 404. No automated test dispatches a message.
 Hook revision 3 lets the picker identify an older module still loaded in Instagram.
 `SAO.NativeBridge` logcat entries record changed version/readiness/MIME capabilities
 only during explicit selection/observation, without recipient/session identifiers,
@@ -284,8 +298,9 @@ Recovery tests also cover late capability changes without rotating the picker to
 explicit reopening after a revoked draft without reconnecting the keyboard, and
 preserving earlier attachment grants after a subsequent rejection.
 
-These checks validate SAO's adapter, safeguards, UI and transport. Framework injection
-and authenticated DM upload/delivery still need the user's rooted device. No emulator
+These checks validate SAO's adapter, safeguards, UI and transport. The user subsequently
+confirmed physical Vector injection and original MP4 send/playback on 447; this does
+not verify other builds/formats or resolve the GIF HTTP failure. No emulator
 account or message send is required by the automated suite. Generated device logs and
 screenshots remain local under `diagnostics/`; the probe source is versioned.
 
