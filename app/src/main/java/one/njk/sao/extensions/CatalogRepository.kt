@@ -18,10 +18,13 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** No HTTP cache, automatic retries, observers or idle work. Called only by source settings. */
+/** Explicit reads only. Connection recovery may use another route; response bodies are never replayed here. */
 class CatalogHttp internal constructor(private val client: OkHttpClient) {
-    @Inject constructor(): this(OkHttpClient.Builder().retryOnConnectionFailure(false).followSslRedirects(false)
-        .connectTimeout(15,TimeUnit.SECONDS).readTimeout(30,TimeUnit.SECONDS).callTimeout(5,TimeUnit.MINUTES).build())
+    @Inject constructor(): this(defaultClient())
+    internal companion object {
+        fun defaultClient(): OkHttpClient = OkHttpClient.Builder().retryOnConnectionFailure(true).followSslRedirects(false)
+            .connectTimeout(15,TimeUnit.SECONDS).readTimeout(30,TimeUnit.SECONDS).callTimeout(5,TimeUnit.MINUTES).build()
+    }
     internal suspend fun <T> receive(url: String, consume: suspend (InputStream,Long)->T): T = withContext(Dispatchers.IO) {
         coroutineScope {
             val call=client.newCall(Request.Builder().url(url).header("Cache-Control","no-cache").build())
@@ -60,6 +63,7 @@ class CatalogRepository @Inject constructor(@ApplicationContext private val cont
     }
     internal suspend fun download(entry: CatalogExtension,progress: (Int)->Unit): VerifiedExtension {
         var created: File?=null
+        var phase="prepare"
         try { return withContext(Dispatchers.IO) {
             requireConfigured(entry)
             val artifact=entry.artifact(Build.SUPPORTED_ABIS.toList()) ?: throw CatalogFailure(CatalogIssue.INCOMPATIBLE)
@@ -67,19 +71,23 @@ class CatalogRepository @Inject constructor(@ApplicationContext private val cont
             directory.listFiles().orEmpty().filter { System.currentTimeMillis()-it.lastModified()>24L*60*60*1000 }.forEach(File::delete)
             val file=File.createTempFile("extension-", ".apk",directory).also { created=it }
             try {
+                phase="connect"
                 http.receive(artifact.url) { input,length ->
+                    phase="response_size"
                     require(length<0 || length==artifact.size)
+                    phase="body"
                     var last=0L
                     file.outputStream().use { output -> copy(input,output,artifact.size) { bytes ->
                         val now=android.os.SystemClock.elapsedRealtime()
                         if(now-last>=100 || bytes==artifact.size) { progress((bytes*100/artifact.size).toInt()); last=now }
                     } }
                 }
+                phase="verification"
                 validate(entry,artifact,file)
                 VerifiedExtension(entry,artifact,file)
             } catch(cancelled: CancellationException) { file.delete(); throw cancelled }
-            catch(error: CatalogFailure) { file.delete(); throw error }
-            catch(error: Exception) { file.delete(); currentCoroutineContext().ensureActive(); throw CatalogFailure(CatalogIssue.DOWNLOAD,error) }
+            catch(error: CatalogFailure) { file.delete(); android.util.Log.w("SAO.ExtensionUpdate","Update failed at $phase: ${error.issue}"); throw error }
+            catch(error: Exception) { file.delete(); currentCoroutineContext().ensureActive(); android.util.Log.w("SAO.ExtensionUpdate","Update failed at $phase: ${error.javaClass.simpleName}, cause=${error.cause?.javaClass?.simpleName}"); throw CatalogFailure(CatalogIssue.DOWNLOAD,error) }
         }
         } catch(error: Exception) { withContext(NonCancellable+Dispatchers.IO) { created?.delete() }; throw error }
     }

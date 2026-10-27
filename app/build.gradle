@@ -105,6 +105,7 @@ dependencies {
     
     // Testing
     testImplementation libs.junit
+    testImplementation libs.mockwebserver
     androidTestImplementation libs.bundles.testing
     androidTestImplementation libs.mockwebserver
 

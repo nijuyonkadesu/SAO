@@ -24,7 +24,7 @@ Repository priority follows the displayed order: the official repository first w
 
 ## Download and installation
 
-The existing OkHttp stack streams downloads on IO with cancellation attached through body consumption. Catalogs are bounded to 512 KiB, 64 entries and eight artifacts per entry; individual APKs to 128 MiB. Device ABI, Android version and protocol gate actions. The official repository retains the official release URL checks and pins the release publisher's certificate independently of the installed SAO certificate, so debug builds can browse and download official releases too. Explicitly added repositories may distribute independently signed SAO extensions over HTTPS; the actual APK must match the catalog certificate and checksum. Installation does not approve that publisher for Binder/media access: the existing warning and explicit approval remain required afterward. Updates always require the installed certificate to match, so this updater cannot replace an installed app with another publisher’s build. In particular, a release APK cannot update a debug-signed installation of the same extension.
+The existing OkHttp stack streams downloads on IO with cancellation attached through body consumption. Normal connection recovery remains enabled: an unreachable resolved address or stale pooled connection does not have to fail an explicit GET when another route works. There is no application retry loop, background retry, or automatic restart of an interrupted response body. HTTPS-to-HTTP redirects remain disabled. Catalogs are bounded to 512 KiB, 64 entries and eight artifacts per entry; individual APKs to 128 MiB. Device ABI, Android version and protocol gate actions. The official repository retains the official release URL checks and pins the release publisher's certificate independently of the installed SAO certificate, so debug builds can browse and download official releases too. Explicitly added repositories may distribute independently signed SAO extensions over HTTPS; the actual APK must match the catalog certificate and checksum. Installation does not approve that publisher for Binder/media access: the existing warning and explicit approval remain required afterward. Updates always require the installed certificate to match, so this updater cannot replace an installed app with another publisher’s build. In particular, a release APK cannot update a debug-signed installation of the same extension.
 
 Long-press an available or installed extension card to copy its device-compatible APK download URL. Installed apps without a matching catalog entry have no download link to copy. The same action is labelled for accessibility, and recycling or updating a card replaces its link.
 
@@ -55,3 +55,31 @@ Catalog Android tests accept a release-signed FindThatMeme APK staged as `cache/
 Home/Floating/All preference writes are serialized without changing every row to a temporary disabled state. Profile selection updates use RecyclerView payloads; unchanged headers and installed/available cards receive no change notifications. Extension cards hold only their own entry and transfer state, so another package’s progress does not rebind their titles or icons. Wi-Fi controls likewise use an in-place header update.
 
 Repository follow-up (2026-10-24): 45 host JVM checks and nine targeted Android 15 checks pass. Coverage includes escaped/signed URL handling, isolated repository failure and bounded concurrency, duplicate-package priority, no refetch on removal, native add/remove and draft restoration, an independently signed APK, membership rechecks, stalled-transfer cancellation after priority changes, and exactly one profile-row payload with no unrelated adapter notifications. Debug/optimized release builds pass; lint reports zero errors. APKs were copied locally only; no catalog, SDK or APK release was published.
+
+## Release update investigation (2026-10-27)
+
+The public raw index matched the released versions, sizes, hashes and publisher.
+The reported Moeview failure was during download/verification, not catalog parsing.
+A direct public APK download and the debug repository check passed; the published
+minified host reproduced the generic download failure, then reached confirmation
+on retry. That observation alone does not establish the failing network route on
+the user's phone.
+
+A deterministic transport test reproduced a separate concrete defect in the same
+path: `retryOnConnectionFailure(false)` stopped at an unreachable first DNS address
+even when another address served the file. Restoring normal bounded connection
+recovery fixes that case. The test verifies exactly one server request; a second
+test disconnects a response body and verifies it is not fetched again automatically.
+Failure-only diagnostics record the download stage and exception class/issue, never
+URLs, credentials, identifiers or response bodies.
+
+The [isolated release UI probe](../tools/extension-update-probe/README.md) then drove
+the actual signed/minified host, public catalog, public APK downloads and Android
+Update confirmations on an owned Android 15 emulator. All five in-place upgrades
+passed: Moeview 10→11, Immich 8→9, Local Sticker 15→16 (x86-64), FindThatMeme 3→4
+and Google Photos 4→5. Every first-install timestamp was preserved. Moeview also
+exercised Android's install-source permission screen. No personal profiles, media
+or credentials were used. The probe is independent of SAO's obfuscated classes and
+adds no dependency to the host APK. Sixty-four host JVM tests and debug/minified
+release builds pass. The local fix was signed with the existing release key;
+the published releases/catalog were not replaced by this follow-up.

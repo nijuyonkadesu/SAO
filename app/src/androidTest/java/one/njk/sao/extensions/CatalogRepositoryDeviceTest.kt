@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -55,6 +56,23 @@ class CatalogRepositoryDeviceTest {
     }
     private fun officialEntry()=CatalogExtension("findthatmeme","one.njk.sao.extension.findthatmeme","Meme fixture","Synthetic catalog",
         1,"1.0",1,30,ExtensionCatalog.PUBLISHER_SHA256,"stable",listOf(artifact(byteArrayOf(1))))
+
+    /** Opt-in public release smoke test; exercises the real HTTP/metadata path. */
+    @Test fun publishedCatalogDownloadsAndValidatesChosenExtension(): Unit=runBlocking {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("liveCatalog")=="true")
+        val repositories=ExtensionRepositories(one.njk.sao.database.SettingsDataStore(app))
+        val present=ExtensionCatalog.URL in repositories.urls.first()
+        if(!present) repositories.add(ExtensionCatalog.URL)
+        try {
+            val repository=CatalogRepository(app,CatalogHttp(),repositories)
+            val chosen=InstrumentationRegistry.getArguments().getString("extensionId") ?: "moeview"
+            val row=repository.catalog(ExtensionCatalog.URL).single { it.id==chosen }
+            val verified=try { repository.download(row) {} }
+                catch(error: Exception) { throw AssertionError("Public update failed: ${(error as? CatalogFailure)?.issue}; cause=${error.cause?.javaClass?.name}",error) }
+            try { assertEquals(row.artifact(android.os.Build.SUPPORTED_ABIS.toList())!!.size,verified.file.length()) }
+            finally { verified.file.delete() }
+        } finally { if(!present) repositories.remove(ExtensionCatalog.URL) }
+    }
 
     @Test fun officialCatalogTrustIsIndependentOfHostSigningAndDoesNotApproveSourceAccess() {
         val metadata=json(officialEntry())
