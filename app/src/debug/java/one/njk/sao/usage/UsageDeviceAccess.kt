@@ -10,4 +10,5 @@ import dagger.hilt.components.SingletonComponent
 interface UsageDeviceAccess {
     fun usage(): UsageRepository
     fun usageDatabase(): UsageDatabase
+    fun usageSession(): UsageSession
 }

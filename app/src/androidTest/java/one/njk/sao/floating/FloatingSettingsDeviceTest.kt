@@ -12,7 +12,6 @@ import android.view.View
 import android.widget.TextView
 import android.view.inspector.WindowInspector
 import androidx.test.core.app.ActivityScenario
-import androidx.navigation.fragment.NavHostFragment
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.scrollTo
@@ -23,7 +22,7 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import kotlinx.coroutines.runBlocking
 import one.njk.sao.R
-import one.njk.sao.MainActivity
+import one.njk.sao.SettingsActivity
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -57,11 +56,9 @@ class FloatingSettingsDeviceTest {
         try {
             shell("settings put system font_scale 2.0")
             shell("wm user-rotation lock 1")
-            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
                 scenario.onActivity { activity ->
                     activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                    val host = activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
-                    host.navController.navigate(R.id.settingsFragment)
                 }
                 await("Settings must use large text in landscape") {
                     var ready = false
@@ -103,11 +100,7 @@ class FloatingSettingsDeviceTest {
             preferences.telegramPackages(emptySet()); sources.restore(SourceCatalog())
         }
         try {
-            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                scenario.onActivity { activity ->
-                    val host = activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
-                    host.navController.navigate(R.id.settingsFragment)
-                }
+            ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
                 await("Inline settings must render saved preferences") {
                     var ready = false
                     scenario.onActivity { activity ->
@@ -127,11 +120,6 @@ class FloatingSettingsDeviceTest {
                 await("Inline delay must persist") { runBlocking { preferences.current().idleSeconds == 5 } }
                 onView(withId(R.id.prefer_stickers)).perform(scrollTo(), click())
                 await("Inline sticker preference must persist") { runBlocking { preferences.current().preferStickers } }
-                scenario.onActivity { activity ->
-                    val host = activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
-                    assertTrue(host.navController.popBackStack())
-                    host.navController.navigate(R.id.settingsFragment)
-                }
                 scenario.recreate()
                 await("Recreated settings must restore all controls") {
                     var ready = false

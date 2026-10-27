@@ -63,10 +63,10 @@ data class UsageSelection(val range: UsageRange, val anchor: LocalDate, val firs
 /** One date selects already prepared history and a single loaded week's details. */
 data class UsageDashboard(val selection: UsageSelection,val weekBuckets: List<UsageBucket>,val days: List<UsageDay>,val today: LocalDate,
     private val preparedHistory: UsageHistory?=null,private val preparedWeek: UsageWeekDetails?=null) {
-    private val history=preparedHistory?.takeIf { it.today==today && it.firstWeekday==selection.firstWeekday && it.days===days }
+    internal val history=preparedHistory?.takeIf { it.today==today && it.firstWeekday==selection.firstWeekday && it.days===days }
         ?: UsageHistoryIndex().update(days,today,selection.firstWeekday)
     private val weekPeriod=selection.copy(range=UsageRange.WEEK)
-    private val details=preparedWeek?.takeIf { it.today==today && it.period.start==weekPeriod.start && it.period.endExclusive==weekPeriod.endExclusive && it.buckets===weekBuckets }
+    internal val details=preparedWeek?.takeIf { it.today==today && it.period.start==weekPeriod.start && it.period.endExclusive==weekPeriod.endExclusive && it.buckets===weekBuckets }
         ?: UsageWeekDetails(weekPeriod,weekBuckets.filter { it.day>=weekPeriod.start.toEpochDay() && it.day<weekPeriod.endExclusive.toEpochDay() && it.day<=today.toEpochDay() },today)
     val calendarMonths=history.months
     val lifetime=history.lifetime

@@ -9,7 +9,6 @@ import android.provider.Settings
 import android.view.View
 import android.widget.TextView
 import androidx.lifecycle.Lifecycle
-import androidx.navigation.fragment.NavHostFragment
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -18,7 +17,7 @@ import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.material.chip.Chip
 import kotlinx.coroutines.runBlocking
-import one.njk.sao.MainActivity
+import one.njk.sao.SettingsActivity
 import one.njk.sao.R
 import org.junit.After
 import org.junit.Assert.*
@@ -40,18 +39,12 @@ class FloatingReliabilityDeviceTest {
         while (!condition() && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(30)
         assertTrue(label, condition())
     }
-    private fun openSettings(scenario: ActivityScenario<MainActivity>) {
-        scenario.onActivity { activity ->
-            (activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment)
-                .navController.navigate(R.id.settingsFragment)
-        }
-    }
-    private fun awaitBattery(scenario: ActivityScenario<MainActivity>, value: Int) = await("Battery status must reflect system settings") {
+    private fun awaitBattery(scenario: ActivityScenario<SettingsActivity>, value: Int) = await("Battery status must reflect system settings") {
         var ready = false
         scenario.onActivity { activity -> ready = activity.findViewById<Chip>(R.id.battery_optimization)?.text == activity.getString(value) }
         ready
     }
-    private fun awaitFocus(scenario: ActivityScenario<MainActivity>, expected: Boolean) = await("System settings must ${if (expected) "return to" else "open outside"} SAO") {
+    private fun awaitFocus(scenario: ActivityScenario<SettingsActivity>, expected: Boolean) = await("System settings must ${if (expected) "return to" else "open outside"} SAO") {
         var focused = false
         scenario.onActivity { focused = it.hasWindowFocus() }
         focused == expected
@@ -75,8 +68,8 @@ class FloatingReliabilityDeviceTest {
 
     @Test fun batteryStatusRefreshesOnReturnAndButtonsOpenTheCorrectSystemScreens() {
         exempt(false)
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            openSettings(scenario); awaitBattery(scenario, R.string.floating_battery_optimized)
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            awaitBattery(scenario, R.string.floating_battery_optimized)
             val battery = instrumentation.addMonitor(IntentFilter(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS), null, false)
             val appDetails = instrumentation.addMonitor(IntentFilter(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                 addDataScheme("package"); addDataSchemeSpecificPart(app.packageName, android.os.PatternMatcher.PATTERN_LITERAL)
@@ -106,8 +99,7 @@ class FloatingReliabilityDeviceTest {
         val scale = shell("settings get system font_scale")
         try {
             exempt(true); shell("settings put system font_scale 2.0")
-            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                openSettings(scenario)
+            ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
                 for (orientation in listOf(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)) {
                     scenario.onActivity { it.requestedOrientation = orientation }
                     await("The requested orientation must settle") {

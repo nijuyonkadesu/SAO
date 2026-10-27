@@ -11,22 +11,16 @@
         android:label="@string/app_name"
         tools:layout="@layout/fragment_carousel">
         <action
-            android:id="@+id/action_HomeFragment_to_settingsFragment"
-            app:destination="@id/settingsFragment"
-            app:enterAnim="@animator/fragment_open_enter" app:exitAnim="@animator/fragment_open_exit"
-            app:popEnterAnim="@animator/fragment_close_enter" app:popExitAnim="@animator/fragment_close_exit" />
-        <action android:id="@+id/action_HomeFragment_to_usageFragment" app:destination="@id/usageFragment"
-            app:enterAnim="@animator/fragment_open_enter" app:exitAnim="@animator/fragment_open_exit"
-            app:popEnterAnim="@animator/fragment_close_enter" app:popExitAnim="@animator/fragment_close_exit" />
+            android:id="@+id/action_HomeFragment_to_settingsActivity"
+            app:destination="@id/settingsActivity" />
+        <action android:id="@+id/action_HomeFragment_to_usageActivity" app:destination="@id/usageActivity" />
     </fragment>
-    <fragment
-        android:id="@+id/settingsFragment"
-        android:name="one.njk.sao.SettingsFragment"
-        android:label="@string/action_settings"
-        tools:layout="@layout/fragment_settings"/>
-    <fragment
-        android:id="@+id/usageFragment"
-        android:name="one.njk.sao.usage.UsageFragment"
-        android:label="@string/usage_title"
-        tools:layout="@layout/fragment_usage" />
+    <activity
+        android:id="@+id/settingsActivity"
+        android:name="one.njk.sao.SettingsActivity"
+        android:label="@string/action_settings" />
+    <activity
+        android:id="@+id/usageActivity"
+        android:name="one.njk.sao.usage.UsageActivity"
+        android:label="@string/usage_title" />
 </navigation>

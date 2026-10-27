@@ -59,51 +59,58 @@ class SaoMotionDeviceTest {
         }
     }
 
-    @Test fun screensRemainInteractiveAfterForwardBackAndRecreation() {
+    @Test fun toolbarScreensUseOrdinaryActivitiesAndKeepHomeMounted() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            fun destination(id: Int) {
-                val deadline=SystemClock.elapsedRealtime()+5000
-                var ready=false
-                do {
-                    scenario.onActivity { activity ->
-                        val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
-                        val fragment=host.childFragmentManager.primaryNavigationFragment
-                        ready=host.navController.currentDestination?.id==id && fragment?.lifecycle?.currentState==Lifecycle.State.RESUMED
-                        if(ready) {
-                            val root=fragment!!.requireView() as ViewGroup
-                            assertTrue(root.isShown); assertTrue(root.isTransitionGroup); settled(root)
-                            if(id==R.id.homeFragment) assertEquals(activity.getString(R.string.app_name),activity.supportActionBar?.title?.toString())
-                        }
-                    }
-                    if(!ready) SystemClock.sleep(30)
-                } while(!ready && SystemClock.elapsedRealtime()<deadline)
-                assertTrue("Navigation must settle at $id",ready)
-            }
-            fun navigate(id: Int) {
-                val item=when(id) { R.id.settingsFragment -> R.id.settings; R.id.usageFragment -> R.id.usage; else -> error("Unsupported destination") }
-                val deadline=SystemClock.elapsedRealtime()+5000
-                var invoked=false
-                do {
-                    scenario.onActivity { activity ->
-                        val menu=activity.findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.topAppBar).menu
-                        // MenuHost may post its menu invalidation after the destination resumes.
-                        if(menu.findItem(item)?.isVisible==true) invoked=menu.performIdentifierAction(item,0)
-                    }
-                    if(!invoked) SystemClock.sleep(30)
-                } while(!invoked && SystemClock.elapsedRealtime()<deadline)
-                assertTrue("The toolbar action must become available",invoked)
-            }
-            fun back() = scenario.onActivity { activity -> activity.onBackPressedDispatcher.onBackPressed() }
-            destination(R.id.homeFragment)
-            navigate(R.id.settingsFragment); destination(R.id.settingsFragment)
-            scenario.recreate(); destination(R.id.settingsFragment)
-            back(); destination(R.id.homeFragment)
-            navigate(R.id.usageFragment); destination(R.id.usageFragment)
-            back(); destination(R.id.homeFragment)
-            navigate(R.id.settingsFragment); destination(R.id.settingsFragment)
+            instrumentation.waitForIdleSync()
+            var homeView: View?=null
             scenario.onActivity { activity ->
-                assertTrue(activity.findViewById<View>(R.id.language_select).isClickable)
+                val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
+                homeView=host.childFragmentManager.primaryNavigationFragment!!.requireView()
+                val menu=activity.findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.topAppBar).menu
+                val ids=(0 until menu.size()).map { menu.getItem(it).itemId }
+                assertTrue(ids.indexOf(R.id.edit)<ids.indexOf(R.id.usage))
+                assertTrue(ids.indexOf(R.id.usage)<ids.indexOf(R.id.settings))
             }
+            for((item,target) in listOf(
+                R.id.settings to one.njk.sao.SettingsActivity::class.java,
+                R.id.usage to one.njk.sao.usage.UsageActivity::class.java,
+                R.id.edit to one.njk.sao.floating.SourceSettingsActivity::class.java
+            )) {
+                val monitor=instrumentation.addMonitor(target.name,null,false)
+                try {
+                    scenario.onActivity { activity ->
+                        assertTrue(activity.findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.topAppBar).menu.performIdentifierAction(item,0))
+                    }
+                    val screen=instrumentation.waitForMonitorWithTimeout(monitor,5000) as? androidx.appcompat.app.AppCompatActivity
+                    assertNotNull("The toolbar must open ${target.simpleName}",screen)
+                    instrumentation.waitForIdleSync()
+                    instrumentation.runOnMainSync {
+                        assertEquals(target,screen!!::class.java)
+                        if(item!=R.id.edit) {
+                            val fragment=screen.supportFragmentManager.findFragmentById(R.id.screen_content)!!
+                            assertNull(fragment.enterTransition); assertNull(fragment.exitTransition)
+                            assertTrue(screen.supportActionBar?.title?.isNotBlank()==true)
+                        }
+                        screen.onBackPressedDispatcher.onBackPressed()
+                    }
+                    val deadline=SystemClock.elapsedRealtime()+5000
+                    var restored=false
+                    do {
+                        scenario.onActivity { activity ->
+                            restored=activity.hasWindowFocus() && screen!!.isFinishing
+                            val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
+                            assertEquals(R.id.homeFragment,host.navController.currentDestination!!.id)
+                            assertSame("Activity navigation must keep the home View mounted",homeView,host.childFragmentManager.primaryNavigationFragment!!.requireView())
+                        }
+                        if(!restored) SystemClock.sleep(30)
+                    } while(!restored && SystemClock.elapsedRealtime()<deadline)
+                    assertTrue("Back must return to the same home Activity",restored)
+                } finally { instrumentation.removeMonitor(monitor) }
+            }
+        }
+        ActivityScenario.launch(one.njk.sao.SettingsActivity::class.java).use { scenario ->
+            scenario.recreate()
+            scenario.onActivity { activity -> assertTrue(activity.findViewById<View>(R.id.language_select).isClickable) }
         }
     }
 }

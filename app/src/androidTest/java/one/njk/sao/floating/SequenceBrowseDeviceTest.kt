@@ -673,17 +673,13 @@ class SequenceBrowseDeviceTest {
         }
     }
     @Test fun inlineSettingsSaveDelayAfterReleaseAndSurviveRecreation() {
-        androidx.test.core.app.ActivityScenario.launch(one.njk.sao.MainActivity::class.java).use { scenario ->
-            scenario.onActivity {
-                val host = it.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as androidx.navigation.fragment.NavHostFragment
-                host.navController.navigate(R.id.settingsFragment)
-            }
+        androidx.test.core.app.ActivityScenario.launch(one.njk.sao.SettingsActivity::class.java).use { scenario ->
             androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withId(R.id.browse_sequence))
                 .perform(androidx.test.espresso.action.ViewActions.scrollTo(), androidx.test.espresso.action.ViewActions.click())
             await("Inline toggle must save") { !runBlocking { preferences.current().browseSequence } }
             androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withId(R.id.long_press_delay))
                 .perform(androidx.test.espresso.action.ViewActions.scrollTo())
-            lateinit var activity: one.njk.sao.MainActivity
+            lateinit var activity: one.njk.sao.SettingsActivity
             lateinit var slider: com.google.android.material.slider.Slider
             var x = 0f; var y = 0f
             scenario.onActivity {
