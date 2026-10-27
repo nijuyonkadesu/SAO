@@ -5,10 +5,10 @@ import android.provider.Settings
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
+import androidx.core.view.doOnPreDraw
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
-import androidx.navigation.ui.setupActionBarWithNavController
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -27,6 +27,7 @@ class MainActivity : AppCompatActivity() {
     @Inject lateinit var floatingPreferences: FloatingPreferences
     @Inject lateinit var floatingRuntime: FloatingRuntime
     private val floatingLaunchState by viewModels<FloatingLaunchState>()
+    private val usage by viewModels<one.njk.sao.usage.UsageViewModel>()
     private var floatingStart: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,12 +39,12 @@ class MainActivity : AppCompatActivity() {
         WindowCompat.getInsetsController(window,window.decorView).isAppearanceLightStatusBars =
             resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK != android.content.res.Configuration.UI_MODE_NIGHT_YES
 
-        setSupportActionBar(binding.topAppBar)
-
         val navHostFragment = supportFragmentManager
             .findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
         navController = navHostFragment.navController
-        setupActionBarWithNavController(navController)
+        // One bounded report preparation after the home screen has drawn. The activity
+        // ViewModel retains it across navigation; this does not keep Room flows subscribed.
+        binding.root.doOnPreDraw { binding.root.post { if(!isFinishing && !isDestroyed) usage.prepare() } }
 
     }
 

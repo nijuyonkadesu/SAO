@@ -55,6 +55,11 @@ class UsageViewModel @Inject constructor(private val repository: UsageRepository
     val state=combine(reports,repository.enabled,repository.failure) { report,enabled,error -> UsageUiState(report,enabled,error) }
         .catch { error -> if(error is CancellationException) throw error; emit(UsageUiState(error=true)) }
         .stateIn(viewModelScope,SharingStarted.WhileSubscribed(0),UsageUiState())
+    private var preparation: kotlinx.coroutines.Job?=null
+    fun prepare() {
+        if(state.value.report!=null || preparation?.isActive==true) return
+        preparation=viewModelScope.launch { state.first { it.report!=null || it.error } }
+    }
     fun refresh(locale: Locale) {
         today.value=LocalDate.now()
         selection.value=selection.value.copy(firstWeekday=WeekFields.of(locale).firstDayOfWeek)

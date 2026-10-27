@@ -97,7 +97,9 @@ class SaoMotionDeviceTest {
                         if(ready) {
                             val root=fragment!!.requireView() as ViewGroup
                             assertTrue(root.isShown); assertTrue(root.isTransitionGroup); settled(root)
-                            if(id==R.id.homeFragment) assertEquals(activity.getString(R.string.app_name),activity.supportActionBar?.title?.toString())
+                            val toolbar=root.findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.topAppBar)
+                            assertNotNull("The app bar moves with its destination",toolbar)
+                            if(id==R.id.homeFragment) assertEquals(activity.getString(R.string.app_name),toolbar.title.toString())
                         }
                     }
                     if(!ready) SystemClock.sleep(30)

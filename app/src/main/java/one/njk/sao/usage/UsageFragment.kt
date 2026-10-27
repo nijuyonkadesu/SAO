@@ -1,6 +1,7 @@
 package one.njk.sao.usage
 
 import one.njk.sao.ui.SaoMotion
+import one.njk.sao.ui.screenToolbar
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -94,6 +95,7 @@ class UsageFragment: Fragment() {
         return binding.root
     }
     override fun onViewCreated(view: View,savedInstanceState: Bundle?) {
+        screenToolbar(view,R.string.usage_title)
         SaoMotion.surface(view)
         _motion=UsageMotion(binding.usageScroll)
         sections=UsageSections(::bindSection)

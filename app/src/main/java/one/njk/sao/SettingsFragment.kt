@@ -1,6 +1,7 @@
 package one.njk.sao
 
 import one.njk.sao.ui.SaoMotion
+import one.njk.sao.ui.screenToolbar
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -33,6 +34,7 @@ class SettingsFragment: Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        screenToolbar(view,R.string.action_settings)
         SaoMotion.surface(view)
         binding.apply {
             val chosen = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales().toLanguageTags()

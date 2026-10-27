@@ -1,14 +1,13 @@
 package one.njk.sao
 
 import one.njk.sao.ui.SaoMotion
+import one.njk.sao.ui.screenToolbar
 
 import android.content.Intent
 import one.njk.sao.floating.displayName
 import android.os.Bundle
 import android.view.*
 import android.widget.FrameLayout
-import androidx.core.view.MenuHost
-import androidx.core.view.MenuProvider
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -33,7 +32,7 @@ import javax.inject.Inject
 /** The original home carousel, backed by the active installed source rather than a fixed API. */
 @OptIn(FlowPreview::class)
 @AndroidEntryPoint
-class CarouselFragment : Fragment(), MenuProvider {
+class CarouselFragment : Fragment() {
     private var _binding: FragmentCarouselBinding? = null
     private val binding get() = requireNotNull(_binding)
     private val model: ArtsViewModel by activityViewModels()
@@ -62,7 +61,10 @@ class CarouselFragment : Fragment(), MenuProvider {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         SaoMotion.surface(view)
         motion=SaoMotion(viewLifecycleOwner)
-        (requireActivity() as MenuHost).addMenuProvider(this,viewLifecycleOwner,Lifecycle.State.RESUMED)
+        screenToolbar(view,R.string.app_name,up=false).apply {
+            inflateMenu(R.menu.top_app_bar)
+            setOnMenuItemClickListener(::onMenuItemSelected)
+        }
         val adapter = MediaCarouselAdapter(loader,viewLifecycleOwner.lifecycleScope,source,
             prefetch=model::loadMore,home=true) { item ->
             val position = carousel.adapter.currentList.indexOfFirst { it.identityKey == item.identityKey }
@@ -202,8 +204,7 @@ class CarouselFragment : Fragment(), MenuProvider {
         }
     }
     override fun onDestroyView() { motion?.close(); motion=null; filenameRequest.next(); titleHold?.cancel(); titleHold=null; collectionGesture?.dispose(); collectionGesture=null; carousel.close(); categories=null; _binding=null; super.onDestroyView() }
-    override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) { menuInflater.inflate(R.menu.top_app_bar,menu) }
-    override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when(menuItem.itemId) {
+    private fun onMenuItemSelected(menuItem: MenuItem): Boolean = when(menuItem.itemId) {
         R.id.usage -> { findNavController().navigate(R.id.action_HomeFragment_to_usageFragment,null,one.njk.sao.ui.platformNavigationOptions(requireContext())); true }
         R.id.settings -> { findNavController().navigate(CarouselFragmentDirections.actionHomeFragmentToSettingsFragment(),one.njk.sao.ui.platformNavigationOptions(requireContext())); true }
         R.id.edit -> { startActivity(Intent(requireContext(),SourceSettingsActivity::class.java)); true }
