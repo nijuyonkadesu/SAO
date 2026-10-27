@@ -19,7 +19,7 @@ object NativeBridgeRegistry {
     const val PROTOCOL_REVISION = NativeBridgeProtocol.REVISION
     data class Selection(val packageName: String, val session: String, val mimeTypes: Set<String>)
     data class HostStatus(val stage: String, val version: String, val videoStage: String = "",
-        val revision: Int = 0, val build: String = "")
+        val revision: Int = 0, val build: String = "", val gifStage: String = "")
     private data class Snapshot(val selection: Selection?, val status: HostStatus, val resumed: Boolean)
     private class Client(val remote: INativeStickerClient, val uid: Int) {
         val binder: IBinder = remote.asBinder()
@@ -104,6 +104,14 @@ object NativeBridgeRegistry {
         selection(packageName, state), hostStatus(state), state.getBoolean("resumed"))
     private fun accept(packageName: String, client: Client, state: Snapshot) {
         if (!FloatingSession.active.value || clients[packageName] !== client) return
+        val before=client.state.value
+        if(packageName=="com.instagram.android" &&
+            (before?.status!=state.status || before?.selection?.mimeTypes!=state.selection?.mimeTypes)) {
+            // Only changed capability diagnostics, during explicit selection/observation.
+            // Never log recipient keys, session tokens, filenames, queries or media URIs.
+            android.util.Log.i("SAO.NativeBridge","Instagram ${state.status.version}/${state.status.build}, hooks ${state.status.revision}: " +
+                "editor=${state.status.stage}, video=${state.status.videoStage}, gif=${state.status.gifStage}, mime=${state.selection?.mimeTypes.orEmpty().sorted()}")
+        }
         client.state.value = state
         statusState.update { it + (packageName to state.status) }
         sessionState.update { current -> state.selection?.let { current + (packageName to it) } ?: (current - packageName) }
@@ -118,7 +126,10 @@ object NativeBridgeRegistry {
         state.getString("video_status").orEmpty().takeIf {
             it in setOf("gallery_loading", "gallery_unavailable", "ambiguous_composer", "waiting_editor", "thread_unresolved", "pending_metadata", "media_restricted", "sender_missing", "ready")
         }.orEmpty(), state.getInt("bridge_revision"),
-        state.getString("host_build").orEmpty().take(20).filter(Char::isDigit))
+        state.getString("host_build").orEmpty().take(20).filter(Char::isDigit),
+        state.getString("gif_status").orEmpty().takeIf {
+            it in setOf("gallery_loading", "gif_unavailable", "ambiguous_composer", "waiting_editor", "thread_unresolved", "pending_metadata", "media_restricted", "session_missing", "ready")
+        }.orEmpty())
     private fun selection(packageName: String, state: Bundle): Selection? {
         val session = state.getString("session")?.takeIf { it.length in 1..128 } ?: return null
         val age = SystemClock.elapsedRealtime() - state.getLong("created")

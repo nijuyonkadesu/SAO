@@ -1,11 +1,11 @@
 # Isolated Instagram adapter probe
 
-Requires the original installed Instagram **435.0.0.37.76** or **451.0.0.53.80** ARM64 APK, API 35 emulator
+Requires an inspected Instagram **435.0.0.37.76**, **447.0.0.55.81** or **451.0.0.53.80** ARM64 APK, API 35 emulator
 and the repository's Gradle wrapper/JDK 21/Android SDK. No proprietary APK or code is
 included. `NativeInstagramProbe` uses inspected build-specific names only to construct
 sparse synthetic controller metadata in Instagram's real classes. The production
 adapter is compiled directly from the main app. Controller discovery is structural;
-the gallery adapter checks the two inspected obfuscated contracts without version gates.
+the gallery adapter checks the inspected obfuscated contracts without version gates.
 
 ```sh
 ./gradlew -p tools/instagram-native-probe :app:assembleDebug
@@ -43,8 +43,13 @@ framework injection. Those still require the user's rooted device and native cli
 The normal instrumentation tests separately cover actual exported fixture bytes,
 FileProvider grants, UI capability gating and one-use editor leases.
 
-On 451 the probe also checks the local GIF upload contract, missing-session capability
+On 447 and 451 the probe also checks the local GIF upload contract, missing-session capability
 gating and a parcel copy of the recipient key. It constructs real `ANIMATED_MEDIA`
 pending metadata and its ordinary media command using a fixture GIF, verifying the
 local file path, original recipient and unchanged bytes. These checks call no upload,
 registration or send entry point. The older 435 gallery contract does not advertise GIF.
+
+The 447 fixture was mapped from the device's installed APK, not inferred from its
+version string. Both 447 and 451 pass 42 boolean checks, including independent GIF
+readiness and missing-session diagnostics. The probe still uses its own synthetic
+session/controller objects; it never reads the installed app's account or chat data.

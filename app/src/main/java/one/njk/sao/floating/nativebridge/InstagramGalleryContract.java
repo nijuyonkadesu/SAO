@@ -25,6 +25,7 @@ final class InstagramGalleryContract {
     private record Shape(String owner, String sender, String ownerField, String selected,
         String pending, String listener, String first, String second, String video, String batch, int flags) { }
     private static final Shape[] SHAPES = {
+        new Shape("X.0q6", "X.10V", "A12", "X.N2q", "X.1jR", "X.15C", "X.7Zu", "X.Iw9", "GHJ", "ESK", 3),
         new Shape("X.01SB", "X.01TL", "A14", "X.0S1g", "X.03oB", "X.01ZC", "X.0GJS", "X.0Kg9", "GUG", "EbO", 2),
         new Shape("X.5Ta", "X.5Ve", "A13", "X.Dvg", "X.Mlx", "X.5dN", "X.6gP", "X.GCO", "FyJ", "ECZ", 3)
     };

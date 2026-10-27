@@ -16,6 +16,7 @@ interface ComposerPolicy {
     String[] mimeTypes(EditorInfo info);
     default String[] additionalMimeTypes(EditText view) { return new String[0]; }
     default String videoStatus() { return ""; }
+    default String gifStatus() { return ""; }
     default NativeContentPreparation captureContent(Context context, EditText view, Uri uri, String mimeType) {
         return () -> prepareContent(context, uri, mimeType);
     }

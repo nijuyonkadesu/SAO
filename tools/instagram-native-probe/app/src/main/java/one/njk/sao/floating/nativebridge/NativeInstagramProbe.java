@@ -17,16 +17,22 @@ public final class NativeInstagramProbe extends Instrumentation {
     private record Fixture(String owner, String container, String firstEditor, String secondEditor,
         String containerField, String model, String modelField, String keyGetter, String closure,
         String delegate, String sender, String photoSender, String listener, String ownerSender,
-        String pipeline, String videoCallback, String isVideo) { }
+        String pipeline, String videoCallback, String isVideo, String sessionField, String recipients) { }
     private static Fixture fixture(ClassLoader loader) throws ClassNotFoundException {
+        try {
+            Class<?> owner = loader.loadClass("X.0q6");
+            if (owner.getField("A0t").getType() == loader.loadClass("com.instagram.common.session.UserSession"))
+                return new Fixture("X.0q6", "X.13o", "A0N", "A0O", "A0O", "X.Wdf", "A0E", "CT8", "X.9zT",
+                    "X.10T", "X.10V", "X.14w", "X.15C", "A12", "X.10n", "GHJ", "EVf", "A0t", "DcA");
+        } catch (ReflectiveOperationException ignored) { }
         try {
             loader.loadClass("X.5Ta");
             return new Fixture("X.5Ta", "X.5c5", "A0O", "A0P", "A0O", "X.Czk", "A0E", "CF1", "X.6Bk",
-                "X.5Vd", "X.5Ve", "X.5d9", "X.5dN", "A13", "X.5Vk", "FyJ", "EFt");
+                "X.5Vd", "X.5Ve", "X.5d9", "X.5dN", "A13", "X.5Vk", "FyJ", "EFt", null, null);
         } catch (ClassNotFoundException ignored) {
             loader.loadClass("X.01SB");
             return new Fixture("X.01SB", "X.01XZ", "A0N", "A0O", "A0P", "X.0Vaj", "A0F", "CXi", "X.0BfO",
-                "X.01TK", "X.01TL", "X.01Yw", "X.01ZC", "A14", "X.01Ti", "GUG", "Eeo");
+                "X.01TK", "X.01TL", "X.01Yw", "X.01ZC", "A14", "X.01Ti", "GUG", "Eeo", "A0v", "DjA");
         }
     }
     private Object unsafe;
@@ -103,22 +109,31 @@ public final class NativeInstagramProbe extends Instrumentation {
                     report.put("native_gallery_sender_owned", gallery.sender(owner) == gallerySender);
                     InstagramAnimatedContract animated = InstagramAnimatedContract.load(loader);
                     report.put("animated_upload_contract_available", animated != null);
-                    if (fixture.owner().equals("X.01SB") && animated == null) {
+                    if (fixture.sessionField() != null && animated == null) {
                         // Report the exact rejected signature in the isolated fixture only.
-                        Constructor<?> constructor = InstagramAnimatedContract.class.getDeclaredConstructor(ClassLoader.class);
-                        constructor.setAccessible(true); constructor.newInstance(loader);
+                        Field shapes = InstagramAnimatedContract.class.getDeclaredField("SHAPES"); shapes.setAccessible(true);
+                        for (Object shape : (Object[]) shapes.get(null)) {
+                            Method hostSymbols = shape.getClass().getDeclaredMethod("host"); hostSymbols.setAccessible(true);
+                            Object symbols = hostSymbols.invoke(shape);
+                            Method ownerName = symbols.getClass().getDeclaredMethod("owner"); ownerName.setAccessible(true);
+                            if (!ownerName.invoke(symbols).equals(fixture.owner())) continue;
+                            Constructor<?> constructor = InstagramAnimatedContract.class.getDeclaredConstructor(ClassLoader.class, shape.getClass());
+                            constructor.setAccessible(true); constructor.newInstance(loader, shape);
+                        }
                     }
                     if (animated != null) {
-                        set(owner, "A0v", blank(loader, "com.instagram.common.session.UserSession"));
+                        set(owner, fixture.sessionField(), blank(loader, "com.instagram.common.session.UserSession"));
                         report.put("animated_gif_capability", java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains("image/gif"));
+                        report.put("animated_gif_status_ready", policy.gifStatus().equals("ready"));
                         set(owner, fixture.ownerSender(), null);
                         report.put("animated_gif_independent_of_gallery", java.util.Arrays.asList(policy.additionalMimeTypes(view)).equals(java.util.List.of("image/gif")));
                         set(owner, fixture.ownerSender(), gallerySender);
                         Object copied = InstagramThreadBinding.discover(listener, view, keyType).copyKey(view);
                         report.put("recipient_key_is_copied", copied != key[0] && copied.equals(key[0]));
                         // Remove the synthetic session before any native service could use it.
-                        set(owner, "A0v", null);
+                        set(owner, fixture.sessionField(), null);
                         report.put("missing_animated_session_disabled", !java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains("image/gif"));
+                        report.put("missing_animated_session_reason", policy.gifStatus().equals("session_missing"));
                     }
                     set(gallerySender, "A01", host.getApplicationContext());
                     set(gallerySender, "A05", blank(loader, fixture.pipeline()));
@@ -230,7 +245,7 @@ public final class NativeInstagramProbe extends Instrumentation {
                             .newInstance("synthetic-gif-thread", null);
                         Object command = animated.command(local, key, animated.request(null), null);
                         report.put("local_animation_command_uses_pending_media", command.getClass().getField("A03").get(command) == descriptor);
-                        report.put("local_animation_command_has_original_recipient", command.getClass().getMethod("DjA").invoke(command).equals(java.util.List.of(key)));
+                        report.put("local_animation_command_has_original_recipient", command.getClass().getMethod(fixture(loader).recipients()).invoke(command).equals(java.util.List.of(key)));
                         try (java.io.InputStream original = getTargetContext().getAssets().open("floating/hello.gif")) {
                             report.put("gif_bytes_preserved", java.util.Arrays.equals(Files.readAllBytes(gif.file.toPath()), original.readAllBytes()));
                         }

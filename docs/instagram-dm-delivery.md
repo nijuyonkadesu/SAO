@@ -47,20 +47,20 @@ The inspected keyboard callback accepts PNG/JPEG and explicitly rejects GIFs. SA
 advertises only the supported static-image capabilities for this keyboard route
 and exports JPEG. A separate gallery adapter enables MP4/WebM Paste as described
 below. A separate local animated-attachment adapter now offers GIF Paste for its verified
-451 contract; unsupported contracts keep **DM** recipient selection. Instagram Sticker remains disabled. A connected module without a validated
+447/451 contracts; unsupported contracts keep **DM** recipient selection. Instagram Sticker remains disabled. A connected module without a validated
 editor lease also leaves Paste disabled.
 
 ### Native video insertion
 
 A verified gallery sender adds `video/mp4` and `video/webm` to the session.
-Explicit **Paste** or **DM** sends the selected video directly to the original DM through that sender,
+When the GIF route is unavailable, explicit **Paste** or **DM** sends the selected video directly to the original DM through that sender,
 without opening the recipient picker. It does not pass a video to the bitmap keyboard
 handler. No video is sent by selecting, copying or browsing. Upload/server acceptance
 still belongs to Instagram; authenticated video delivery through Vector needs a phone
 check. Unsupported contracts and formats keep the DM recipient-picker route.
 There is no exact-version gate: class ownership and constructor/field/method shapes
-control availability. Verified contracts cover 435.0.0.37.76 and 451.0.0.53.80;
-unknown shapes remain unavailable. The 435 sender has an additional boolean argument
+control availability. Verified contracts cover 435.0.0.37.76, 447.0.0.55.81 and 451.0.0.53.80;
+unknown shapes remain unavailable. The 435/447 senders have an additional boolean argument
 and different selected-media/callback types, so removing a version gate alone was
 insufficient to support it.
 
@@ -109,10 +109,10 @@ copy path; media bytes never travel in Binder arrays. Header and framework anima
 validation run off Main, with a 1-pixel validation decode while retaining the original
 dimensions and unmodified file. The existing 512 MiB/file, 2 GiB/cache and copy
 deadline limits apply. Cleanup also counts the old video cache and runs only on
-an explicit Paste. No new dependency, background worker, idle polling or conversion
-is introduced. MP4/WebM are not converted to GIF.
+an explicit Paste. This native adapter only stages existing GIF bytes; video-to-GIF
+conversion belongs to the host export pipeline described below. It adds no idle polling.
 
-The isolated real-class probe verifies the 451 reflection contract, GIF capability
+The isolated real-class probe verifies the 447/451 reflection contracts, GIF capability
 gating, copied recipient key, actual animated pending metadata/file path, media
 command recipient and byte preservation. It never initializes an authenticated
 uploader or invokes a native send. Device tests cover URI/byte-stream equivalence,
@@ -226,8 +226,8 @@ probe still never invokes an authenticated sending listener.
 When a bound Instagram conversation advertises native GIF uploads, Paste converts
 MP4/WebM through Android's decoder and the host's gifski encoder, then gives the
 resulting `image/gif` URI to that same recipient-bound upload adapter. This capability
-is independent of the gallery video sender. The inspected 451 contract reads its
-UserSession from the verified DM controller and still respects media restrictions,
+is independent of the gallery video sender. The inspected 447/451 contracts read their
+UserSession from the verified DM controller and still respect media restrictions,
 chat changes and one-use leases. Unknown contracts, including the older 435 GIF
 upload shape, remain disabled rather than assuming compatibility.
 
@@ -242,6 +242,25 @@ duration, source/cache separation, cancellation cleanup and GIF-only MP4 Paste.
 The real-class probe also verifies that GIF remains available without a gallery
 sender. It never invokes authenticated upload/send; delivery still needs a rooted
 device with Vector and the compatible native client.
+
+### Installed 447 build (2026-10-27)
+
+The device's 447.0.0.55.81 APK does not contain the 451 GIF controller/upload
+classes. Its former gallery names also resolve to different classes. This made
+video Paste unavailable before conversion, despite a working stable photo hook.
+SAO now checks a complete additional 447 contract for both gallery videos and
+local GIF uploads. Contract descriptors separate controller, pending-media,
+upload and dispatch symbols; verified signatures, enum roles and ownership still
+control activation. No version-number bypass or guessed MIME field is used.
+
+The exact 447 APK and original 451 APK each pass 42 native-class checks, including
+GIF availability without the gallery sender. Ten focused device tests cover
+conversion, explicit Paste, photo/video coexistence and recipient leases. Actual
+framework delivery still needs the physical device; no test dispatches a message.
+Hook revision 3 lets the picker identify an older module still loaded in Instagram.
+`SAO.NativeBridge` logcat entries record changed version/readiness/MIME capabilities
+only during explicit selection/observation, without recipient/session identifiers,
+filenames, search text or media contents.
 
 ## Verification and limits
 

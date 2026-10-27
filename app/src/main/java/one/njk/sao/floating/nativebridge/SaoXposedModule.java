@@ -376,8 +376,10 @@ public final class SaoXposedModule extends XposedModule {
         state.putString("host_build", hostBuild);
         state.putInt("bridge_revision", NativeBridgeProtocol.REVISION);
         String video = policy == null ? "" : policy.videoStatus();
+        String gif = policy == null ? "" : policy.gifStatus();
         state.putString("video_status", video);
-        String status = state.getString("status", "waiting_editor") + (video.isEmpty() ? "" : ", video: " + video);
+        state.putString("gif_status", gif);
+        String status = state.getString("status", "waiting_editor") + (video.isEmpty() ? "" : ", video: " + video) + (gif.isEmpty() ? "" : ", gif: " + gif);
         if (!status.equals(lastStatus)) {
             lastStatus = status;
             log(android.util.Log.INFO, "SAO", processName + " native state: " + status);

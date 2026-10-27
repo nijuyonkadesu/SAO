@@ -151,9 +151,11 @@ final class InstagramComposerPolicy implements ComposerPolicy {
         // of keyboard focus. Still photos keep the naturally captured IME connection.
         return isComposer(view) && identity(null, view) != null ? additionalMimeTypes(view) : new String[0];
     }
-    @Override public String videoStatus() {
+    @Override public String videoStatus() { return mediaStatus(false); }
+    @Override public String gifStatus() { return mediaStatus(true); }
+    private String mediaStatus(boolean animation) {
         if (!galleryLoaded) return "gallery_loading";
-        if (gallery == null) return "gallery_unavailable";
+        if (animation ? animated == null : gallery == null) return animation ? "gif_unavailable" : "gallery_unavailable";
         EditText editor = null; Binding selected = null;
         for (Map.Entry<EditText, Binding> entry : bindings.entrySet()) {
             EditText view = entry.getKey();
@@ -167,6 +169,10 @@ final class InstagramComposerPolicy implements ComposerPolicy {
             if (listener == null || selected.listenerField.get(editor) != listener) return "waiting_editor";
             if (selected.thread == null || selected.thread.controller(editor) == null) return "thread_unresolved";
             if (selected.thread.identity(editor) == null) return "pending_metadata";
+            if (animation) {
+                if (!animated.acceptsMedia(listener)) return "media_restricted";
+                return animated.session(selected.thread.controller(editor)) == null ? "session_missing" : "ready";
+            }
             if (!gallery.acceptsMedia(listener)) return "media_restricted";
             return gallery.sender(selected.thread.controller(editor)) == null ? "sender_missing" : "ready";
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { return "thread_unresolved"; }
