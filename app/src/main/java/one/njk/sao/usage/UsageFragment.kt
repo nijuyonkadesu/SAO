@@ -137,14 +137,11 @@ class UsageFragment: Fragment() {
     }
     override fun onResume() { super.onResume(); model.refresh(locale) }
     override fun onStop() {
-        model.listState=binding.usageScroll.layoutManager?.onSaveInstanceState()
-        model.remember()
         scaleGesture?.cancel(); scaleMenu?.dismiss(); motion.stop()
         requireContext().unregisterReceiver(datesChanged); super.onStop()
     }
     override fun onDestroyView() {
         model.listState=binding.usageScroll.layoutManager?.onSaveInstanceState()
-        model.remember()
         binding.usageScroll.adapter=null
         scaleGesture?.dispose(); scaleGesture=null; scaleMenu?.dismiss(); scaleMenu=null
         motion.close(); _motion=null

@@ -89,7 +89,11 @@ class SourcePickerUxDeviceTest {
         val previous=access.preferences().current()
         try {
             access.preferences().showEmojiShortcuts(false)
-            ActivityScenario.launch<one.njk.sao.SettingsActivity>(one.njk.sao.SettingsActivity::class.java).use { scenario ->
+            ActivityScenario.launch<one.njk.sao.MainActivity>(one.njk.sao.MainActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as androidx.navigation.fragment.NavHostFragment
+                    host.navController.navigate(R.id.settingsFragment)
+                }
                 await { var ready=false; scenario.onActivity { ready=it.findViewById<View>(R.id.emoji_shortcuts)!=null }; ready }
                 androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withId(R.id.emoji_shortcuts))
                     .perform(androidx.test.espresso.action.ViewActions.scrollTo(),androidx.test.espresso.action.ViewActions.click())

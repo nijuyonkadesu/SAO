@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.os.Build
 import android.os.SystemClock
 import androidx.core.app.LocaleManagerCompat
+import androidx.navigation.fragment.NavHostFragment
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -22,7 +23,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import one.njk.sao.AppLanguages
-import one.njk.sao.SettingsActivity
+import one.njk.sao.MainActivity
 import one.njk.sao.R
 import one.njk.sao.source.*
 import org.json.JSONObject
@@ -76,9 +77,13 @@ class LanguageSupportDeviceTest {
 
     @Test fun languageChipSwitchesAndRecreationPreservesSettingsNavigation() {
         val previous = LocaleManagerCompat.getApplicationLocales(app).toLanguageTags()
-        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             try {
                 select("")
+                scenario.onActivity { activity ->
+                    val host = activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
+                    host.navController.navigate(R.id.settingsFragment)
+                }
                 scenario.onActivity { it.findViewById<Chip>(R.id.language_select).performClick() }
                 onView(withText(AppLanguages.label("en-XA"))).inRoot(isDialog()).perform(click())
                 await("Requested locale persisted by Android/AppCompat") {

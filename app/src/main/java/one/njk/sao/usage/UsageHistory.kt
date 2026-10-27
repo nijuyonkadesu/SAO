@@ -53,15 +53,15 @@ data class UsageHistory(val days: List<UsageDay>,val today: LocalDate,val firstW
 }
 
 /** One CPU-confined index per ViewModel. Changed rows invalidate only their day/week/month/year. */
-class UsageHistoryIndex(initial: UsageHistory?=null) {
-    private val rows=TreeMap<Long,UsageDay>().apply { initial?.days?.forEach { put(it.day,it) } }
-    private val days=initial?.daySummaries?.toMutableMap() ?: mutableMapOf()
-    private val weeks=initial?.weeks?.toMutableMap() ?: mutableMapOf()
-    private val months=initial?.months?.toMutableMap() ?: mutableMapOf()
-    private val years=initial?.years?.toMutableMap() ?: mutableMapOf()
-    private var totals=initial?.lifetime ?: UsageTotals()
-    private var runs=UsageRuns.from(rows.keys.toList())
-    private var previous=initial
+class UsageHistoryIndex {
+    private val rows=TreeMap<Long,UsageDay>()
+    private val days=mutableMapOf<Long,UsagePeriodSummary>()
+    private val weeks=mutableMapOf<LocalDate,UsagePeriodSummary>()
+    private val months=mutableMapOf<YearMonth,UsagePeriodSummary>()
+    private val years=mutableMapOf<Int,UsagePeriodSummary>()
+    private var totals=UsageTotals()
+    private var runs=UsageRuns()
+    private var previous: UsageHistory?=null
 
     fun update(incoming: List<UsageDay>,today: LocalDate,firstWeekday: DayOfWeek): UsageHistory {
         val next=incoming.filter { it.day<=today.toEpochDay() }.associateBy { it.day }

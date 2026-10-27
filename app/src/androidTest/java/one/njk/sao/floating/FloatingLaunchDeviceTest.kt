@@ -6,6 +6,7 @@ import android.os.SystemClock
 import android.view.View
 import android.view.inspector.WindowInspector
 import androidx.lifecycle.Lifecycle
+import androidx.navigation.fragment.NavHostFragment
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -144,8 +145,12 @@ class FloatingLaunchDeviceTest {
         // This case exercises the existing explicit Show button, including its notification prerequisite.
         if (android.os.Build.VERSION.SDK_INT >= 33) shell("pm grant ${app.packageName} android.permission.POST_NOTIFICATIONS")
         preferences.showOnLaunch(false)
-        ActivityScenario.launch(one.njk.sao.SettingsActivity::class.java).use { scenario ->
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             assertStopped()
+            scenario.onActivity { activity ->
+                val host = activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
+                host.navController.navigate(R.id.settingsFragment)
+            }
             onView(withId(R.id.start_stop)).perform(scrollTo(), click())
             await("Manual Show icon must still work when automatic startup is disabled") { FloatingSession.active.value && icon() != null }
             onView(withId(R.id.stop_floating)).perform(click())
@@ -162,10 +167,7 @@ class FloatingLaunchDeviceTest {
             scenario.onActivity { assertTrue(it.findViewById<Chip>(R.id.show_on_launch).isChecked) }
             assertStopped()
             scenario.moveToState(Lifecycle.State.CREATED); scenario.moveToState(Lifecycle.State.RESUMED)
-            assertStopped()
-            ActivityScenario.launch(MainActivity::class.java).use {
-                await("The enabled startup setting takes effect when opening SAO") { FloatingSession.active.value && icon() != null }
-            }
+            await("The enabled startup setting must take effect on reentry") { FloatingSession.active.value && icon() != null }
         }
     }
 }
