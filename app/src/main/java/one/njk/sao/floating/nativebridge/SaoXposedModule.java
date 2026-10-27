@@ -465,16 +465,16 @@ public final class SaoXposedModule extends XposedModule {
             boolean dispatching = false;
             try {
                 ComposerPolicy[] selected = new ComposerPolicy[1];
-                Context[] context = new Context[1];
+                NativeContentPreparation[] preparation = new NativeContentPreparation[1];
                 if (onMain(() -> {
                     Activity current = activity.get();
-                    if (current == null || editorSession == null ||
-                        !editorSession.accepts(current, resumed, uri, mimeType, expected, requestId)) return false;
-                    selected[0] = policy; context[0] = current.getApplicationContext();
-                    return selected[0] != null;
+                    if (current == null || editorSession == null || policy == null) return false;
+                    selected[0] = policy;
+                    preparation[0] = editorSession.captureContent(current, resumed, uri, mimeType, expected, requestId);
+                    return preparation[0] != null;
                 }) != NativeInsertResult.ACCEPTED) return NativeInsertResult.REJECTED.wireValue;
                 // Binder worker: copying and metadata extraction never block the host UI.
-                PreparedNativeContent content = selected[0].prepareContent(context[0], uri, mimeType);
+                PreparedNativeContent content = preparation[0].prepare();
                 if (content == null) return NativeInsertResult.REJECTED.wireValue;
                 dispatching = true;
                 return MainThreadDispatch.run(main, () -> {

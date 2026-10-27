@@ -124,6 +124,10 @@ final class NativeEditorSession {
         return insert(current, resumed, uri, mimeType, expected, requestId,
             (view, connection) -> policy.insertContent(view, connection, uri, mimeType));
     }
+    NativeContentPreparation captureContent(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId) {
+        return accepts(current, resumed, uri, mimeType, expected, requestId)
+            ? policy.captureContent(current.getApplicationContext(), editor.get(), uri, mimeType) : null;
+    }
     boolean accepts(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId) {
         refreshCapabilities(editor.get());
         if (uri == null || !"content".equals(uri.getScheme()) || !authority.equals(uri.getAuthority()) ||

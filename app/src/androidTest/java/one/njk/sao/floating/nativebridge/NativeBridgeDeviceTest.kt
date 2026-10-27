@@ -109,6 +109,30 @@ class NativeBridgeDeviceTest {
             assertEquals("A rejected native call also consumes its lease", 2, recorder.calls)
         }
     }
+    @Test fun preparationCapturesOnlyAnAcceptedLeaseAndRechecksTheChatBeforeDispatch() {
+        withHost { activity, editor ->
+            val captures = AtomicInteger(); val inserts = AtomicInteger()
+            val policy = object : Policy() {
+                override fun captureContent(context: Context, view: EditText, uri: Uri, mimeType: String): NativeContentPreparation {
+                    assertSame(editor, view); captures.incrementAndGet()
+                    return NativeContentPreparation { PreparedNativeContent { _, _ -> inserts.incrementAndGet(); true } }
+                }
+            }
+            val session = NativeEditorSession(policy, app.packageName)
+            session.capture(activity, editor, Recorder(editor), EditorInfo().apply { contentMimeTypes = arrayOf("image/gif") })
+            val token = session.snapshot(activity, true).getString("session")!!
+            val uri = Uri.parse("content://${app.packageName}.fileprovider/floating_exports/animation.gif")
+            assertNull(session.captureContent(activity, true, uri, "video/mp4", token, 1))
+            assertEquals(0, captures.get())
+            val preparation = session.captureContent(activity, true, uri, "image/gif", token, 1)!!
+            assertEquals(1, captures.get()); assertEquals(0, inserts.get())
+            val content = preparation.prepare()
+            policy.identity = "synthetic-thread-b"
+            assertFalse(session.insert(activity, true, uri, "image/gif", token, 1, content))
+            assertEquals(0, inserts.get())
+            content.close()
+        }
+    }
     @Test fun chatSwapRecreationExpiryAndDetachedEditorInvalidateOriginalLease() {
         withHost { activity, editor ->
             val recorder = Recorder(editor); val policy = Policy(); val clock = AtomicLong(SystemClock.elapsedRealtime())
@@ -543,6 +567,14 @@ class NativeBridgeDeviceTest {
             assertNativePaste("com.discord", LocalMediaSource(app).all().first { it.animated }, "image/gif", arrayOf("image/jpeg", "image/png", "image/gif"))
         } finally { preferences.pasteAssistance(before.pasteAssistance) }
     }
+    @Test fun instagramNativeGifPastesUnmodifiedAnimationOnlyOnExplicitPress() = runBlocking {
+        val preferences = FloatingPreferences(app); val before = preferences.current()
+        try {
+            preferences.pasteAssistance(false)
+            assertNativePaste("com.instagram.android", LocalMediaSource(app).all().first { it.animated },
+                "image/gif", arrayOf("image/jpeg", "image/png", "image/gif"))
+        } finally { preferences.pasteAssistance(before.pasteAssistance) }
+    }
     private suspend fun assertNativePaste(pkg: String, item: MediaItem, expectedMime: String, types: Array<String>) {
         preparePickerCatalog()
         val calls = AtomicInteger(); var delivered: String? = null
@@ -554,6 +586,11 @@ class NativeBridgeDeviceTest {
                 putString("status", "ready"); putString("host_version", "fixture-version")
             }
             override fun insert(uri: Uri, mimeType: String, session: String, requestId: Long): Int {
+                if (mimeType == "image/gif") {
+                    val expected = InstrumentationRegistry.getInstrumentation().context.assets.open(item.asset).use { it.readBytes() }
+                    val actual = app.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                    assertArrayEquals("Native insertion must preserve the entire animation", expected, actual)
+                }
                 delivered = mimeType; calls.incrementAndGet(); return one.njk.sao.floating.nativebridge.NativeInsertResult.ACCEPTED.wireValue
             }
         })
@@ -675,7 +712,10 @@ class NativeBridgeDeviceTest {
             while (!focused && SystemClock.elapsedRealtime() < deadline) {
                 scenario.onActivity { focused = it.hasWindowFocus() && editor.hasFocus() }; SystemClock.sleep(30)
             }
-            assertTrue("Synthetic editor must have the actual window focus", focused)
+            scenario.onActivity {
+                assertTrue("Synthetic editor focus: window=${it.hasWindowFocus()}, editor=${editor.hasFocus()}, " +
+                    "attached=${editor.isAttachedToWindow}, shown=${editor.isShown}, focusedView=${it.currentFocus}", focused)
+            }
             scenario.onActivity { block(it, editor) }
         }
     }

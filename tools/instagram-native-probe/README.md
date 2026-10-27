@@ -42,3 +42,9 @@ A successful result does **not** establish authenticated DM upload, delivery or
 framework injection. Those still require the user's rooted device and native client.
 The normal instrumentation tests separately cover actual exported fixture bytes,
 FileProvider grants, UI capability gating and one-use editor leases.
+
+On 451 the probe also checks the local GIF upload contract, missing-session capability
+gating and a parcel copy of the recipient key. It constructs real `ANIMATED_MEDIA`
+pending metadata and its ordinary media command using a fixture GIF, verifying the
+local file path, original recipient and unchanged bytes. These checks call no upload,
+registration or send entry point. The older 435 gallery contract does not advertise GIF.

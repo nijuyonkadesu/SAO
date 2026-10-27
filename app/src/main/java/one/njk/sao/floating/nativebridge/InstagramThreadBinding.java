@@ -155,4 +155,18 @@ final class InstagramThreadBinding {
         } catch (Exception error) { return null; }
         finally { parcel.recycle(); }
     }
+    /** Copy only the explicitly selected recipient key; never retain a mutable host key. */
+    Object copyKey(EditText view) throws ReflectiveOperationException {
+        Object current = controller(view);
+        if (current == null) return null;
+        Object key = keyReader.invoke(null, current);
+        if (key == null || key.getClass() != keyType || !(key instanceof Parcelable parcelable)) return null;
+        Parcel parcel = Parcel.obtain();
+        try {
+            parcelable.writeToParcel(parcel, 0);
+            parcel.setDataPosition(0);
+            Object copy = ((Parcelable.Creator<?>) keyType.getField("CREATOR").get(null)).createFromParcel(parcel);
+            return keyType.isInstance(copy) ? copy : null;
+        } finally { parcel.recycle(); }
+    }
 }

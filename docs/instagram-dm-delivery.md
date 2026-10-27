@@ -46,7 +46,8 @@ keyboards. Instagram decides whether the request actually uploads/delivers.
 The inspected keyboard callback accepts PNG/JPEG and explicitly rejects GIFs. SAO
 advertises only the supported static-image capabilities for this keyboard route
 and exports JPEG. A separate gallery adapter enables MP4/WebM Paste as described
-below. GIF still uses **DM** recipient selection. Instagram Sticker remains disabled. A connected module without a validated
+below. A separate local animated-attachment adapter now offers GIF Paste for its verified
+451 contract; unsupported contracts keep **DM** recipient selection. Instagram Sticker remains disabled. A connected module without a validated
 editor lease also leaves Paste disabled.
 
 ### Native video insertion
@@ -75,6 +76,50 @@ Preparation rejects Main, malformed or mislabeled files, clips over 512 MiB, a 3
 deadline or a full 2 GiB adapter cache. Old adapter files are cleaned only during an
 explicit Paste; recent submitted files remain available to Instagram's asynchronous
 uploader. Unsubmitted/invalid files are deleted. There is no background cleanup job.
+
+### Local animated GIF insertion (2026-10-27)
+
+The inspected 451 keyboard handler explicitly consumes/rejects `image/gif` with
+`unsupportedGifError`. Its regular GIF catalog request posts a GIPHY/Tenor ID to
+`direct_v2/threads/broadcast/animated_media/`; adding a local URL to that model does
+not upload the file. SAO does not use either route for local GIFs.
+
+The forwarding pipeline provides evidence of a real local animated upload:
+`X.0Nq2` creates `ANIMATED_MEDIA` pending media from a file, selects the host's
+modern/legacy upload mode, and registers it with `PendingMediaManager`. The image
+uploader handles that animated type, and the media-send handler has a distinct
+`animated_image_attachment` endpoint for its uploaded attachment ID. The production
+`InstagramAnimatedContract` isolates these verified signatures. It submits the
+local animated pending attachment through Instagram's ordinary media command,
+without fabricating a GIF provider ID, adding an external upload service, or using
+the bitmap keyboard callback. The pending attachment is not marked as a sticker.
+
+Explicit Paste captures a parcel copy of the original thread key on Main after
+validating the selection lease. The Binder worker stages and validates the GIF,
+builds native metadata and initializes native services. No upload or send is
+started during this preparation. Main revalidates the lease, current controller,
+session and recipient before registering/uploading/dispatching once. Rejected,
+expired, detached or switched-chat preparations delete their files. Once native
+upload starts, files remain available for asynchronous processing and sends are
+never retried automatically.
+
+`InstagramMediaFile` shares bounded file preparation between GIFs and videos.
+Content URIs, local-file streams and in-process byte-buffer streams use the same
+copy path; media bytes never travel in Binder arrays. Header and framework animation
+validation run off Main, with a 1-pixel validation decode while retaining the original
+dimensions and unmodified file. The existing 512 MiB/file, 2 GiB/cache and copy
+deadline limits apply. Cleanup also counts the old video cache and runs only on
+an explicit Paste. No new dependency, background worker, idle polling or conversion
+is introduced. MP4/WebM are not converted to GIF.
+
+The isolated real-class probe verifies the 451 reflection contract, GIF capability
+gating, copied recipient key, actual animated pending metadata/file path, media
+command recipient and byte preservation. It never initializes an authenticated
+uploader or invokes a native send. Device tests cover URI/byte-stream equivalence,
+invalid input, copy limits, partial-file cleanup, off-Main work, submitted-file
+lifetime and shared video staging. **Authenticated GIF upload/delivery through Vector
+still needs a rooted-device check.** GIF capability is absent for unverified shapes,
+including the older 435 contract; its existing photo/video routes remain available.
 
 The host verifies the lease before preparation, revalidates it on Main afterward,
 and consumes it before invoking the gallery sender once. A changed chat, editor,

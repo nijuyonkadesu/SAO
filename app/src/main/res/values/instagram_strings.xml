@@ -20,4 +20,6 @@
     <string name="picker_instagram_native_accepted">Instagram accepted the photo send request.</string>
     <string name="picker_instagram_native_video_hint">Paste or DM sends the video directly to the original conversation through Instagram’s gallery handler.</string>
     <string name="picker_instagram_native_video_accepted">Instagram accepted the video send request.</string>
+    <string name="picker_instagram_native_gif_hint">Paste or DM uploads the GIF directly to the original conversation.</string>
+    <string name="picker_instagram_native_gif_accepted">Instagram accepted the GIF send request.</string>
 </resources>

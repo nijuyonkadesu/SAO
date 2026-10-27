@@ -40,7 +40,7 @@ class InstagramVideoDeviceTest {
     @Test fun rejectsInvalidAndUnsupportedVideoWithoutLeavingPartialFiles() = runBlocking {
         val invalid = File(app.filesDir, "floating_exports/ig-test-invalid.mp4").apply { parentFile!!.mkdirs(); writeText("invalid") }
         val webm = fixture("preview-video.webm")
-        val directory = File(app.cacheDir, "sao_dm_video")
+        val directory = File(app.cacheDir, InstagramMediaFile.DIRECTORY)
         val before = directory.list()?.toSet().orEmpty()
         try {
             for (file in listOf(invalid, webm)) {

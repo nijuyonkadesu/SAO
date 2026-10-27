@@ -21,7 +21,11 @@ def adapterSources = tasks.register('syncProductionAdapter', Sync) {
     include 'one/njk/sao/floating/nativebridge/InstagramComposerPolicy.java'
     include 'one/njk/sao/floating/nativebridge/InstagramThreadBinding.java'
     include 'one/njk/sao/floating/nativebridge/PreparedNativeContent.java'
+    include 'one/njk/sao/floating/nativebridge/NativeContentPreparation.java'
     include 'one/njk/sao/floating/nativebridge/InstagramGalleryContract.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramAnimatedContract.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramMediaFile.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramGifFile.java'
     include 'one/njk/sao/floating/nativebridge/InstagramVideoFile.java'
     include 'one/njk/sao/floating/nativebridge/NativeVideoMetadata.java'
     into layout.buildDirectory.dir('generated/production-adapter')

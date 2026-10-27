@@ -9,13 +9,16 @@ import android.view.inputmethod.InputContentInfo;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 
-/** Host-specific evidence for a media-capable conversation editor. Called only on Main. */
+/** Editor capture/dispatch runs on Main; the captured preparation runs on a worker. */
 interface ComposerPolicy {
     boolean isComposer(EditText view);
     String identity(Activity activity, EditText view);
     String[] mimeTypes(EditorInfo info);
     default String[] additionalMimeTypes(EditText view) { return new String[0]; }
     default String videoStatus() { return ""; }
+    default NativeContentPreparation captureContent(Context context, EditText view, Uri uri, String mimeType) {
+        return () -> prepareContent(context, uri, mimeType);
+    }
     default PreparedNativeContent prepareContent(Context context, Uri uri, String mimeType) throws Exception {
         return (view, input) -> insertContent(view, input, uri, mimeType);
     }

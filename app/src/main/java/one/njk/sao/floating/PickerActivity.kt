@@ -500,7 +500,7 @@ class PickerActivity : AppCompatActivity() {
         binding.copyAction.isEnabled = item != null && !busy
         val nativeRendition = nativePasteRendition(item)
         val nativePaste = nativeRendition != null
-        val nativePhoto = nativePaste && target == MessagingTarget.INSTAGRAM && item?.isVideo != true
+        val nativePhoto = nativePaste && target == MessagingTarget.INSTAGRAM && item?.hasMotion == false
         binding.pasteAction.isEnabled = !busy && (nativePaste || item != null &&
             DeliveryPolicy.supportsPaste(item, target) && target != MessagingTarget.OTHER &&
             FloatingSession.active.value && options.pasteAssistance && pasteAnchor != null && PasteAssistService.connected())
@@ -515,6 +515,7 @@ class PickerActivity : AppCompatActivity() {
         })
         if (binding.mediaAction.text.toString() != mediaLabel) binding.mediaAction.text = mediaLabel
         val hint = when {
+            nativePaste && target == MessagingTarget.INSTAGRAM && item?.mimeType == "image/gif" -> getString(R.string.picker_instagram_native_gif_hint)
             nativePaste && target == MessagingTarget.INSTAGRAM && item?.isVideo == true -> getString(R.string.picker_instagram_native_video_hint)
             nativePhoto -> getString(R.string.picker_instagram_native_hint)
             target.isWhatsapp && nativeRendition == ExportRendition.STICKER_WEBP -> getString(R.string.picker_whatsapp_native_paste_hint)
@@ -810,6 +811,7 @@ class PickerActivity : AppCompatActivity() {
             Toast.makeText(context, when {
                 outcome == one.njk.sao.floating.nativebridge.NativeInsertResult.UNKNOWN -> R.string.picker_native_uncertain
                 outcome == one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED -> R.string.floating_native_rejected
+                instagram && item.mimeType == "image/gif" -> R.string.picker_instagram_native_gif_accepted
                 instagram && item.isVideo -> R.string.picker_instagram_native_video_accepted
                 instagram -> R.string.picker_instagram_native_accepted
                 discord -> R.string.picker_discord_native_accepted

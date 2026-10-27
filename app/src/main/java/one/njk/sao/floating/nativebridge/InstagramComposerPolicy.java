@@ -26,6 +26,7 @@ final class InstagramComposerPolicy implements ComposerPolicy {
     private final Class<?> composerType;
     private final Class<?> keyType;
     private volatile InstagramGalleryContract gallery;
+    private volatile InstagramAnimatedContract animated;
     private volatile boolean galleryLoaded;
     private final Map<EditText, Binding> bindings = new WeakHashMap<>();
 
@@ -37,6 +38,7 @@ final class InstagramComposerPolicy implements ComposerPolicy {
         keyType = Class.forName("com.instagram.model.direct.DirectThreadKey", false, loader);
         io.execute(() -> {
             gallery = InstagramGalleryContract.load(loader);
+            animated = InstagramAnimatedContract.load(loader);
             galleryLoaded = true;
         });
     }
@@ -133,10 +135,13 @@ final class InstagramComposerPolicy implements ComposerPolicy {
         return binding == null || binding.thread == null || !gallery.acceptsMedia(binding.listener.get()) ? null : gallery.sender(binding.thread.controller(view));
     }
     @Override public String[] additionalMimeTypes(EditText view) {
-        return videoSender(view) == null ? new String[0] : new String[]{"video/mp4", "video/webm"};
+        Object sender = videoSender(view);
+        if (sender == null) return new String[0];
+        return animated != null && animated.session(sender) != null
+            ? new String[]{"video/mp4", "video/webm", "image/gif"} : new String[]{"video/mp4", "video/webm"};
     }
     @Override public String[] viewMimeTypes(EditText view) {
-        // Gallery video delivery belongs to the verified DM controller, independently
+        // Native media delivery belongs to the verified DM controller, independently
         // of keyboard focus. Still photos keep the naturally captured IME connection.
         return isComposer(view) && identity(null, view) != null ? additionalMimeTypes(view) : new String[0];
     }
@@ -160,7 +165,28 @@ final class InstagramComposerPolicy implements ComposerPolicy {
             return gallery.sender(selected.thread.controller(editor)) == null ? "sender_missing" : "ready";
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { return "thread_unresolved"; }
     }
+    @Override public NativeContentPreparation captureContent(Context context, EditText view, android.net.Uri uri, String mimeType) {
+        if (!"image/gif".equals(mimeType)) return ComposerPolicy.super.captureContent(context, view, uri, mimeType);
+        InstagramAnimatedContract contract = animated;
+        Binding binding = bindings.get(view);
+        Object sender = videoSender(view);
+        String originalIdentity = identity(null, view);
+        if (contract == null || binding == null || binding.thread == null || sender == null || originalIdentity == null) return null;
+        try {
+            Object key = binding.thread.copyKey(view);
+            Object session = contract.session(sender);
+            if (key == null || session == null) return null;
+            WeakReference<EditText> original = new WeakReference<>(view);
+            return () -> contract.prepare(context, uri, session, key, () -> {
+                EditText current = original.get();
+                return current != null && bindings.get(current) == binding &&
+                    originalIdentity.equals(identity(null, current)) && videoSender(current) == sender && contract.session(sender) == session;
+            });
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { return null; }
+    }
     @Override public PreparedNativeContent prepareContent(Context context, android.net.Uri uri, String mimeType) throws Exception {
+        // A GIF must enter the recipient-bound animated upload adapter, never the bitmap IME path.
+        if ("image/gif".equals(mimeType)) return null;
         if (!NativeVideoMetadata.supports(mimeType)) return ComposerPolicy.super.prepareContent(context, uri, mimeType);
         if (gallery == null) return null;
         InstagramVideoFile video = InstagramVideoFile.prepare(context, uri, mimeType);
