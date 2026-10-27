@@ -624,6 +624,41 @@ class ImmichSearchDeviceTest {
         }
     }
 
+    @Test fun interruptedKeyboardMotionAndRotationKeepTheFocalMediaAndSettlePanelBounds() {
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,null,null)).use { scenario ->
+            await(scenario,"Initial browsing must settle") { !model(it).state.value.loading && model(it).focusedId!=null }
+            var focused: MediaIdentity?=null
+            scenario.onActivity { activity ->
+                focused=model(activity).focusedId
+                activity.findViewById<View>(R.id.search_toggle).performClick()
+            }
+            await(scenario,"Keyboard must open") { androidx.core.view.ViewCompat.getRootWindowInsets(it.window.decorView)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true }
+            scenario.onActivity { activity ->
+                activity.findViewById<View>(R.id.search_toggle).performClick()
+                activity.findViewById<View>(R.id.search_toggle).performClick()
+            }
+            SystemClock.sleep(450)
+            scenario.onActivity { it.requestedOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+            await(scenario,"Landscape browsing must retain the focal media") {
+                it.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE && model(it).focusedId==focused
+            }
+            scenario.onActivity { it.requestedOrientation=android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+            await(scenario,"Portrait browsing must retain the focal media") {
+                it.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_PORTRAIT && model(it).focusedId==focused
+            }
+            SystemClock.sleep(450)
+            scenario.onActivity { activity ->
+                val panel=activity.findViewById<View>(R.id.picker_panel)
+                val params=panel.layoutParams as android.widget.FrameLayout.LayoutParams
+                assertEquals("Interrupted motion must settle its top",params.topMargin,panel.top)
+                assertEquals("Interrupted motion must settle its height",params.height,panel.height)
+                assertEquals(focused,model(activity).focusedId)
+                assertTrue(activity.findViewById<View>(R.id.source_toggle).isShown)
+            }
+            screenshot("keyboard-interrupted-portrait.png")
+        }
+    }
+
     @Test fun failedPeopleLookupNeedsAnExplicitRetry() {
         rejectPeople.set(true)
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->

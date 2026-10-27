@@ -8,7 +8,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -161,6 +160,7 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
     private var requestingPage = false
     private val refresh = MutableStateFlow(0)
     private var appliedSource: String? = null
+    private data class ResultsRequest(val query: MediaQuery,val sourceId: String,val revision: Int,val ready: Boolean)
     init { viewModelScope.launch {
         visibleState.flatMapLatest { visible -> if(visible) source.changes.catch { error -> if(error is CancellationException) throw error } else kotlinx.coroutines.flow.emptyFlow() }
             .sample(1000)
@@ -168,9 +168,11 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
                 if(pickerShowing && !state.value.error && !state.value.loading && !state.value.loadingMore && query.value.randomRequest==null && session.results(source.identity.first(),query.value)!=null) pageRequests.trySend(true)
             }
     } }
-    private val resultsState = combine(query.debounce { if(it==typingQuery) 180L else 0L }, source.identity, source.capabilities, refresh) { value,id,capabilities,revision ->
-        if(capabilities.sourceId==id && (!capabilities.searchOptions || value.mode in capabilities.modes)) Triple(value,id,revision) else null
-    }.filterNotNull().distinctUntilChanged().flatMapLatest { (query, sourceId, _) -> flow {
+    private val resultsState = combine(query.debounce { if(it==typingQuery) 180L else 0L }, source.identity, source.capabilities, refresh) { _,id,capabilities,revision ->
+        // Other explicit triggers use the latest text even while its typing debounce is pending.
+        val value=query.value
+        ResultsRequest(value,id,revision,capabilities.sourceId==id && (!capabilities.searchOptions || value.mode in capabilities.modes))
+    }.distinctUntilChanged().flatMapLatest { (query, sourceId, _,ready) -> flow {
             while (pageRequests.tryReceive().isSuccess) { /* Drop requests from the old result set. */ }
             requestingPage = false
             if (session.ownsSequence(visibilityOwner) && (appliedSource != null && appliedSource != sourceId ||
@@ -178,6 +180,9 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
                 sequence.close(); searchFocusedId = null; clearSelection(); rememberBrowsing()
             }
             appliedSource = sourceId
+            // Keep unready requests in flatMapLatest so a source/mode change cancels old work
+            // immediately, even when its replacement's capabilities have not arrived yet.
+            if(!ready) { emit(PickerState(query=query,sourceId=sourceId)); return@flow }
             var snapshot = session.results(sourceId, query)
             if (snapshot == null) {
                 emit(PickerState(query = query, sourceId = sourceId))

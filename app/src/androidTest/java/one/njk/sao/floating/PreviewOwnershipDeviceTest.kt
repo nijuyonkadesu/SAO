@@ -71,6 +71,44 @@ class PreviewOwnershipDeviceTest {
         for(home in listOf(false,true)) exercise(home)
     }
 
+    @Test fun recreatedHomeCardsUseDecodedPreviewsImmediatelyAndInvalidateChangedAssets(): Unit {
+        val source=Source(directory)
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
+        val loader=ImageLoader.Builder(app).allowHardware(false).build()
+        val item=media("warm-home",Color.RED)
+        val first=MediaCarouselAdapter(loader,scope,source,home=true,select={})
+        val second=MediaCarouselAdapter(loader,scope,source,home=true,select={})
+        try { ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,null,null)).use { scenario ->
+            lateinit var parent: FrameLayout
+            lateinit var original: MediaCarouselAdapter.Holder
+            scenario.onActivity { activity ->
+                parent=FrameLayout(activity); activity.setContentView(parent)
+                original=first.onCreateViewHolder(parent,0)
+                first.submitList(listOf(item)); first.onBindViewHolder(original,0)
+            }
+            await(scenario,"The initial home preview must decode") { color(original)==Color.RED }
+            scenario.onActivity {
+                first.onViewRecycled(original); first.close()
+                val restored=second.onCreateViewHolder(parent,0)
+                second.submitList(listOf(item)); second.onBindViewHolder(restored,0)
+                assertEquals("Returning home must draw the decoded preview in its first frame",Color.RED,color(restored))
+                assertEquals("A warm home card must not reopen its source",1,source.reads.get())
+            }
+            media(item.id,Color.BLUE)
+            val changed=item.copy(asset="new-revision")
+            val committed=CompletableDeferred<Unit>()
+            scenario.onActivity { second.submitList(listOf(changed)) { committed.complete(Unit) } }
+            runBlocking { withTimeout(5000) { committed.await() } }
+            lateinit var updated: MediaCarouselAdapter.Holder
+            scenario.onActivity { updated=second.onCreateViewHolder(parent,0); second.onBindViewHolder(updated,0) }
+            await(scenario,"A changed asset must not reuse an obsolete decoded preview") { color(updated)==Color.BLUE }
+            assertEquals(2,source.reads.get())
+        } } finally {
+            instrumentation.runOnMainSync { first.close(); second.close(); scope.cancel(); loader.shutdown() }
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun loadedCardSurvivesTemporaryDetachAndMetadataRebindWithoutBlanking(): Unit {
         val source=Source(directory)
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)

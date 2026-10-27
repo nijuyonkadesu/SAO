@@ -53,7 +53,7 @@ class CarouselScrollDeviceTest {
                         .setBody(Buffer().write(if (mediaKind == "GIF") gif else video))
                     else -> {
                         val items = JSONArray()
-                        for (index in 0 until 100) items.put(JSONObject()
+                        for (index in 0 until 60) items.put(JSONObject()
                             .put("id", UUID(42, index.toLong()).toString())
                             .put("type", if (mediaKind == "GIF") "IMAGE" else "VIDEO")
                             .put("originalMimeType", if (mediaKind == "GIF") "image/gif" else "video/webm")
@@ -65,8 +65,10 @@ class CarouselScrollDeviceTest {
             }
             start()
         }
-        access.sources().upsert(immichProfile("Scroll fixture",
-            ImmichConfig(server.url("/").toString(), "scroll-fixture-key")), true)
+        val profile=immichProfile("Scroll fixture",ImmichConfig(server.url("/").toString(),"scroll-fixture-key"))
+        access.sources().upsert(profile,true)
+        access.sources().selectFloating(profile.id)
+        access.sources().available(setOf(profile.id))
     }
 
     @After fun cleanup() = runBlocking {
@@ -86,7 +88,7 @@ class CarouselScrollDeviceTest {
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, "com.discord", null)).use { scenario ->
             await(scenario, "GIF holders must be measured and loaded") { activity ->
                 val view = grid(activity); val cards = holders(view)
-                (view.adapter as MediaCarouselAdapter).currentList.size == 100 && cards.size >= 2 &&
+                (view.adapter as MediaCarouselAdapter).currentList.size == 60 && cards.size >= 2 &&
                     cards.all { it.item?.animated == true && it.binding.preview.drawable != null &&
                         it.binding.gifBadge.width > 0 && !it.binding.gifBadge.isLayoutRequested }
             }
