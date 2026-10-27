@@ -100,6 +100,9 @@ class PickerActivity : AppCompatActivity() {
         metrics = windowManager.maximumWindowMetrics
         binding.root.setOnClickListener { finish() }
         binding.pickerPanel.setOnClickListener { }
+        binding.pickerHeader.addOnLayoutChangeListener { _,left,_,right,_,oldLeft,_,oldRight,_ ->
+            if(right-left!=oldRight-oldLeft && !isFinishing && !isDestroyed) renderHeader()
+        }
         binding.close.setOnClickListener { finish() }
         binding.sourceToggle.setOnClickListener { collapseSearch(); showSource(!binding.sourcePanel.isVisible) }
         binding.sourceBack.setOnClickListener { showSource(false) }
@@ -389,7 +392,6 @@ class PickerActivity : AppCompatActivity() {
     }
     private fun expandSearch() {
         sourceGesture.cancel()
-        motion.layout(binding.pickerHeader)
         showSource(false); showTargets(false); motion.visible(binding.sourceToggle,false)
         editing = true; motion.visible(binding.targetLabel,false); motion.visible(binding.searchField,true)
         renderHeader(); resize(imeHeight)
@@ -400,7 +402,6 @@ class PickerActivity : AppCompatActivity() {
         binding.search.dismissSuggestions()
         if (!editing) return
         searchController.close()
-        motion.layout(binding.pickerHeader)
         editing = false; binding.search.clearFocus(); motion.visible(binding.searchField,false); motion.visible(binding.targetLabel,true)
         WindowCompat.getInsetsController(window, binding.root).hide(WindowInsetsCompat.Type.ime()); renderHeader(); resize(imeHeight)
     }
@@ -436,18 +437,13 @@ class PickerActivity : AppCompatActivity() {
         binding.sourceToggle.isVisible = !editing
         val label = catalog.selected?.displayName(this) ?: getString(R.string.picker_source_none)
         val density = resources.displayMetrics.density
-        val headerWidth = binding.pickerHeader.width.takeIf { it > 0 } ?: ((metrics.bounds.width() / density - 48) * density).toInt()
-        val desired = binding.sourceToggle.paint.measureText("$label ▾") + 48 * density
-        val iconOnly = desired > headerWidth - (96 + 72) * density
-        val sourceText = if (iconOnly) "" else "$label ▾"
-        if(binding.sourceToggle.text.toString()!=sourceText) {
-            motion.layout(binding.pickerHeader)
-            binding.sourceToggle.text=sourceText
-        }
-        val sourceWidth = if (iconOnly) (48 * density).toInt() else -2
-        if (binding.sourceToggle.layoutParams.width != sourceWidth)
-            binding.sourceToggle.layoutParams = binding.sourceToggle.layoutParams.apply { width = sourceWidth }
-        binding.sourceToggle.iconPadding = if (iconOnly) 0 else (4 * density).toInt()
+        val measured=binding.pickerHeader.width
+        val headerWidth=if(measured>0) measured else binding.pickerPanel.layoutParams.width-
+            binding.pickerContent.paddingLeft-binding.pickerContent.paddingRight
+        val maximum=(headerWidth-(96+72+8)*density).toInt().coerceAtLeast((48*density).toInt())
+        if(binding.sourceToggle.maxWidth!=maximum) binding.sourceToggle.maxWidth=maximum
+        val sourceText="$label ▾"
+        if(binding.sourceToggle.text.toString()!=sourceText) binding.sourceToggle.text=sourceText
         binding.sourceToggle.contentDescription = getString(R.string.source_hold_accessibility, label)
         androidx.appcompat.widget.TooltipCompat.setTooltipText(binding.sourceToggle, binding.sourceToggle.contentDescription)
     }
@@ -726,7 +722,6 @@ class PickerActivity : AppCompatActivity() {
             this.width = width; this.height = height; gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; topMargin = y
         }
         if(!::windowMotion.isInitialized || !windowMotion.animating) updateCarouselStrategy()
-        binding.pickerHeader.post { if (!isFinishing && !isDestroyed) renderHeader() }
         updateActionAccessibility()
     }
     private fun showProgress(show: Boolean) {

@@ -55,8 +55,6 @@ class CarouselFragment : Fragment(), MenuProvider {
     private var collectionGesture: HoldDragSelector<SourceProfile>? = null
     private var motion: SaoMotion?=null
 
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); SaoMotion.navigation(this) }
-
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentCarouselBinding.inflate(inflater,container,false)
         return binding.root
@@ -206,7 +204,7 @@ class CarouselFragment : Fragment(), MenuProvider {
     override fun onDestroyView() { motion?.close(); motion=null; filenameRequest.next(); titleHold?.cancel(); titleHold=null; collectionGesture?.dispose(); collectionGesture=null; carousel.close(); categories=null; _binding=null; super.onDestroyView() }
     override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) { menuInflater.inflate(R.menu.top_app_bar,menu) }
     override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when(menuItem.itemId) {
-        R.id.usage -> { findNavController().navigate(R.id.usageFragment); true }
+        R.id.usage -> { findNavController().navigate(R.id.action_HomeFragment_to_usageFragment); true }
         R.id.settings -> { findNavController().navigate(CarouselFragmentDirections.actionHomeFragmentToSettingsFragment()); true }
         R.id.edit -> { startActivity(Intent(requireContext(),SourceSettingsActivity::class.java)); true }
         else -> false

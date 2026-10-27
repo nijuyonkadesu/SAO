@@ -22,7 +22,6 @@ class SettingsFragment: Fragment() {
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = requireNotNull(_binding)
     private val viewModel: ArtsViewModel by activityViewModels()
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); SaoMotion.navigation(this) }
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,

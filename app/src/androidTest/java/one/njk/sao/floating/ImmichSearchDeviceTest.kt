@@ -432,6 +432,38 @@ class ImmichSearchDeviceTest {
         }
     }
 
+    @Test fun sourceLabelsUseNaturalTextLayoutWithoutClippingDuringSourceAndSearchChanges(): Unit = runBlocking {
+        profile=immichProfile("Immich",profile.testConnection(),(profile.configuration as ExtensionConfig).profile)
+        access.sources().upsert(profile,true); access.sources().selectFloating(profile.id)
+        val longName="Immich — a deliberately long source name for this phone"
+        val second=immichProfile(longName,profile.testConnection().copy(apiKey="long-label-fixture"))
+        access.sources().upsert(second)
+        access.sources().available(access.sources().current().profiles.map { it.id }.toSet())
+        ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,null,null)).use { scenario ->
+            fun ready(label: String) = await(scenario,"Source label must lay out: $label") {
+                val button=it.findViewById<android.widget.TextView>(R.id.source_toggle)
+                !model(it).state.value.loading && button.isVisible && !button.isLayoutRequested && button.text.toString()=="$label ▾" && button.layout!=null
+            }
+            fun check(short: Boolean) = scenario.onActivity { activity ->
+                val button=activity.findViewById<android.widget.TextView>(R.id.source_toggle)
+                assertNull("The source label must never retain an animated clip",button.clipBounds)
+                assertEquals(android.view.ViewGroup.LayoutParams.WRAP_CONTENT,button.layoutParams.width)
+                assertTrue(button.width<=button.maxWidth)
+                assertTrue("The label must fit vertically",button.height>=button.layout.height+button.compoundPaddingTop+button.compoundPaddingBottom)
+                val target=activity.findViewById<View>(R.id.target_label)
+                assertTrue("The source and chat labels need a visible gap",button.left-target.right>=8*activity.resources.displayMetrics.density-1)
+                if(short) assertEquals(0,button.layout.getEllipsisCount(0)) else assertTrue(button.layout.getEllipsisCount(0)>0)
+            }
+            ready("Immich"); check(true); screenshot("source-label-immich.png")
+            scenario.onActivity { ViewModelProvider(it)[SourceProfilesViewModel::class.java].selectFloating(second.id) }
+            ready(longName); check(false); screenshot("source-label-long.png")
+            scenario.onActivity { it.findViewById<View>(R.id.search_toggle).performClick() }
+            await(scenario,"Search field must open") { it.findViewById<View>(R.id.search_field).isVisible }
+            scenario.onActivity { it.findViewById<View>(R.id.search_toggle).performClick() }
+            ready(longName); check(false)
+        }
+    }
+
     @Test fun sourceHoldCancelsOnRenameAndKeepsAddSourceInTheFullPicker() {
         ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app, null, null)).use { scenario ->
             await(scenario, "Source must load") { !model(it).state.value.loading && ViewModelProvider(it)[SourceProfilesViewModel::class.java].state.value.loaded }

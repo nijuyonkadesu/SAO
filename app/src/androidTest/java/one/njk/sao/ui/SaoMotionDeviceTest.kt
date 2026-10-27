@@ -26,6 +26,7 @@ class SaoMotionDeviceTest {
         assertEquals(1f,view.alpha,0.001f)
         assertEquals(0f,view.translationX,0.001f)
         assertEquals(0f,view.translationY,0.001f)
+        assertEquals(1f,view.scaleX,0.001f); assertEquals(1f,view.scaleY,0.001f)
     }
 
     @Test fun hiddenAndStoppedPanelsNeverKeepAnIntermediateFrame() {
@@ -78,9 +79,19 @@ class SaoMotionDeviceTest {
                 } while(!ready && SystemClock.elapsedRealtime()<deadline)
                 assertTrue("Navigation must settle at $id",ready)
             }
-            fun navigate(id: Int) = scenario.onActivity { activity ->
-                val host=activity.supportFragmentManager.findFragmentById(R.id.nav_host_fragment_content_main) as NavHostFragment
-                host.navController.navigate(id)
+            fun navigate(id: Int) {
+                val item=when(id) { R.id.settingsFragment -> R.id.settings; R.id.usageFragment -> R.id.usage; else -> error("Unsupported destination") }
+                val deadline=SystemClock.elapsedRealtime()+5000
+                var invoked=false
+                do {
+                    scenario.onActivity { activity ->
+                        val menu=activity.findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.topAppBar).menu
+                        // MenuHost may post its menu invalidation after the destination resumes.
+                        if(menu.findItem(item)?.isVisible==true) invoked=menu.performIdentifierAction(item,0)
+                    }
+                    if(!invoked) SystemClock.sleep(30)
+                } while(!invoked && SystemClock.elapsedRealtime()<deadline)
+                assertTrue("The toolbar action must become available",invoked)
             }
             fun back() = scenario.onActivity { activity -> activity.onBackPressedDispatcher.onBackPressed() }
             destination(R.id.homeFragment)

@@ -88,7 +88,6 @@ class UsageFragment: Fragment() {
         TERTIARY(com.google.android.material.R.attr.colorTertiaryContainer,com.google.android.material.R.attr.colorOnTertiaryContainer),
         SURFACE(com.google.android.material.R.attr.colorSurfaceContainerHigh,com.google.android.material.R.attr.colorOnSurface)
     }
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); SaoMotion.navigation(this) }
     override fun onCreateView(inflater: LayoutInflater,container: ViewGroup?,state: Bundle?): View {
         val themed=DynamicColors.wrapContextIfAvailable(ContextThemeWrapper(requireContext(),R.style.Theme_SAO_Usage))
         _binding=FragmentUsageBinding.inflate(inflater.cloneInContext(themed),container,false)

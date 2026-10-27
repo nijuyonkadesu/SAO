@@ -7,26 +7,18 @@ import android.animation.ObjectAnimator
 import android.animation.LayoutTransition
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
-import androidx.fragment.app.Fragment
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import com.google.android.material.motion.MotionUtils
-import com.google.android.material.transition.MaterialSharedAxis
-import com.google.android.material.transition.SlideDistanceProvider
 import com.google.android.material.color.MaterialColors
-import androidx.transition.ChangeBounds
-import androidx.transition.TransitionManager
 
-/** Short, lifecycle-owned transitions for explicit navigation, never media binding or idle work. */
+/** Lifecycle-owned visibility effects for explicit UI changes, never media binding or idle work. */
 internal class SaoMotion(private val owner: LifecycleOwner): DefaultLifecycleObserver,AutoCloseable {
     private data class VisibilityRoot(val previous: LayoutTransition?,val transition: LayoutTransition)
     private val visibility=mutableMapOf<ViewGroup,VisibilityRoot>()
     private val fading=mutableSetOf<Animator>()
-    private val roots=mutableSetOf<ViewGroup>()
-    private val pending=mutableSetOf<ViewGroup>()
     private var closed=false
     init { owner.lifecycle.addObserver(this) }
 
@@ -64,18 +56,7 @@ internal class SaoMotion(private val owner: LifecycleOwner): DefaultLifecycleObs
         visibility[root]=VisibilityRoot(root.layoutTransition,transition)
         root.layoutTransition=transition
     }
-    /** Bounds animate only for a small control row, never the media carousel or keyboard viewport. */
-    fun layout(root: ViewGroup) {
-        if(!canAnimate(root) || !root.isLaidOut || !root.isShown || !pending.add(root)) return
-        TransitionManager.endTransitions(root)
-        val movement=ChangeBounds().apply { resizeClip=true; duration=120 }
-        for(index in 0 until root.childCount) movement.addTarget(root.getChildAt(index))
-        roots.add(root)
-        TransitionManager.beginDelayedTransition(root,movement)
-        root.doOnPreDraw { pending.remove(root) }
-    }
     private fun stop() {
-        roots.forEach(TransitionManager::endTransitions); roots.clear(); pending.clear()
         fading.toList().forEach { it.end() }; fading.clear()
         visibility.forEach { (root,owned) -> if(root.layoutTransition===owned.transition) root.layoutTransition=owned.previous }
         visibility.clear()
@@ -89,19 +70,6 @@ internal class SaoMotion(private val owner: LifecycleOwner): DefaultLifecycleObs
         fun surface(view: View) {
             (view as? ViewGroup)?.isTransitionGroup=true
             view.setBackgroundColor(MaterialColors.getColor(view,com.google.android.material.R.attr.colorSurface))
-        }
-        private fun axis(forward: Boolean,distance: Int)=MaterialSharedAxis(MaterialSharedAxis.X,forward).apply {
-            duration=140
-            (primaryAnimatorProvider as SlideDistanceProvider).slideDistance=distance
-            secondaryAnimatorProvider=null
-        }
-        fun navigation(fragment: Fragment) {
-            if(!ValueAnimator.areAnimatorsEnabled()) return
-            val distance=(12*fragment.resources.displayMetrics.density).toInt()
-            fragment.enterTransition=axis(true,distance)
-            fragment.exitTransition=axis(true,distance)
-            fragment.returnTransition=axis(false,distance)
-            fragment.reenterTransition=axis(false,distance)
         }
     }
 }

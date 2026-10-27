@@ -12,7 +12,12 @@
         tools:layout="@layout/fragment_carousel">
         <action
             android:id="@+id/action_HomeFragment_to_settingsFragment"
-            app:destination="@id/settingsFragment" />
+            app:destination="@id/settingsFragment"
+            app:enterAnim="@animator/fragment_open_enter" app:exitAnim="@animator/fragment_open_exit"
+            app:popEnterAnim="@animator/fragment_close_enter" app:popExitAnim="@animator/fragment_close_exit" />
+        <action android:id="@+id/action_HomeFragment_to_usageFragment" app:destination="@id/usageFragment"
+            app:enterAnim="@animator/fragment_open_enter" app:exitAnim="@animator/fragment_open_exit"
+            app:popEnterAnim="@animator/fragment_close_enter" app:popExitAnim="@animator/fragment_close_exit" />
     </fragment>
     <fragment
         android:id="@+id/settingsFragment"
