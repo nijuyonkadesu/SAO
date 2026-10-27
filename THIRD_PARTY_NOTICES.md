@@ -1,4 +1,8 @@
-# Third-party assets
+# Third-party components and assets
+
+## GIF encoding
+
+The host's `gif-encoder` module statically links [gifski 1.34.0](https://github.com/ImageOptim/gifski/tree/1.34.0), copyright 2017 Kornel Lesiński, [AGPL-3.0-or-later](gif-encoder/GIFSKI-LICENSE). Its C API header is included unchanged. The small JNI wrapper is SAO code. Neither FFmpeg nor upstream's CLI/PNG/video features are shipped. The locked Rust dependency graph's notices and license texts are bundled in `gif-encoder/src/main/assets/licenses/gifski.txt`. [Build and lifecycle contract](gif-encoder/README.md).
 
 ## Local Context search
 

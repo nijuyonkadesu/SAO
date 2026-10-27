@@ -1,6 +1,6 @@
 # Android video-to-GIF conversion research
 
-Researched 2026-10-27. Conversion is not implemented by the earlier native GIF adapter.
+Researched 2026-10-27. Conversion was not implemented by the earlier native GIF adapter.
 The adapter accepts GIF files; MP4 must first be exported as an actual animated GIF,
 then handed to the verified native GIF capability. Renaming a MIME type or filename
 cannot do this. Uploads and ordinary media exports must retain their originals.
@@ -22,9 +22,49 @@ and report an unsupported/resource-limited conversion instead of silently shrink
 truncating, dropping frames or applying an arbitrary byte target. HDR needs explicit
 HDR-to-SDR tone mapping for GIF; other delivery paths keep their existing HDR behavior.
 
-The native dependency requires approval under the user's earlier no-new-dependencies
-constraint. The proposal excludes FFmpeg, CLI, PNG input, video decoders and other
-optional gifski features. SAO is already AGPL-3.0, and gifski is AGPL-3.0-or-later.
+The native dependency was approved. The implementation excludes FFmpeg, CLI, PNG
+input, bundled video decoders and other optional gifski features. SAO is already
+AGPL-3.0, and gifski is AGPL-3.0-or-later.
+
+## Integration
+
+The host's `VideoGifDecoder` streams MediaCodec output through the existing Media3
+GL processor into an RGBA ImageReader. It applies orientation once and performs
+explicit BT.2020 HDR-to-SDR tone mapping when supported. There is one image in flight;
+gifski's internal queues/lookahead provide backpressure. No bitmap-per-thumbnail
+seeking, directory of PNG frames, second video encode or new Media3 dependency is used.
+The producer runs on a conversion-only background-priority HandlerThread, so native
+writer workers inherit that priority without changing shared coroutine-pool threads.
+
+`VideoGifTranscoder` owns cancellation and joins the producer/native writer before
+releasing the source lease. The normal export semaphore admits one conversion at a
+time. Full-size frames get a heap-relative resource guard, output is bounded by the
+host's 192 MiB export budget, and a 90-second deadline keeps preparation inside the
+native handoff lease window. These limits reject unsafe conversions, not recompress
+them. The source file is unchanged. GIF timing is quantized to its 10 ms timebase;
+the container validator uses the input's actual end timestamp for the final delay,
+which gifski otherwise infers from the preceding frame interval. Identical frames
+may be merged while preserving their display duration.
+
+Instagram Paste chooses GIF for videos only when the selected native conversation
+advertises the verified GIF capability. The separate DM action keeps original-video
+attachment available. Other apps, Copy, ordinary sharing and uploads retain their
+existing export policies. GIF cache keys are separate from original/MP4 renditions.
+An unsupported native GIF contract remains disabled; conversion alone cannot enable
+an unknown Instagram upload API. GIF output has no audio and cannot preserve HDR.
+
+The complete stripped JNI+encoder sizes in the release APK are **880,448 B ARM64**,
+640,456 B ARMv7, 958,172 B x86 and 961,144 B x86-64. A universal APK packages all
+four, about 3.3 MiB total, plus small license/Kotlin overhead; this is not a 0.8 MiB
+increase for every APK. There are no native encoder binaries in source extensions.
+
+Validation: 40 focused device tests and 59 host unit tests passed, along with lint
+and debug/minified release builds. The real Instagram 451-class probe passed all
+40 boolean checks without authenticated sending. Device coverage includes GIF-only MP4 Paste,
+the complete conversion-to-native-file preparation chain, 720p resize prevention,
+RGBA stride, final-frame timing, exact originals/cache separation, write-budget
+failure, HDR handling/rejection and cancellation cleanup. All four shared objects
+have 16 KiB LOAD alignment; the release APK also passes zipalign's 16 KiB check.
 
 ## Candidates checked
 

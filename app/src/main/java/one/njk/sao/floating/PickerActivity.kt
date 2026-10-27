@@ -487,6 +487,8 @@ class PickerActivity : AppCompatActivity() {
     }
     private fun nativeMediaMime(item: MediaItem): String {
         val original = item.mimeType
+        if(target==MessagingTarget.INSTAGRAM && item.isVideo &&
+            NativeBridgeRegistry.supports(targetPackage,nativeSession,"image/gif")) return "image/gif"
         return VideoCompatibility.mime(original) { NativeBridgeRegistry.supports(targetPackage, nativeSession, it) }
     }
     private fun renderDock() {
@@ -516,7 +518,8 @@ class PickerActivity : AppCompatActivity() {
         if (binding.mediaAction.text.toString() != mediaLabel) binding.mediaAction.text = mediaLabel
         val hint = when {
             nativePaste && target == MessagingTarget.INSTAGRAM && item?.mimeType == "image/gif" -> getString(R.string.picker_instagram_native_gif_hint)
-            nativePaste && target == MessagingTarget.INSTAGRAM && item?.isVideo == true -> getString(R.string.picker_instagram_native_video_hint)
+            nativePaste && target == MessagingTarget.INSTAGRAM && item?.isVideo == true -> getString(
+                if(nativeMediaMime(item)=="image/gif") R.string.picker_instagram_video_gif_hint else R.string.picker_instagram_native_video_hint)
             nativePhoto -> getString(R.string.picker_instagram_native_hint)
             target.isWhatsapp && nativeRendition == ExportRendition.STICKER_WEBP -> getString(R.string.picker_whatsapp_native_paste_hint)
             nativePaste && target == MessagingTarget.DISCORD -> getString(R.string.picker_discord_native_hint)
@@ -747,8 +750,9 @@ class PickerActivity : AppCompatActivity() {
     private suspend fun share(item: MediaItem, rendition: ExportRendition) {
         val receivingPackage = targetPackage
         val receivingTarget = target
+        val instagramGifFallback=receivingTarget==MessagingTarget.INSTAGRAM && item.isVideo && nativeMediaMime(item)=="image/gif"
         if (rendition == ExportRendition.MEDIA && receivingTarget in setOf(MessagingTarget.INSTAGRAM, MessagingTarget.DISCORD) &&
-            nativePasteRendition(item) != null) {
+            !instagramGifFallback && nativePasteRendition(item) != null) {
             nativeInsert(item, ExportRendition.MEDIA,UsageAction.SHARE)
             return
         }
@@ -790,8 +794,11 @@ class PickerActivity : AppCompatActivity() {
         if (!NativeBridgeRegistry.supports(pkg, session, mime)) { inlineFailure(R.string.floating_native_rejected); return }
         val instagram = target == MessagingTarget.INSTAGRAM
         val discord = target == MessagingTarget.DISCORD
-        var media = if (item.mimeType == "video/webm" && mime == "video/mp4") exports.mp4(item)
-            else exports.prepare(item, rendition, DeliveryPolicy.stickerRequirements(target))
+        var media = when {
+            instagram && item.isVideo && mime=="image/gif" -> exports.instagramGif(item)
+            item.mimeType=="video/webm" && mime=="video/mp4" -> exports.mp4(item)
+            else -> exports.prepare(item,rendition,DeliveryPolicy.stickerRequirements(target))
+        }
         if(rendition==ExportRendition.MEDIA) {
             media=limitAttachment(item,media)
             mime=media.mimeType
@@ -811,7 +818,7 @@ class PickerActivity : AppCompatActivity() {
             Toast.makeText(context, when {
                 outcome == one.njk.sao.floating.nativebridge.NativeInsertResult.UNKNOWN -> R.string.picker_native_uncertain
                 outcome == one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED -> R.string.floating_native_rejected
-                instagram && item.mimeType == "image/gif" -> R.string.picker_instagram_native_gif_accepted
+                instagram && mime == "image/gif" -> R.string.picker_instagram_native_gif_accepted
                 instagram && item.isVideo -> R.string.picker_instagram_native_video_accepted
                 instagram -> R.string.picker_instagram_native_accepted
                 discord -> R.string.picker_discord_native_accepted

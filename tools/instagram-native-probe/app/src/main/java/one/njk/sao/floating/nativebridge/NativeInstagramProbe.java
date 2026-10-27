@@ -109,12 +109,15 @@ public final class NativeInstagramProbe extends Instrumentation {
                         constructor.setAccessible(true); constructor.newInstance(loader);
                     }
                     if (animated != null) {
-                        set(gallerySender, "A02", blank(loader, "com.instagram.common.session.UserSession"));
+                        set(owner, "A0v", blank(loader, "com.instagram.common.session.UserSession"));
                         report.put("animated_gif_capability", java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains("image/gif"));
+                        set(owner, fixture.ownerSender(), null);
+                        report.put("animated_gif_independent_of_gallery", java.util.Arrays.asList(policy.additionalMimeTypes(view)).equals(java.util.List.of("image/gif")));
+                        set(owner, fixture.ownerSender(), gallerySender);
                         Object copied = InstagramThreadBinding.discover(listener, view, keyType).copyKey(view);
                         report.put("recipient_key_is_copied", copied != key[0] && copied.equals(key[0]));
                         // Remove the synthetic session before any native service could use it.
-                        set(gallerySender, "A02", null);
+                        set(owner, "A0v", null);
                         report.put("missing_animated_session_disabled", !java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains("image/gif"));
                     }
                     set(gallerySender, "A01", host.getApplicationContext());

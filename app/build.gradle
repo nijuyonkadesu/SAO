@@ -84,6 +84,7 @@ androidComponents {
 }
 
 dependencies {
+    implementation project(':gif-encoder')
     implementation project(':source-api')
     implementation project(':source-settings')
     implementation libs.work.runtime

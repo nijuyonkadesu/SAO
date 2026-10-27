@@ -221,6 +221,28 @@ the keyboard contract, so unsupported versions or formats must keep the current
 DM fallback. This investigation led to the versioned MP4 adapter above. The isolated
 probe still never invokes an authenticated sending listener.
 
+## Video-to-GIF Paste
+
+When a bound Instagram conversation advertises native GIF uploads, Paste converts
+MP4/WebM through Android's decoder and the host's gifski encoder, then gives the
+resulting `image/gif` URI to that same recipient-bound upload adapter. This capability
+is independent of the gallery video sender. The inspected 451 contract reads its
+UserSession from the verified DM controller and still respects media restrictions,
+chat changes and one-use leases. Unknown contracts, including the older 435 GIF
+upload shape, remain disabled rather than assuming compatibility.
+
+Conversion is off Main, cancellable and cached separately. It preserves dimensions
+and frame timing within GIF's 10 ms timebase; GIF has no audio/HDR and can be much
+larger than MP4. Unsafe full-resolution or oversized conversions fail explicitly.
+The DM button retains the original-video attachment route when Paste uses GIF.
+[Encoder, measurements and resource limits](video-gif-conversion-research.md).
+
+Generated-media tests verify actual GIF bytes, RGBA row padding, colors, orientation,
+duration, source/cache separation, cancellation cleanup and GIF-only MP4 Paste.
+The real-class probe also verifies that GIF remains available without a gallery
+sender. It never invokes authenticated upload/send; delivery still needs a rooted
+device with Vector and the compatible native client.
+
 ## Verification and limits
 
 The production adapter was compiled directly into the reproducible

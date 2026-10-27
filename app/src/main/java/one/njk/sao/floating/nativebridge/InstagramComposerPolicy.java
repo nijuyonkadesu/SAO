@@ -135,10 +135,16 @@ final class InstagramComposerPolicy implements ComposerPolicy {
         return binding == null || binding.thread == null || !gallery.acceptsMedia(binding.listener.get()) ? null : gallery.sender(binding.thread.controller(view));
     }
     @Override public String[] additionalMimeTypes(EditText view) {
-        Object sender = videoSender(view);
-        if (sender == null) return new String[0];
-        return animated != null && animated.session(sender) != null
-            ? new String[]{"video/mp4", "video/webm", "image/gif"} : new String[]{"video/mp4", "video/webm"};
+        List<String> types = new ArrayList<>();
+        if (videoSender(view) != null) { types.add("video/mp4"); types.add("video/webm"); }
+        if (animatedSession(view) != null) types.add("image/gif");
+        return types.toArray(new String[0]);
+    }
+    private Object animatedSession(EditText view) {
+        InstagramAnimatedContract contract = animated;
+        Binding binding = bindings.get(view);
+        return contract == null || binding == null || binding.thread == null || !contract.acceptsMedia(binding.listener.get())
+            ? null : contract.session(binding.thread.controller(view));
     }
     @Override public String[] viewMimeTypes(EditText view) {
         // Native media delivery belongs to the verified DM controller, independently
@@ -169,18 +175,18 @@ final class InstagramComposerPolicy implements ComposerPolicy {
         if (!"image/gif".equals(mimeType)) return ComposerPolicy.super.captureContent(context, view, uri, mimeType);
         InstagramAnimatedContract contract = animated;
         Binding binding = bindings.get(view);
-        Object sender = videoSender(view);
+        Object session = animatedSession(view);
         String originalIdentity = identity(null, view);
-        if (contract == null || binding == null || binding.thread == null || sender == null || originalIdentity == null) return null;
+        if (contract == null || binding == null || binding.thread == null || session == null || originalIdentity == null) return null;
         try {
             Object key = binding.thread.copyKey(view);
-            Object session = contract.session(sender);
-            if (key == null || session == null) return null;
+            Object controller = binding.thread.controller(view);
+            if (key == null || controller == null) return null;
             WeakReference<EditText> original = new WeakReference<>(view);
             return () -> contract.prepare(context, uri, session, key, () -> {
                 EditText current = original.get();
                 return current != null && bindings.get(current) == binding &&
-                    originalIdentity.equals(identity(null, current)) && videoSender(current) == sender && contract.session(sender) == session;
+                    originalIdentity.equals(identity(null, current)) && binding.thread.controller(current) == controller && animatedSession(current) == session;
             });
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { return null; }
     }

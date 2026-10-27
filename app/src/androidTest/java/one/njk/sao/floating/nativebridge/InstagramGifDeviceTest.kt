@@ -18,6 +18,24 @@ class InstagramGifDeviceTest {
     private fun bytes() = instrumentation.context.assets.open("floating/hello.gif").use { it.readBytes() }
     private fun stagedFiles() = File(app.cacheDir, InstagramMediaFile.DIRECTORY).list()?.toSet().orEmpty()
 
+    @Test fun convertedMovingAndStillVideosReachTheSameNativeGifPreparation(): Unit=runBlocking {
+        for(asset in listOf("gif/colors.mp4","preview-video.mp4")) {
+            val input=File.createTempFile("gif-native-",".mp4",app.cacheDir)
+            val output=File(app.filesDir,"floating_exports/generated-native-test.gif").apply { parentFile!!.mkdirs() }
+            try {
+                instrumentation.context.assets.open(asset).use { from -> input.outputStream().use { from.copyTo(it) } }
+                one.njk.sao.floating.VideoGifTranscoder(app).gif(input,output)
+                val uri=FileProvider.getUriForFile(app,"${app.packageName}.fileprovider",output)
+                withContext(Dispatchers.IO) {
+                    InstagramGifFile.prepare(app,uri).use { staged ->
+                        assertTrue(staged.width>0 && staged.height>0)
+                        assertArrayEquals(output.readBytes(),staged.file.readBytes())
+                    }
+                }
+            } finally { input.delete(); output.delete() }
+        }
+    }
+
     @Test fun uriAndByteStreamsPreserveTheSameAnimatedFile() = runBlocking {
         val bytes = bytes()
         val original = File(app.filesDir, "floating_exports/native-gif-test.gif").apply { parentFile!!.mkdirs(); writeBytes(bytes) }

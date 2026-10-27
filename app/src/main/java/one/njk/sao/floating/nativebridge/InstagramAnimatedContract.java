@@ -11,7 +11,7 @@ import java.util.function.BooleanSupplier;
 
 /** Inspected 451 local animated-attachment upload, separate from catalog-ID GIF sending. */
 final class InstagramAnimatedContract {
-    private final Field sessionField, mediaType, shareType, path, mime, width, height, directUpload, modernUpload, legacyUpload;
+    private final Field sessionField, mediaRestricted, mediaType, shareType, path, mime, width, height, directUpload, modernUpload, legacyUpload;
     private final Field pendingStore, pendingFactory, mutationFactory;
     private final Constructor<?> pendingConstructor, requestConstructor, commandConstructor;
     private final Method dimensions, aspect, usesModernUpload, metadata, pendingManager, register, startUpload;
@@ -26,7 +26,10 @@ final class InstagramAnimatedContract {
         Class<?> descriptor = loader.loadClass("X.04Jj"), request = loader.loadClass("X.0Aqe"), thread = loader.loadClass("X.0PTm");
         Class<?> manager = loader.loadClass("com.instagram.pendingmedia.service.impl.PendingMediaManager");
         Class<?> store = loader.loadClass("X.07uj"), mutations = loader.loadClass("X.04vr"), command = loader.loadClass("X.0LE2");
-        sessionField = field(loader.loadClass("X.01TL"), "A02", session, false);
+        // The active, recipient-bound DM controller owns the session. GIF uploads do
+        // not require the independent gallery/video callback contract to be present.
+        sessionField = field(loader.loadClass("X.01SB"), "A0v", session, false);
+        mediaRestricted = field(loader.loadClass("X.01ZC"), "A04", boolean.class, false);
         pendingConstructor = pending.getConstructor(String.class);
         mediaType = field(pending, "A10", type, false); shareType = field(pending, "A1r", share, false);
         path = field(pending, "A4k", String.class, false); mime = field(pending, "A4o", String.class, false);
@@ -66,9 +69,13 @@ final class InstagramAnimatedContract {
         try { return new InstagramAnimatedContract(loader); }
         catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { return null; }
     }
-    Object session(Object sender) {
-        try { return sender == null || !sessionField.getDeclaringClass().isInstance(sender) ? null : sessionField.get(sender); }
+    Object session(Object controller) {
+        try { return controller == null || !sessionField.getDeclaringClass().isInstance(controller) ? null : sessionField.get(controller); }
         catch (IllegalAccessException | RuntimeException ignored) { return null; }
+    }
+    boolean acceptsMedia(Object listener) {
+        try { return mediaRestricted.getDeclaringClass().isInstance(listener) && !mediaRestricted.getBoolean(listener); }
+        catch (IllegalAccessException | RuntimeException ignored) { return false; }
     }
     record LocalAnimation(Object pending, Object metadata) { }
     LocalAnimation localAnimation(InstagramGifFile gif) throws ReflectiveOperationException {

@@ -15,6 +15,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeout
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -137,6 +139,42 @@ class VideoDeviceTest {
                 registry.clear()
             }
         } finally { registry.clear(); FloatingSession.active(beforeActive); preferences.pasteAssistance(before.pasteAssistance) }
+    }
+
+    @Test fun instagramGifOnlyCapabilityConvertsCenteredMp4OnExplicitPaste(): Unit=runBlocking {
+        val registry=one.njk.sao.floating.nativebridge.NativeBridgeRegistry
+        val active=FloatingSession.active.value
+        val preferences=FloatingPreferences(app); val before=preferences.current()
+        val sent=CompletableDeferred<ByteArray>()
+        try {
+            FloatingSession.active(true); preferences.pasteAssistance(false)
+            registry.register("com.instagram.android",object: one.njk.sao.floating.nativebridge.TestNativeClient() {
+                override fun setActive(active: Boolean,generation: Long)=Unit
+                override fun snapshot(beginSelection: Boolean)=android.os.Bundle().apply {
+                    putString("session","gif-video-ui"); putLong("created",SystemClock.elapsedRealtime())
+                    putStringArray("mime_types",arrayOf("image/jpeg","image/gif")); putBoolean("resumed",true)
+                }
+                override fun insert(uri: android.net.Uri,mimeType: String,session: String,requestId: Long): Int {
+                    assertEquals("image/gif",mimeType)
+                    sent.complete(app.contentResolver.openInputStream(uri)!!.use { it.readBytes() })
+                    return one.njk.sao.floating.nativebridge.NativeInsertResult.ACCEPTED.wireValue
+                }
+            })
+            ActivityScenario.launch<PickerActivity>(PickerActivity.intent(app,"com.instagram.android",null,"gif-video-ui")).use { scenario ->
+                await(scenario,"GIF-only native capability enables MP4 Paste") {
+                    holder(it)?.item?.isVideo==true && it.findViewById<View>(R.id.paste_action).isEnabled
+                }
+                assertFalse("Centering alone never sends",sent.isCompleted)
+                scenario.onActivity { it.findViewById<View>(R.id.paste_action).performClick() }
+                val gif=withTimeout(30_000) { sent.await() }
+                assertEquals("GIF89a",gif.copyOfRange(0,6).toString(Charsets.US_ASCII))
+                @Suppress("DEPRECATION") val decoded=android.graphics.Movie.decodeByteArray(gif,0,gif.size)
+                assertNotNull(decoded); assertEquals(128,decoded!!.width()); assertEquals(192,decoded.height())
+                assertEquals(2000,decoded.duration())
+            }
+        } finally {
+            registry.clear(); FloatingSession.active(active); preferences.pasteAssistance(before.pasteAssistance)
+        }
     }
     @Test fun instagramVideoFailureExplainsTheActualNativeGate() = runBlocking {
         val registry = one.njk.sao.floating.nativebridge.NativeBridgeRegistry

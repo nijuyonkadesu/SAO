@@ -19,7 +19,8 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
     private val source: MediaSource,
     private val dispatchers: FloatingDispatchers = FloatingDispatchers(),
     private val transcoder: VideoTranscoder = VideoTranscoder(context, dispatchers),
-    private val store: MediaExportStore = MediaExportStore(context, dispatchers)) {
+    private val store: MediaExportStore = MediaExportStore(context, dispatchers),
+    private val gifs: VideoGifTranscoder = VideoGifTranscoder(context,dispatchers)) {
     /** Home Share uses the displayed rendition, including animation/video; never fetch its original. */
     suspend fun displayed(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
         require(item.id.matches(Regex("[a-z0-9_-]+")))
@@ -125,6 +126,22 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
             }
         }
         store.exported(file,"video/mp4")
+    }
+
+    /** Only the explicit Instagram GIF fallback uses this cache policy; ordinary copies stay exact. */
+    suspend fun instagramGif(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
+        require(item.isVideo)
+        require(item.id.matches(Regex("[a-z0-9_-]+")))
+        val file=store.write(MediaExportKey(item,MediaExportPolicy.InstagramGif),"gif") { staging ->
+            source.withRendition(item,Rendition.ORIGINAL) { handle ->
+                val scratch=if(handle.file==null) File.createTempFile("gif-input-",".pending",store.directory) else null
+                try {
+                    if(scratch!=null) handle.openStream().use { from -> scratch.outputStream().use { MediaExportStore.copy(from,it) } }
+                    store.conversions.withPermit { gifs.gif(handle.file ?: requireNotNull(scratch),staging) }
+                } finally { scratch?.delete() }
+            }
+        }
+        store.exported(file,"image/gif")
     }
 
     /** Called only after the user explicitly chooses the receiving app's smaller-copy option. */

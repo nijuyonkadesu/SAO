@@ -72,6 +72,9 @@
     <string name="media_export_failed">Could not produce a valid compatible video. The original is unchanged.</string>
     <string name="media_export_size_unavailable">Could not fit this copy within the app’s limit while preserving its dimensions and required features. Use the original instead.</string>
     <string name="media_export_image_memory">This image is too large to convert safely at full resolution. Use the original instead.</string>
+    <string name="media_export_gif_unavailable">Could not convert this video to a GIF at its original resolution and timing. Use DM to attach the original.</string>
+    <string name="media_export_gif_memory">This video is too large to convert safely to a GIF at full resolution. Use DM to attach the original.</string>
+    <string name="media_export_gif_timeout">GIF conversion took too long. Use DM to attach the original video.</string>
     <string name="media_discord_size_title">Large Discord attachment</string>
     <string name="media_discord_oversized">This file is %1$s. Discord’s free limit is 20 MB; Nitro accounts may allow more.</string>
     <string name="media_discord_smaller_description">\n\nUse the original, or make a smaller copy for this send. A smaller copy may reduce quality. The original is kept.</string>

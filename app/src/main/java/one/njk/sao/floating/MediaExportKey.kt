@@ -11,6 +11,7 @@ internal sealed interface MediaExportPolicy {
     data object Displayed : MediaExportPolicy
     data class Prepared(val rendition: ExportRendition, val sticker: StickerRequirements) : MediaExportPolicy
     data object CompatibleMp4 : MediaExportPolicy
+    data object InstagramGif : MediaExportPolicy
     data class Limited(val mime: String, val maxBytes: Long) : MediaExportPolicy
 }
 
@@ -39,6 +40,7 @@ internal data class MediaExportKey(val item: MediaItem, val policy: MediaExportP
                         data.writeInt(operation.sticker.maxBytes)
                     }
                     MediaExportPolicy.CompatibleMp4 -> field("compatible-mp4")
+                    MediaExportPolicy.InstagramGif -> field("instagram-gif-gifski-1.34-v1")
                     is MediaExportPolicy.Limited -> {
                         field("limited"); field(operation.mime); data.writeLong(operation.maxBytes)
                     }

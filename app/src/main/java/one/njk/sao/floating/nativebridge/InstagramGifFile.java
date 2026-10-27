@@ -3,6 +3,7 @@ package one.njk.sao.floating.nativebridge;
 import android.content.Context;
 import android.graphics.ImageDecoder;
 import android.graphics.drawable.AnimatedImageDrawable;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import java.io.File;
@@ -11,7 +12,7 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-/** Validates animation without transcoding, decoding a full-size bitmap, or using a provider ID. */
+/** Validates GIF bytes without transcoding, full-size bitmap allocation, or a provider ID. */
 final class InstagramGifFile implements AutoCloseable {
     final File file;
     final int width, height;
@@ -38,11 +39,13 @@ final class InstagramGifFile implements AutoCloseable {
             Drawable decoded = ImageDecoder.decodeDrawable(ImageDecoder.createSource(staged.file), (decoder, info, sourceInfo) -> {
                 if (!"image/gif".equals(info.getMimeType())) throw new IllegalArgumentException("Not a GIF file");
                 size[0] = info.getSize().getWidth(); size[1] = info.getSize().getHeight();
-                // Only validate the animation; Instagram receives the unmodified original.
+                // Only validate the GIF; Instagram receives the unmodified original.
                 decoder.setTargetSize(1, 1);
             });
-            if (!(decoded instanceof AnimatedImageDrawable) || size[0] <= 0 || size[1] <= 0)
-                throw new IOException("GIF does not contain an animation");
+            // An encoder may losslessly merge a still clip into one GIF frame. Android
+            // exposes that valid image/gif as BitmapDrawable, not AnimatedImageDrawable.
+            if (!(decoded instanceof AnimatedImageDrawable || decoded instanceof BitmapDrawable) || size[0] <= 0 || size[1] <= 0)
+                throw new IOException("GIF could not be decoded");
             valid = true;
             return new InstagramGifFile(staged, size[0], size[1]);
         } finally { if (!valid) staged.close(); }

@@ -26,4 +26,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = 'SAO'
-include ':app', ':source-api', ':source-settings'
+include ':app', ':source-api', ':source-settings', ':gif-encoder'

@@ -31,7 +31,12 @@ The [Moeview extension](docs/moeview-source.md) adds Yande.re, Konachan, Gelboor
 - [x] MVVM - Architecture
 - [x] Gradle Version Catalog
 - 
+## Building
+
+Building SAO also requires the small native GIF encoder's [Rust/NDK build setup](gif-encoder/README.md). Video decoding uses Android/Media3; FFmpeg is not bundled.
+
 ## Download APK
+
 Go to the [Releases](https://github.com/nijuyonkadesu/SAO/releases/tag/Release) to download the latest APK
 
 ## TODO
