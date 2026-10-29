@@ -455,26 +455,27 @@ class PickerActivity : AppCompatActivity() {
         binding.sourceToggle.contentDescription = getString(R.string.source_hold_accessibility, label)
         androidx.appcompat.widget.TooltipCompat.setTooltipText(binding.sourceToggle, binding.sourceToggle.contentDescription)
     }
-    private fun nativeUnavailableHint(video: Boolean = false): String {
+    private fun nativeUnavailableHint(video: Boolean = false, sticker: Boolean = false): String {
         val status = NativeBridgeRegistry.status(targetPackage)
         if (!NativeBridgeRegistry.available(targetPackage)) return getString(R.string.picker_native_inactive)
-        if (video && target == MessagingTarget.INSTAGRAM && status != null) {
-            val gif=options.instagramVideoRoute==InstagramVideoRoute.GIF
+        if ((video || sticker) && target == MessagingTarget.INSTAGRAM && status != null) {
+            val gif = sticker || options.instagramVideoRoute == InstagramVideoRoute.GIF
+            val mediaStage = if (sticker) status.gifStage else status.videoStage
             val reason = getString(when {
                 status.revision < NativeBridgeRegistry.PROTOCOL_REVISION && status.version.isNotEmpty() -> R.string.picker_instagram_hooks_old
                 status.stage == "selection_timeout" -> R.string.picker_instagram_capture_timeout
-                gif && status.gifStage=="gif_unavailable" -> R.string.picker_instagram_gif_unavailable
+                gif && status.gifStage=="gif_unavailable" -> if (sticker) R.string.picker_instagram_sticker_handler_unavailable else R.string.picker_instagram_gif_unavailable
                 gif && status.gifStage=="session_missing" -> R.string.picker_instagram_thread_unresolved
-                gif && status.gifStage=="ready" -> R.string.picker_instagram_gif_reopen
-                status.videoStage == "gallery_loading" -> R.string.picker_instagram_gallery_loading
-                status.videoStage == "gallery_unavailable" -> R.string.picker_instagram_gallery_unavailable
-                status.videoStage == "thread_unresolved" -> R.string.picker_instagram_thread_unresolved
-                status.videoStage == "media_restricted" -> R.string.picker_instagram_media_restricted
-                status.videoStage == "sender_missing" -> R.string.picker_instagram_sender_missing
-                status.videoStage == "ambiguous_composer" -> R.string.picker_instagram_composer_ambiguous
-                status.videoStage == "pending_metadata" || status.stage == "pending_metadata" -> R.string.picker_native_metadata_pending
+                gif && status.gifStage=="ready" -> if (sticker) R.string.picker_instagram_sticker_reopen else R.string.picker_instagram_gif_reopen
+                mediaStage == "gallery_loading" -> R.string.picker_instagram_gallery_loading
+                mediaStage == "gallery_unavailable" -> R.string.picker_instagram_gallery_unavailable
+                mediaStage == "thread_unresolved" -> R.string.picker_instagram_thread_unresolved
+                mediaStage == "media_restricted" -> R.string.picker_instagram_media_restricted
+                mediaStage == "sender_missing" -> R.string.picker_instagram_sender_missing
+                mediaStage == "ambiguous_composer" -> R.string.picker_instagram_composer_ambiguous
+                mediaStage == "pending_metadata" || status.stage == "pending_metadata" -> R.string.picker_native_metadata_pending
                 status.stage == "hooks_unavailable" -> R.string.picker_native_hooks_unavailable
-                status.videoStage == "ready" -> R.string.picker_instagram_video_reopen
+                mediaStage == "ready" -> R.string.picker_instagram_video_reopen
                 else -> R.string.picker_native_focus
             })
             val version = status.version.ifEmpty { "—" } + status.build.takeIf { it.isNotEmpty() }?.let { "/$it" }.orEmpty()
@@ -545,7 +546,9 @@ class PickerActivity : AppCompatActivity() {
                 (item.mimeType == "image/gif" || item.isVideo && options.instagramVideoRoute == InstagramVideoRoute.GIF) -> getString(R.string.picker_instagram_select_sticker)
             target == MessagingTarget.INSTAGRAM && options.preferStickers && item?.isVideo == true &&
                 options.instagramVideoRoute != InstagramVideoRoute.GIF -> getString(R.string.picker_instagram_enable_gif)
-            target == MessagingTarget.INSTAGRAM && options.preferStickers && item?.hasMotion == false -> getString(R.string.picker_instagram_select_media)
+            target == MessagingTarget.INSTAGRAM && options.preferStickers && item != null && !item.hasMotion &&
+                InstagramStickerFormat.forInput(item.mimeType) == null -> getString(R.string.picker_instagram_select_media)
+            target == MessagingTarget.INSTAGRAM && options.preferStickers && item?.hasMotion == false -> nativeUnavailableHint(sticker = true)
             nativePaste && target == MessagingTarget.INSTAGRAM && item?.mimeType == "image/gif" -> getString(R.string.picker_instagram_native_gif_hint)
             nativePaste && target == MessagingTarget.INSTAGRAM && item?.isVideo == true -> getString(
                 if(nativeMediaMime(item)=="image/gif") R.string.picker_instagram_video_gif_hint else R.string.picker_instagram_native_video_hint)

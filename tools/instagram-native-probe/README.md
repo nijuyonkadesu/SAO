@@ -93,9 +93,11 @@ it is never compiled as shader code. The probe also recreates the same native
 listener Binding, validates the captured recipient again, and rejects a changed
 account. The revision-12 probe passed 65 boolean checks.
 
-The static-image candidate adds a synthetic transparent PNG and a tiny JPEG with
+The static-image probe adds a synthetic transparent PNG and a tiny JPEG with
 EXIF orientation 6. Checks compare straight decoded RGBA, dimensions/orientation,
 alpha, untouched source bytes, exact staged WebP bytes and native sticker upload
 metadata. The still encoder must reject animated input instead of flattening it.
 The complete 447 probe now passes **80 boolean checks**; any false boolean fails
-instrumentation. These tests do not establish authenticated static-sticker delivery.
+instrumentation. These tests do not establish authenticated static-sticker delivery;
+the user separately confirmed a JPEG sticker send on physical Instagram 447 with
+hooks 13 after force-stopping the process that still held pre-update hooks.

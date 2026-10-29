@@ -13,7 +13,7 @@ distinct from Instagram's provider-GIF message route. The latter returned HTTP 4
 for locally uploaded GIFs and remains unsupported. Sections 8–11 retain those
 failed experiments and their corrections; sections 12–14 describe the committed
 implementation and its physical verification. Section 15 records the static-photo
-candidate and its separate verification boundary. Conversion-speed optimization
+implementation and its physical verification. Conversion-speed optimization
 is deferred at the user's request.
 
 The working animated-sticker chain is:
@@ -581,7 +581,7 @@ tested videos, and the user confirmed delivery. The picker remained responsive.
 Conversion latency remains a separate follow-up; no speed claim follows from the
 correctness checks.
 
-## 15. Static-photo sticker preparation (revision 13 candidate)
+## 15. Static-photo stickers (revision 13)
 
 `InstagramStickerFormat` now advertises private still-image renditions only when
 `ImageDecoder.isMimeTypeSupported` accepts the source MIME on that device; this
@@ -619,4 +619,20 @@ pending metadata. Comparing premultiplied PNG/WebP decoder output initially show
 small rounding differences; compare straight RGBA when testing lossless encoded
 content. Failed boolean checks now fail instrumentation rather than merely
 appearing as `false` in a successful report. These checks invoke no uploader or
-sender: **revision-13 static-sticker delivery still needs the physical phone test**.
+sender; physical verification is separate.
+
+The user initially saw “image format unavailable” for every JPEG after installing
+the new SAO APK. Instagram's process still predated that install: updating SAO
+had not replaced its injected classes or the old private-rendition capability set.
+The picker also incorrectly mapped **every unavailable static Sticker action** to
+an unsupported-format message. Do not infer failed conversion from a disabled
+action; no conversion has started there.
+
+After an authorized force-stop/relaunch, scoped `SAO.NativeBridge` logs confirmed
+**hooks 13**, `gif=ready` and `image/jpeg.igsticker` in the captured editor's MIME
+set. The user's explicit JPEG Paste encoded **640×480** lossless WebP, completed
+upload/configuration/send with `nativeError=false`, and the user confirmed static
+stickers work. The picker now reserves the format warning for an unrecognized
+source MIME; supported stills use the actual hook/session/handler diagnostic,
+including an explicit **force-stop/reopen** instruction for older hooks. No
+conversion or native sending changes were required for this incident.
