@@ -509,9 +509,66 @@ independently verified with ffprobe/Pillow. All 59 native probe checks passed.
 Targeted device checks cover GIF bytes/colors/timing/rotation/cancellation, bounded
 staging, stalled handoff access and client replacement during an ongoing operation.
 A replaced client cannot clear its replacement’s operation or editor state. Physical
-latency/high-resolution verification is pending; these fixture checks are not a speed benchmark for the user's phone.
+verification exposed the two integration regressions below; fixture checks alone
+do not establish injected-process correctness or phone latency.
 
 Pending: **static-photo native stickers**. Ordinary photo Paste already works,
 but Sticker mode for a static photo is not implemented; it must not silently
 send a normal attachment. Also complete the source-independent As GIF control and
 size feedback after the Instagram performance path is verified.
+
+## 13. Injected Media3 resource context (revision 11)
+
+Revision 10's standalone encoder used its own app context, so its Media3 shader
+resources resolved correctly. In the injected process the same code received
+Instagram's context: **resource IDs belong to an APK**, and a Media3 raw-shader ID
+could resolve to unrelated Instagram resource bytes. An explicit foreign-context
+negative control reproduced invalid shader input (`GlProgram.addShader`); on the
+emulator its invalid GL error text also triggered CheckJNI's UTF-8 assertion.
+Do not run that unsafe negative control routinely. The regression probe instead
+compares the raw shader bytes from the correct/foreign Resources without compiling
+foreign bytes as GLSL.
+
+`NativeModuleResources` obtains SAO's resource package from the already-validated
+FileProvider authority using `createPackageContext(package,0)`, without starting
+its Application. A small ContextWrapper overrides Resources/AssetManager and
+retains that wrapper through `getApplicationContext()`. Identity, storage and
+services still belong to Instagram's UID. Media3 therefore gets its own shaders
+without attempting to use SAO's private storage as Instagram. This is separate
+from Instagram's installed decoder/encoder ClassLoader. The corrected probe
+also checks the retained host identity; actual phone logs now confirmed direct
+video conversion completed. No private filenames or URI/error messages are logged.
+
+## 14. Accepted recipient versus an ephemeral editor lease (revision 12)
+
+Comparing the earlier working export flow with revision 10 isolated another
+behavioral change: heavy conversion formerly finished in SAO before handoff;
+now it ran after initial native acceptance. `NativeEditorSession` nevertheless
+validated the temporary focus/token again afterward. Reopening SAO could remove
+focus, and normal listener reconstruction allocated a new Binding. The animated
+adapter also compared Binding **object identity**, rejecting an otherwise identical
+account/controller/recipient after its wrapper was recreated.
+
+Only preparations declaring `hasCapturedRecipient()` now reserve/consume their
+one-use lease at acceptance, before IO. A request-owned CapturedContent keeps its
+original URI/MIME/token/request ID, recipient identity, activity/editor and scope
+epoch. Final dispatch checks those captured values, lifetime, actual recipient
+and handler availability; it does not require renewed foreground focus or the
+newly generated UI token. Preparation and insertion each remain one-use. Scope
+reset, confirmed chat change, account/controller change and editor replacement
+still reject. Keyboard/other unbound preparations retain their existing focused
+editor checks. A temporary unresolved metadata snapshot revokes UI capabilities
+without treating it as proof of a changed accepted recipient.
+
+The Instagram guard compares actual account/controller/recipient metadata instead
+of Binding allocation identity. The real-class probe checks recreated listeners
+and changed-account rejection. Targeted instrumentation checks token renewal,
+covered-host dispatch, replay rejection, chat/scope changes and existing keyboard
+lease rules. The probe passes **65 boolean checks** and the five targeted lease
+tests pass. Explicit failed dispatch diagnostics contain bounded reason codes;
+preparation diagnostics contain exception types and code-method/line frames,
+never exception messages, private paths, media URLs or IDs. Physical revision-12
+retries completed native upload/configuration/send without a native error for both
+tested videos, and the user confirmed delivery. The picker remained responsive.
+Conversion latency remains a separate follow-up; no speed claim follows from the
+correctness checks.

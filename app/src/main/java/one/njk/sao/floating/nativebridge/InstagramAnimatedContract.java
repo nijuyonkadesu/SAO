@@ -167,7 +167,7 @@ final class InstagramAnimatedContract {
             if (sourceMime.startsWith("video/")) {
                 try (InstagramMediaFile original = InstagramMediaFile.prepare(context,
                         InstagramMediaFile.fromUri(context, uri), ".video", NativeVideoMetadata.MAX_BYTES)) {
-                    java.io.File webp = stickerEncoder.convertVideo(context, original.file);
+                    java.io.File webp = stickerEncoder.convertVideo(NativeModuleResources.mediaContext(context, uri), original.file);
                     try { gif = InstagramAnimationFile.prepareWebp(context, webp); }
                     finally { webp.delete(); }
                 }

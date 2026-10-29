@@ -133,6 +133,54 @@ class NativeBridgeDeviceTest {
             content.close()
         }
     }
+    @Test fun capturedRecipientSurvivesFocusAndTokenRenewalButRemainsOneUse() {
+        withHost { activity, editor ->
+            val inserts=AtomicInteger()
+            val policy=object : Policy() {
+                override fun captureContent(context: Context,view: EditText,uri: Uri,mimeType: String)=object : NativeContentPreparation {
+                    override fun hasCapturedRecipient()=true
+                    override fun prepare()=PreparedNativeContent { _, _ -> inserts.incrementAndGet(); true }
+                }
+            }
+            val session=NativeEditorSession(policy,app.packageName)
+            session.capture(activity,editor,Recorder(editor),EditorInfo().apply { contentMimeTypes=arrayOf("image/gif") })
+            val token=session.snapshot(activity,true).getString("session")!!
+            val uri=Uri.parse("content://${app.packageName}.fileprovider/floating_exports/accepted.gif")
+            val preparation=session.captureContent(activity,true,uri,"image/gif",token,1)!!
+            assertNull("Capture reserves the accepted one-use token",session.captureContent(activity,true,uri,"image/gif",token,2))
+            assertNotEquals(token,session.snapshot(activity,true).getString("session"))
+            val content=preparation.prepare()
+            assertNull("Preparation cannot run a second time",preparation.prepare())
+            assertTrue("A covered host does not cancel an already captured native recipient",session.insert(activity,false,uri,"image/gif",token,1,content))
+            assertFalse(session.insert(activity,true,uri,"image/gif",token,1,content))
+            assertEquals(1,inserts.get()); content.close()
+        }
+    }
+    @Test fun capturedRecipientRejectsChatChangeAndScopeResetDuringPreparation() {
+        withHost { activity,editor ->
+            val inserts=AtomicInteger()
+            val policy=object : Policy() {
+                override fun captureContent(context: Context,view: EditText,uri: Uri,mimeType: String)=object : NativeContentPreparation {
+                    override fun hasCapturedRecipient()=true
+                    override fun prepare()=PreparedNativeContent { _, _ -> inserts.incrementAndGet(); true }
+                }
+            }
+            val session=NativeEditorSession(policy,app.packageName)
+            fun capture()=session.capture(activity,editor,Recorder(editor),EditorInfo().apply { contentMimeTypes=arrayOf("image/gif") })
+            val uri=Uri.parse("content://${app.packageName}.fileprovider/floating_exports/accepted.gif")
+            capture()
+            val first=session.snapshot(activity,true).getString("session")!!
+            val changed=session.captureContent(activity,true,uri,"image/gif",first,1)!!.prepare()
+            policy.identity="synthetic-thread-b"
+            assertFalse(session.insert(activity,false,uri,"image/gif",first,1,changed)); changed.close()
+            policy.identity="synthetic-thread-a"; capture()
+            val second=session.snapshot(activity,true).getString("session")!!
+            val stopped=session.captureContent(activity,true,uri,"image/gif",second,2)!!.prepare()
+            session.clear(); capture()
+            assertFalse(session.insert(activity,true,uri,"image/gif",second,2,stopped)); stopped.close()
+            assertEquals(0,inserts.get())
+        }
+    }
     @Test fun chatSwapRecreationExpiryAndDetachedEditorInvalidateOriginalLease() {
         withHost { activity, editor ->
             val recorder = Recorder(editor); val policy = Policy(); val clock = AtomicLong(SystemClock.elapsedRealtime())

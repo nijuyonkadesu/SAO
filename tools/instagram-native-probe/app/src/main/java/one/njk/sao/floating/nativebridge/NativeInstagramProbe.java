@@ -151,7 +151,17 @@ public final class NativeInstagramProbe extends Instrumentation {
                         }
                     }
                     if (animated != null) {
-                        set(owner, fixture.sessionField(), blank(loader, "com.instagram.common.session.UserSession"));
+                        Object capturedSession=blank(loader,"com.instagram.common.session.UserSession");
+                        set(owner, fixture.sessionField(), capturedSession);
+                        String capturedIdentity=policy.identity(host,view);
+                        NativeContentPreparation captured=policy.captureContent(getTargetContext(),view,
+                            android.net.Uri.parse("content://one.njk.sao.instagramprobe.fileprovider/fixture.gif"),InstagramStickerFormat.GIF);
+                        report.put("native_sticker_captures_recipient_before_preparation",captured!=null && captured.hasCapturedRecipient());
+                        policy.configured(view,listener,configure.getParameterTypes()[1]);
+                        report.put("listener_recreation_keeps_same_native_recipient",policy.sameCapturedRecipient(view,capturedIdentity,owner,capturedSession));
+                        set(owner,fixture.sessionField(),blank(loader,"com.instagram.common.session.UserSession"));
+                        report.put("recreated_listener_rejects_changed_account",!policy.sameCapturedRecipient(view,capturedIdentity,owner,capturedSession));
+                        set(owner,fixture.sessionField(),capturedSession);
                         report.put("animated_gif_capability", java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains(InstagramStickerFormat.GIF));
                         report.put("animated_gif_status_ready", policy.gifStatus().equals("ready"));
                         set(owner, fixture.ownerSender(), null);
@@ -267,11 +277,23 @@ public final class NativeInstagramProbe extends Instrumentation {
                     InstagramAnimatedContract animated = InstagramAnimatedContract.load(loader);
                     if (animated != null) {
                         initializeCodecRuntime(instagram, loader);
+                        Context mediaContext=NativeModuleResources.mediaContext(instagram,
+                            android.net.Uri.parse("content://"+getTargetContext().getPackageName()+".fileprovider/fixture"));
+                        int shader=getTargetContext().getResources().getIdentifier("vertex_shader_transformation_es2","raw",getTargetContext().getPackageName());
+                        byte[] expectedShader, actualShader, foreignShader;
+                        try(java.io.InputStream input=getTargetContext().getResources().openRawResource(shader)) { expectedShader=input.readAllBytes(); }
+                        try(java.io.InputStream input=mediaContext.getResources().openRawResource(shader)) { actualShader=input.readAllBytes(); }
+                        try(java.io.InputStream input=instagram.getResources().openRawResource(shader)) { foreignShader=input.readAllBytes(); }
+                        catch(android.content.res.Resources.NotFoundException expected) { foreignShader=new byte[0]; }
+                        report.put("injected_shader_resources_match_module",java.util.Arrays.equals(expectedShader,actualShader));
+                        report.put("foreign_context_cannot_supply_module_shader",!java.util.Arrays.equals(expectedShader,foreignShader));
+                        report.put("shader_context_keeps_native_host_identity",mediaContext.getPackageName().equals(instagram.getPackageName()) &&
+                            mediaContext.getApplicationInfo().dataDir.equals(instagram.getApplicationInfo().dataDir));
                         for (String extension : java.util.List.of("mp4", "webm", "hd")) {
                             File clip = new File(getTargetContext().getCacheDir(), "sticker-video-fixture." + extension);
                             try (java.io.InputStream in = getTargetContext().getAssets().open(extension.equals("hd") ? "sticker-hd.mp4" : "preview-video." + extension);
                                  java.io.OutputStream out = new java.io.FileOutputStream(clip)) { in.transferTo(out); }
-                            File resultFile = new InstagramStickerEncoder(loader).convertVideo(getTargetContext(), clip);
+                            File resultFile = new InstagramStickerEncoder(loader).convertVideo(mediaContext, clip);
                             try (InstagramAnimationFile videoSticker = InstagramAnimationFile.prepareWebp(getTargetContext(), resultFile)) {
                                 report.put(extension + "_direct_sticker_decodable", videoSticker.width > 0 && videoSticker.height > 0);
                                 Files.copy(videoSticker.file.toPath(), new File(getTargetContext().getFilesDir(), "native-video-" + extension + ".webp").toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);

@@ -85,3 +85,10 @@ It is included only in this standalone probe, never the production SAO APK.
 The final native probe passes 59 boolean checks. Separately, the host's targeted
 instrumentation tests verify conversion bytes/colors/timing and nonblocking,
 nonreplayed bridge operations, including native-client replacement mid-operation.
+
+The injected-context regression checks compare a Media3 raw shader's bytes against
+the module resource context and verify that the wrapper keeps the native host's
+identity/storage. The foreign resource ID is read only as a negative control;
+it is never compiled as shader code. The probe also recreates the same native
+listener Binding, validates the captured recipient again, and rejects a changed
+account. The current complete probe passes 65 boolean checks.

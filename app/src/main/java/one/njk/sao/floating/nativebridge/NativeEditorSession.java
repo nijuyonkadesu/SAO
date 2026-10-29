@@ -30,6 +30,8 @@ final class NativeEditorSession {
     private long created;
     private long lastRequest;
     private String status = "waiting_editor";
+    private long epoch;
+    private String rejection = "none";
 
     NativeEditorSession(ComposerPolicy policy, String modulePackage) {
         this(policy, modulePackage, SystemClock::elapsedRealtime);
@@ -39,6 +41,7 @@ final class NativeEditorSession {
     }
     boolean owns(EditText view) { return editor.get() == view; }
     void clear() {
+        epoch++;
         input = null; receiveContent = false; session = null; identity = null; mimeTypes = new String[0]; baseMimeTypes = new String[0]; revoked = false;
         editor.clear(); activity.clear(); status = "waiting_editor";
     }
@@ -60,7 +63,10 @@ final class NativeEditorSession {
         // Retain the naturally created wrapper while the host finishes loading its metadata.
         // No lease exists until that metadata is verified. A changed established identity
         // still invalidates the token and cannot reuse an old conversation selection.
-        if (activity.get() != current || editor.get() != view || nextIdentity == null || !nextIdentity.equals(identity)) session = null;
+        if (activity.get() != current || editor.get() != view || nextIdentity == null || !nextIdentity.equals(identity)) {
+            if (activity.get() != current || editor.get() != view || identity != null && nextIdentity != null && !identity.equals(nextIdentity)) epoch++;
+            session = null;
+        }
         activity = new WeakReference<>(current); editor = new WeakReference<>(view);
         input = connection; receiveContent = receiver; identity = nextIdentity; baseMimeTypes = base.clone(); mimeTypes = types.clone(); revoked = false;
     }
@@ -80,7 +86,10 @@ final class NativeEditorSession {
         }
         return snapshot(current, resumed);
     }
-    private void revoke() { session = null; revoked = true; status = "editor_changed"; }
+    private void revoke(boolean changedRecipient) {
+        if (changedRecipient) epoch++;
+        session = null; revoked = true; status = "editor_changed";
+    }
     Bundle snapshot(Activity current, boolean resumed) {
         Bundle state = new Bundle();
         EditText view = editor.get();
@@ -96,9 +105,9 @@ final class NativeEditorSession {
             identity = actual;
         } else if (actual == null || !actual.equals(identity)) {
             if (actual != null && ready && policy.renewFocusedDraft()) {
-                identity = actual; session = null; // Fresh foreground selection; the old token is revoked.
+                epoch++; identity = actual; session = null; // Fresh foreground selection; the old token is revoked.
             } else {
-                revoke(); state.putString("status", status); return state;
+                revoke(actual != null); state.putString("status", status); return state;
             }
         }
         status = ready ? "ready" : "unfocused";
@@ -125,20 +134,77 @@ final class NativeEditorSession {
             (view, connection) -> policy.insertContent(view, connection, uri, mimeType));
     }
     NativeContentPreparation captureContent(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId) {
-        return accepts(current, resumed, uri, mimeType, expected, requestId)
-            ? policy.captureContent(current.getApplicationContext(), editor.get(), uri, mimeType) : null;
+        if (!accepts(current, resumed, uri, mimeType, expected, requestId)) return null;
+        NativeContentPreparation preparation = policy.captureContent(current.getApplicationContext(), editor.get(), uri, mimeType);
+        if (preparation == null || !preparation.hasCapturedRecipient()) return preparation;
+        // This native request already owns an account/recipient, unlike an IME paste.
+        // Reserve its one-use authorization before IO; focus/token renewal afterward
+        // must not invalidate the accepted request or redirect it to a different chat.
+        long generation = epoch, acceptedAt = clock.getAsLong();
+        String recipient = identity;
+        WeakReference<Activity> owner = new WeakReference<>(current);
+        WeakReference<EditText> target = new WeakReference<>(editor.get());
+        lastRequest = requestId; session = null;
+        java.util.concurrent.atomic.AtomicBoolean prepared = new java.util.concurrent.atomic.AtomicBoolean();
+        return () -> {
+            if (!prepared.compareAndSet(false, true)) return null;
+            PreparedNativeContent content = preparation.prepare();
+            return content == null ? null : new CapturedContent(content,owner,target,recipient,uri,mimeType,expected,requestId,generation,acceptedAt);
+        };
     }
+    private final class CapturedContent implements PreparedNativeContent {
+        final PreparedNativeContent content;
+        final WeakReference<Activity> owner;
+        final WeakReference<EditText> target;
+        final String recipient, mime, token;
+        final Uri uri;
+        final long request, generation, acceptedAt;
+        boolean consumed;
+        boolean belongsTo(NativeEditorSession candidate) { return candidate == NativeEditorSession.this; }
+        CapturedContent(PreparedNativeContent content, WeakReference<Activity> owner, WeakReference<EditText> target,
+                String recipient, Uri uri, String mime, String token, long request, long generation, long acceptedAt) {
+            this.content=content; this.owner=owner; this.target=target; this.recipient=recipient;
+            this.uri=uri; this.mime=mime; this.token=token; this.request=request; this.generation=generation; this.acceptedAt=acceptedAt;
+        }
+        boolean matches(Activity current, Uri inputUri, String inputMime, String expected, long id) {
+            if (consumed) { rejection="replay"; return false; }
+            consumed=true;
+            if (request!=id || !token.equals(expected) || !uri.equals(inputUri) || !mime.equals(inputMime)) { rejection="request_changed"; return false; }
+            if (generation!=epoch || owner.get()!=current || target.get()!=editor.get() || !sameEditor(current,target.get())) { rejection="editor_changed"; return false; }
+            if (clock.getAsLong()-acceptedAt>MAX_AGE_MS) { rejection="expired"; return false; }
+            if (!recipient.equals(policy.identity(current,target.get()))) { rejection="recipient_changed"; return false; }
+            refreshCapabilities(target.get());
+            if (!Arrays.asList(mimeTypes).contains(mime)) { rejection="handler_unavailable"; return false; }
+            rejection="none"; return true;
+        }
+        @Override public boolean insert(EditText view, InputConnection connection) { return content.insert(view,connection); }
+        @Override public void close() { content.close(); }
+    }
+    String rejectionReason() { return rejection; }
     boolean accepts(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId) {
         refreshCapabilities(editor.get());
         if (uri == null || !"content".equals(uri.getScheme()) || !authority.equals(uri.getAuthority()) ||
             !Arrays.asList(mimeTypes).contains(mimeType)) return false;
         EditText view = editor.get();
-        if (!validEditor(current, view)) { if (sameEditor(current, view)) revoke(); else clear(); return false; }
+        if (!validEditor(current, view)) {
+            if (sameEditor(current, view)) {
+                String actual = policy.identity(current,view);
+                revoke(actual != null && identity != null && !actual.equals(identity));
+            } else clear();
+            return false;
+        }
         if (!resumed || !current.hasWindowFocus() || (!view.hasFocus() && !receiveContent) || expected == null || !expected.equals(session) ||
             requestId <= lastRequest || clock.getAsLong() - created > MAX_AGE_MS) return false;
         return true; // Current capabilities were refreshed before validating this request.
     }
     boolean insert(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId, PreparedNativeContent content) {
+        if (content instanceof NativeEditorSession.CapturedContent captured) {
+            if (!captured.belongsTo(this)) { rejection="session_replaced"; return false; }
+            if (!captured.matches(current,uri,mimeType,expected,requestId)) return false;
+            boolean accepted = captured.insert(captured.target.get(),input);
+            if (!accepted) rejection="native_handler_rejected";
+            return accepted;
+        }
         if (!accepts(current, resumed, uri, mimeType, expected, requestId)) return false;
         lastRequest = requestId;
         session = null; // Consume before dispatch; a false/unknown host result must never be replayed.

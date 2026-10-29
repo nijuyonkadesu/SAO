@@ -571,8 +571,14 @@ public final class SaoXposedModule extends XposedModule {
                 if (content == null) return NativeInsertResult.REJECTED.wireValue;
                 dispatching = true;
                 return MainThreadDispatch.run(main, () -> {
-                    try { return nativeActive && editorSession != null && policy == selected[0] &&
-                        editorSession.insert(activity.get(), resumed, uri, mimeType, expected, requestId, content); }
+                    try {
+                        boolean accepted = nativeActive && editorSession != null && policy == selected[0] &&
+                            editorSession.insert(activity.get(), resumed, uri, mimeType, expected, requestId, content);
+                        if (!accepted && one.njk.sao.BuildConfig.DEBUG)
+                            android.util.Log.i("SAO.NativeBridge", "prepared insert rejected; reason=" +
+                                (!nativeActive ? "inactive" : editorSession == null ? "editor_missing" : policy != selected[0] ? "policy_changed" : editorSession.rejectionReason()));
+                        return accepted;
+                    }
                     finally { publishState(); }
                 }, 3000, () -> bridgeIo.execute(content::close)).wireValue;
             } catch (NativePreparationException error) {

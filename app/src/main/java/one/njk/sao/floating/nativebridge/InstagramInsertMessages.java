@@ -19,11 +19,9 @@ final class InstagramInsertMessages {
     }
     static InstagramInsertMessages load(Context host, Uri media) {
         if (Looper.myLooper() == Looper.getMainLooper()) throw new IllegalStateException("Load feedback resources on IO");
-        String authority = media.getAuthority();
-        if (authority == null || !authority.endsWith(".fileprovider")) throw new IllegalArgumentException("Unknown module provider");
-        String module = authority.substring(0, authority.length() - ".fileprovider".length());
         try {
-            Context resources = host.createPackageContext(module, 0);
+            Context resources = NativeModuleResources.packageContext(host, media);
+            String module = resources.getPackageName();
             return new InstagramInsertMessages(host, text(resources, module, "picker_instagram_sticker_failed"),
                 text(resources, module, "picker_instagram_sticker_chat_changed"), text(resources, module, "picker_instagram_sticker_memory"),
                 text(resources, module, "picker_instagram_sticker_timeout"), text(resources, module, "picker_instagram_sticker_decode_failed"));
@@ -36,6 +34,7 @@ final class InstagramInsertMessages {
     boolean preparationFailed(Throwable error) {
         CharSequence message = decode;
         String reason = "decode";
+        if (InstagramAnimatedContract.diagnosticsEnabled()) diagnose(error);
         for (int depth = 0; error != null && depth < 8; depth++, error = error.getCause()) {
             if (error instanceof java.io.InterruptedIOException) return false;
             if (error instanceof InstagramStickerEncoder.LimitException limit) {
@@ -48,6 +47,15 @@ final class InstagramInsertMessages {
         }
         android.util.Log.w("SAO.InstagramGif", "sticker preparation failed; reason=" + reason);
         return show(message);
+    }
+    private static void diagnose(Throwable error) {
+        for (int depth = 0; error != null && depth < 8; depth++, error = error.getCause()) {
+            android.util.Log.i("SAO.InstagramGif", "preparation cause=" + error.getClass().getName());
+            StackTraceElement[] frames = error.getStackTrace();
+            for (int index = 0; index < Math.min(frames.length, 3); index++)
+                android.util.Log.i("SAO.InstagramGif", "at " + frames[index].getClassName() + "." + frames[index].getMethodName() + ":" + frames[index].getLineNumber());
+            // Exception messages can contain private paths/URIs. They are never logged.
+        }
     }
     private static CharSequence text(Context resources, String module, String name) {
         return resources.getText(resources.getResources().getIdentifier(name, "string", module));

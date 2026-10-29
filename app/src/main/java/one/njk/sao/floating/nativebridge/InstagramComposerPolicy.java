@@ -190,12 +190,23 @@ final class InstagramComposerPolicy implements ComposerPolicy {
             Object controller = binding.thread.controller(view);
             if (key == null || controller == null) return null;
             WeakReference<EditText> original = new WeakReference<>(view);
-            return () -> contract.prepare(context, uri, sourceMime, session, key, () -> {
-                EditText current = original.get();
-                return current != null && bindings.get(current) == binding &&
-                    originalIdentity.equals(identity(null, current)) && binding.thread.controller(current) == controller && animatedSession(current) == session;
-            });
+            return new NativeContentPreparation() {
+                @Override public boolean hasCapturedRecipient() { return true; }
+                @Override public PreparedNativeContent prepare() throws Exception {
+                    return contract.prepare(context, uri, sourceMime, session, key, () -> {
+                        EditText current = original.get();
+                        // Listener wrappers can be recreated during normal focus changes.
+                        // Validate their actual account/controller/recipient, not allocation identity.
+                        return sameCapturedRecipient(current,originalIdentity,controller,session);
+                    });
+                }
+            };
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { return null; }
+    }
+    boolean sameCapturedRecipient(EditText view, String originalIdentity, Object controller, Object session) {
+        Binding live = view == null ? null : bindings.get(view);
+        return live != null && live.thread != null && originalIdentity.equals(identity(null,view)) &&
+            live.thread.controller(view) == controller && animatedSession(view) == session;
     }
     @Override public PreparedNativeContent prepareContent(Context context, android.net.Uri uri, String mimeType) throws Exception {
         // A GIF must enter the recipient-bound animated upload adapter, never the bitmap IME path.

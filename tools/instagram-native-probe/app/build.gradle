@@ -29,6 +29,7 @@ def adapterSources = tasks.register('syncProductionAdapter', Sync) {
     include 'one/njk/sao/floating/nativebridge/PreparedNativeContent.java'
     include 'one/njk/sao/floating/nativebridge/NativeContentPreparation.java'
     include 'one/njk/sao/floating/nativebridge/NativePreparationException.java'
+    include 'one/njk/sao/floating/nativebridge/NativeModuleResources.java'
     include 'one/njk/sao/floating/nativebridge/InstagramGalleryContract.java'
     include 'one/njk/sao/floating/nativebridge/InstagramAnimatedContract.java'
     include 'one/njk/sao/floating/nativebridge/InstagramStickerUpload.java'
