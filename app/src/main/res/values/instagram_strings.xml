@@ -1,4 +1,18 @@
 <resources>
+    <string name="picker_native_in_progress">Preparing the previous paste. You can keep browsing.</string>
+    <string name="picker_instagram_sticker_memory">This media is too large to convert safely at full resolution. Select Media to paste the original.</string>
+    <string name="picker_instagram_sticker_timeout">Sticker conversion took too long. Select Media to paste the original.</string>
+    <string name="picker_instagram_sticker_decode_failed">This media could not be converted to an Instagram sticker. Select Media to paste the original.</string>
+    <string name="picker_instagram_sticker_failed">SAO: Instagram could not create or send this sticker.</string>
+    <string name="picker_instagram_sticker_chat_changed">SAO: The conversation changed. The sticker was not sent.</string>
+    <string name="picker_instagram_native_sticker_hint">Paste creates an Instagram custom sticker and sends it to this conversation.</string>
+    <string name="picker_instagram_select_sticker">Select Sticker to send this animation as an Instagram custom sticker.</string>
+    <string name="picker_instagram_enable_gif">Turn on As GIF to create an animated Instagram sticker from this video.</string>
+    <string name="picker_instagram_select_media">Select Media to paste this photo. Native stickers currently support animations.</string>
+    <string name="picker_instagram_sticker_queued">Instagram is preparing the custom sticker.</string>
+    <string name="picker_as_gif">As GIF</string>
+    <string name="picker_instagram_gif_unavailable">Instagram’s GIF handler is unavailable. Turn off As GIF or use DM.</string>
+    <string name="picker_instagram_gif_reopen">The GIF handler is ready. Close and reopen the picker in this chat.</string>
     <string name="picker_instagram_dm">DM</string>
     <string name="picker_instagram_hint">DM opens Instagram’s recipient picker. Enable SAO for Instagram in an API-102 LSPosed framework to send photos directly.</string>
     <string name="picker_instagram_unavailable">Open Instagram once to enable DM attachments, then reopen this picker.</string>

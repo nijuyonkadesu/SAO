@@ -1,7 +1,7 @@
 # Isolated Instagram adapter probe
 
 Requires an inspected Instagram **435.0.0.37.76**, **447.0.0.55.81** or **451.0.0.53.80** ARM64 APK, API 35 emulator
-and the repository's Gradle wrapper/JDK 21/Android SDK. No proprietary APK or code is
+and the repository's Gradle wrapper/JDK 21/Android SDK, NDK 28.2 and CMake 3.22.1. No proprietary APK or code is
 included. `NativeInstagramProbe` uses inspected build-specific names only to construct
 sparse synthetic controller metadata in Instagram's real classes. The production
 adapter is compiled directly from the main app. Controller discovery is structural;
@@ -9,8 +9,8 @@ the gallery adapter checks the inspected obfuscated contracts without version ga
 
 ```sh
 ./gradlew -p tools/instagram-native-probe :app:assembleDebug
-adb install -r tools/instagram-native-probe/app/build/outputs/apk/debug/app-debug.apk
-adb shell am instrument -w \
+adb install --abi arm64-v8a -r tools/instagram-native-probe/app/build/outputs/apk/debug/app-debug.apk
+adb shell am instrument --abi arm64-v8a -w \
   one.njk.sao.instagramprobe/one.njk.sao.floating.nativebridge.NativeInstagramProbe
 adb shell run-as one.njk.sao.instagramprobe cat files/native-report.json
 ```
@@ -43,18 +43,45 @@ framework injection. Those still require the user's rooted device and native cli
 The normal instrumentation tests separately cover actual exported fixture bytes,
 FileProvider grants, UI capability gating and one-use editor leases.
 
-On 447 and 451 the probe also checks the local GIF upload contract, missing-session capability
-gating and a parcel copy of the recipient key. It constructs real `ANIMATED_MEDIA`
-pending metadata and its ordinary media command using a fixture GIF, verifying the
-local file path, original recipient and unchanged bytes. These checks call no upload,
-registration or send entry point. The older 435 gallery contract does not advertise GIF.
+The native-sticker adapter is mapped for **447**. The probe constructs actual
+`ANIMATED_MEDIA` pending metadata and `5av` Riff commands from encoded WebP. A
+synthetic positive upload FBID must become `Ys9.A0F`; that field is passed as
+`data.media_id` to the stock configurator, not an already-registered sticker ID.
+Construction before upload is refused. Request ownership checks reject another
+account and unregistered/replayed requests. A recording callback checks that
+context rejection completes once with a native nonretryable error. No native
+upload/configuration/send method is called. Unmapped sticker contracts remain
+unavailable; independent 435/451 photo/video gallery contracts are retained.
 
 The 447 fixture was mapped from the device's installed APK, not inferred from its
-version string. Both 447 and 451 pass 42 boolean checks, including independent GIF
-readiness and missing-session diagnostics. The probe still uses its own synthetic
+version string. Earlier 447/451 probes passed 42 boolean checks for the previous
+implementation; those results did not establish GIF delivery. The probe uses synthetic
 session/controller objects; it never reads the installed app's account or chat data.
 
-The subsequent physical 447 test confirmed original MP4 send/playback, but the local
-converted-GIF path returned HTTP 404 despite passing this probe. See the
+The animated-sticker probe also executes Instagram's own `GifImage` and
+`WebPEncoder` against synthetic GIFs, including transparency, variable durations
+and disposal-to-background/previous. The tiny probe-only native ABI marker forces
+an ARM64 process on an x86-64 emulator with ARM translation. The runtime loader
+uses the installed APK/library paths but extracts its Superpack archive into the
+probe's writable directories; it never initializes an authenticated Instagram
+Application or reads account state. Output fixtures are saved only in the probe:
+`files/native-sticker-fixture.webp` and `files/native-disposal-fixture.webp` for
+independent frame/timing/alpha checks. No Instagram libraries enter the repository
+or production APK. Successful encoding still does not prove server registration.
+
+The physical 447 tests confirmed original MP4 send/playback, but both checked local
+converted-GIF send routes returned HTTP 404 despite passing this probe. See the
 [technical investigation](../../docs/instagram-native-debugging.md) for APK/DEX tracing,
 Vector setup, ADB verification, test boundaries and the corrected routing assumptions.
+
+Direct-video checks run the production shared `VideoFrameDecoder` and the installed
+WebP encoder on both MP4 and WebM fixtures. These bypass intermediate GIF creation;
+outputs are `files/native-video-mp4.webp` / `files/native-video-webm.webp`. Check
+frame count/dimensions/duration independently; the fixture is not a phone benchmark.
+
+The bundled synthetic `sticker-hd.mp4` is a 2-second, 12-fps 1920×1080 H.264 test
+pattern, generated with FFmpeg (`testsrc2`, libx264, CRF 22, BT.709 metadata).
+It is included only in this standalone probe, never the production SAO APK.
+The final native probe passes 59 boolean checks. Separately, the host's targeted
+instrumentation tests verify conversion bytes/colors/timing and nonblocking,
+nonreplayed bridge operations, including native-client replacement mid-operation.

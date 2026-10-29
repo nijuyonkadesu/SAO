@@ -41,7 +41,7 @@ class VideoGifTranscoder @Inject constructor(@ApplicationContext private val con
                             try {
                                 val cancellation=currentCoroutineContext()
                                 cancellation.ensureActive()
-                                val video=VideoGifDecoder(context).decode(input,cancellation) { index,width,height,rowBytes,rgba,ptsUs ->
+                                val video=VideoFrameDecoder(context).decode(input,cancellation) { index,width,height,rowBytes,rgba,ptsUs ->
                                     encoder.add(index,width,height,rowBytes,rgba,ptsUs/1_000_000.0)
                                 }
                                 encoder.finish()
@@ -63,6 +63,11 @@ class VideoGifTranscoder @Inject constructor(@ApplicationContext private val con
             if(completed!=true) throw MediaExportException(R.string.media_export_gif_timeout)
         } catch(cancelled: CancellationException) { throw cancelled }
         catch(error: MediaExportException) { throw error }
+        catch(error: VideoFrameDecoder.DecodeException) { throw MediaExportException(when(error.reason) {
+            VideoFrameDecoder.Failure.MEMORY -> R.string.media_export_gif_memory
+            VideoFrameDecoder.Failure.DECODE -> R.string.media_export_decode_failed
+            VideoFrameDecoder.Failure.FORMAT -> R.string.media_export_gif_unavailable
+        },error) }
         catch(error: java.io.IOException) { throw MediaExportException(R.string.media_export_gif_unavailable,error) }
         catch(error: LinkageError) { throw MediaExportException(R.string.media_export_gif_unavailable,error) }
         finally { thread.quitSafely(); thread.join() }

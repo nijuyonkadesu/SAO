@@ -1,0 +1,2 @@
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@string/picker_instagram_sticker_failed,@string/picker_instagram_sticker_chat_changed,@string/picker_instagram_sticker_memory,@string/picker_instagram_sticker_timeout,@string/picker_instagram_sticker_decode_failed" />

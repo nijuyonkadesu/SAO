@@ -21,7 +21,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.DefaultVideoFrameProcessor
 import androidx.media3.effect.ScaleAndRotateTransformation
 import kotlinx.coroutines.ensureActive
-import one.njk.sao.R
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicReference
@@ -29,10 +28,16 @@ import kotlin.coroutines.CoroutineContext
 
 /** Sequential platform decoding, with Media3 color conversion/tone mapping and one RGBA image in flight. */
 @androidx.annotation.OptIn(UnstableApi::class)
-internal class VideoGifDecoder(private val context: Context) {
+internal class VideoFrameDecoder(private val context: Context) {
+    enum class Failure { DECODE, FORMAT, MEMORY }
+    class DecodeException(val reason: Failure, cause: Throwable? = null) : java.io.IOException(reason.name,cause)
     data class Result(val width: Int,val height: Int,val durationUs: Long)
-    fun decode(input: File,cancellation: CoroutineContext,
+    fun decode(input: File,cancellation: CoroutineContext, maxPixels: Long = Runtime.getRuntime().maxMemory()/128,
         frame: (index: Int,width: Int,height: Int,rowBytes: Int,rgba: ByteBuffer,ptsUs: Long)->Unit): Result {
+        fun checkCancellation() {
+            cancellation.ensureActive()
+            if(Thread.currentThread().isInterrupted) throw java.io.InterruptedIOException("Frame decoding cancelled")
+        }
         val extractor=MediaExtractor()
         var decoder: MediaCodec?=null
         var processor: VideoFrameProcessor?=null
@@ -43,20 +48,20 @@ internal class VideoGifDecoder(private val context: Context) {
             extractor.setDataSource(input.path)
             val track=(0 until extractor.trackCount).firstOrNull {
                 extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/")==true
-            } ?: throw MediaExportException(R.string.media_export_decode_failed)
+            } ?: throw DecodeException(Failure.DECODE)
             extractor.selectTrack(track)
             val mediaFormat=extractor.getTrackFormat(track)
             val format=MediaFormatUtil.createFormatFromMediaFormat(mediaFormat)
             val rotation=((format.rotationDegrees%360)+360)%360
             if(rotation%90!=0 || format.pixelWidthHeightRatio!=1f)
-                throw MediaExportException(R.string.media_export_gif_unavailable)
+                throw DecodeException(Failure.FORMAT)
             val width=if(rotation==90 || rotation==270) format.height else format.width
             val height=if(rotation==90 || rotation==270) format.width else format.height
-            // Gifski's lookahead and quantization need several full-size native frames.
-            // Refuse an unsafe full-resolution conversion rather than downsampling it.
+            // The encoder supplies its own full-resolution frame memory budget.
+            // Refuse unsafe allocation rather than silently downsampling the source.
             if(width<=0 || height<=0 || width>65535 || height>65535 ||
-                width.toLong()*height>Runtime.getRuntime().maxMemory()/128)
-                throw MediaExportException(R.string.media_export_gif_memory)
+                width.toLong()*height>maxPixels)
+                throw DecodeException(Failure.MEMORY)
             val declared=format.colorInfo
             // Containers may declare only one color field. Fill absent SDR defaults
             // without discarding any provided primaries, transfer or HDR metadata.
@@ -70,7 +75,7 @@ internal class VideoGifDecoder(private val context: Context) {
             val ready=ConditionVariable()
             val streamReady=ConditionVariable()
             val error=AtomicReference<VideoFrameProcessingException?>()
-            callbacks=HandlerThread("SAO GIF frames",android.os.Process.THREAD_PRIORITY_BACKGROUND).apply { start() }
+            callbacks=HandlerThread("SAO video frames",android.os.Process.THREAD_PRIORITY_BACKGROUND).apply { start() }
             val images=ImageReader.newInstance(width,height,PixelFormat.RGBA_8888,2).also { reader=it }
             images.setOnImageAvailableListener({ ready.open() },Handler(callbacks.looper))
             val pipeline=DefaultVideoFrameProcessor.Factory.Builder().build().create(context,DebugViewProvider.NONE,
@@ -84,10 +89,10 @@ internal class VideoGifDecoder(private val context: Context) {
                 format.buildUpon().setRotationDegrees(0).setColorInfo(colors).build(),effects,0)
             val initialDeadline=SystemClock.elapsedRealtime()+FRAME_TIMEOUT_MS
             while(!streamReady.block(50)) {
-                cancellation.ensureActive()
-                if(SystemClock.elapsedRealtime()>initialDeadline) throw MediaExportException(R.string.media_export_gif_unavailable)
+                checkCancellation()
+                if(SystemClock.elapsedRealtime()>initialDeadline) throw DecodeException(Failure.FORMAT)
             }
-            error.get()?.let { throw MediaExportException(R.string.media_export_gif_unavailable,it) }
+            error.get()?.let { throw DecodeException(Failure.FORMAT,it) }
             // The GL pipeline owns rotation, including devices whose decoder rotates surfaces.
             mediaFormat.setInteger(MediaFormat.KEY_ROTATION,0)
             decoder=MediaCodec.createDecoderByType(requireNotNull(mediaFormat.getString(MediaFormat.KEY_MIME)))
@@ -98,9 +103,9 @@ internal class VideoGifDecoder(private val context: Context) {
             var frames=0; var firstUs: Long?=null; var previousUs=Long.MIN_VALUE
             var deadline=SystemClock.elapsedRealtime()+FRAME_TIMEOUT_MS
             while(!outputEnded) {
-                cancellation.ensureActive()
-                error.get()?.let { throw MediaExportException(R.string.media_export_gif_unavailable,it) }
-                if(SystemClock.elapsedRealtime()>deadline) throw MediaExportException(R.string.media_export_decode_failed)
+                checkCancellation()
+                error.get()?.let { throw DecodeException(Failure.FORMAT,it) }
+                if(SystemClock.elapsedRealtime()>deadline) throw DecodeException(Failure.DECODE)
                 if(!inputEnded) {
                     val slot=decoder.dequeueInputBuffer(0)
                     if(slot>=0) {
@@ -118,23 +123,23 @@ internal class VideoGifDecoder(private val context: Context) {
                 val render=info.size>0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG==0
                 outputEnded=info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM!=0
                 if(render) {
-                    if(info.presentationTimeUs<=previousUs) throw MediaExportException(R.string.media_export_gif_unavailable)
-                    if(!pipeline.registerInputFrame()) throw MediaExportException(R.string.media_export_gif_unavailable)
+                    if(info.presentationTimeUs<=previousUs) throw DecodeException(Failure.FORMAT)
+                    if(!pipeline.registerInputFrame()) throw DecodeException(Failure.FORMAT)
                     decoder.releaseOutputBuffer(slot,true)
                     val frameDeadline=SystemClock.elapsedRealtime()+FRAME_TIMEOUT_MS
                     var image=images.acquireNextImage()
                     while(image==null) {
                         ready.close()
-                        cancellation.ensureActive()
-                        error.get()?.let { throw MediaExportException(R.string.media_export_gif_unavailable,it) }
-                        if(SystemClock.elapsedRealtime()>frameDeadline) throw MediaExportException(R.string.media_export_gif_unavailable)
+                        checkCancellation()
+                        error.get()?.let { throw DecodeException(Failure.FORMAT,it) }
+                        if(SystemClock.elapsedRealtime()>frameDeadline) throw DecodeException(Failure.FORMAT)
                         // A timed wait also covers an image arriving between acquire and close.
                         ready.block(50); image=images.acquireNextImage()
                     }
                     image.use {
                         val plane=it.planes.single()
                         if(it.width!=width || it.height!=height || plane.pixelStride!=4)
-                            throw MediaExportException(R.string.media_export_gif_unavailable)
+                            throw DecodeException(Failure.FORMAT)
                         if(firstUs==null) firstUs=info.presentationTimeUs
                         frame(frames++,width,height,plane.rowStride,plane.buffer,info.presentationTimeUs-firstUs)
                     }
@@ -142,21 +147,33 @@ internal class VideoGifDecoder(private val context: Context) {
                     deadline=SystemClock.elapsedRealtime()+FRAME_TIMEOUT_MS
                 } else decoder.releaseOutputBuffer(slot,false)
             }
-            if(frames==0) throw MediaExportException(R.string.media_export_decode_failed)
+            if(frames==0) throw DecodeException(Failure.DECODE)
             pipeline.signalEndOfInput()
             val duration=MediaFormatUtil.getInteger(mediaFormat,MediaFormat.KEY_FRAME_RATE,0).takeIf { it>0 }?.let { 1_000_000L/it } ?: 10_000
             val end=if(mediaFormat.containsKey(MediaFormat.KEY_DURATION)) mediaFormat.getLong(MediaFormat.KEY_DURATION)
                 else previousUs+duration
             return Result(width,height,(end-(firstUs ?: 0)).coerceAtLeast(previousUs-(firstUs ?: 0)+10_000))
-        } catch(error: MediaExportException) { throw error }
-        catch(error: java.io.IOException) { throw MediaExportException(R.string.media_export_decode_failed,error) }
-        catch(error: IllegalArgumentException) { throw MediaExportException(R.string.media_export_gif_unavailable,error) }
-        catch(error: IllegalStateException) { throw MediaExportException(R.string.media_export_gif_unavailable,error) }
+        } catch(error: kotlinx.coroutines.CancellationException) { throw error }
+        catch(error: DecodeException) { throw error }
+        catch(error: java.io.IOException) { throw DecodeException(Failure.DECODE,error) }
+        catch(error: IllegalArgumentException) { throw DecodeException(Failure.FORMAT,error) }
+        catch(error: IllegalStateException) { throw DecodeException(Failure.FORMAT,error) }
         finally {
             try { if(started) decoder?.stop() } finally {
                 try { decoder?.release() } finally {
                     try { processor?.release() } finally {
-                        reader?.close(); callbacks?.quitSafely(); callbacks?.join(); extractor.release()
+                        try { reader?.close() } finally {
+                            callbacks?.quitSafely()
+                            try { extractor.release() } finally {
+                                // The encoding worker can be interrupted by its deadline.
+                                // Join the callback owner without losing that cancellation.
+                                var interrupted=Thread.interrupted()
+                                try {
+                                    while(callbacks?.isAlive==true) try { callbacks?.join() }
+                                    catch(error: InterruptedException) { interrupted=true }
+                                } finally { if(interrupted) Thread.currentThread().interrupt() }
+                            }
+                        }
                     }
                 }
             }

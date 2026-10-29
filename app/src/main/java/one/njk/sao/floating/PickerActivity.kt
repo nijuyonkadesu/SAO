@@ -35,6 +35,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import one.njk.sao.R
 import one.njk.sao.databinding.ActivityPickerBinding
+import one.njk.sao.floating.nativebridge.InstagramStickerFormat
+import one.njk.sao.floating.nativebridge.NativeInsertResult
 import one.njk.sao.floating.nativebridge.NativeBridgeRegistry
 import javax.inject.Inject
 
@@ -206,9 +208,14 @@ class PickerActivity : AppCompatActivity() {
             }
         } } }
         binding.mediaAction.setOnClickListener { withCenteredItem { item -> dispatch { share(item, ExportRendition.MEDIA) } } }
-        binding.stickerAction.setOnClickListener { withCenteredItem { item -> dispatch {
-            if (target == MessagingTarget.TELEGRAM) share(item, ExportRendition.STICKER_WEBP) else nativeInsert(item,action=UsageAction.STICKER)
-        } } }
+        binding.stickerAction.setOnClickListener { withCenteredItem { item ->
+            if (item.isVideo) {
+                model.instagramVideoRoute(if (options.instagramVideoRoute == InstagramVideoRoute.GIF)
+                    InstagramVideoRoute.VIDEO else InstagramVideoRoute.GIF)
+            } else dispatch {
+                if (target == MessagingTarget.TELEGRAM) share(item, ExportRendition.STICKER_WEBP) else nativeInsert(item,action=UsageAction.STICKER)
+            }
+        } }
         binding.targetLabel.setOnClickListener {
             if (target == MessagingTarget.OTHER && appChoices.isNotEmpty()) {
                 collapseSearch(); showTargets(!binding.targetList.isVisible)
@@ -283,6 +290,7 @@ class PickerActivity : AppCompatActivity() {
                 launch { model.canBrowseSequence.collect { /* Keep source capability live only while the picker is visible. */ } }
                 launch { NativeBridgeRegistry.sessions.collect { renderDock() } }
                 launch { NativeBridgeRegistry.statuses.collect { renderDock() } }
+                launch { NativeBridgeRegistry.inserting.collect { renderDock() } }
                 launch { model.selection.collect {
                     resultsCarousel.adapter.selectedId = it?.identityKey
                     sequenceCarousel.adapter.selectedId = it?.identityKey
@@ -451,9 +459,13 @@ class PickerActivity : AppCompatActivity() {
         val status = NativeBridgeRegistry.status(targetPackage)
         if (!NativeBridgeRegistry.available(targetPackage)) return getString(R.string.picker_native_inactive)
         if (video && target == MessagingTarget.INSTAGRAM && status != null) {
+            val gif=options.instagramVideoRoute==InstagramVideoRoute.GIF
             val reason = getString(when {
                 status.revision < NativeBridgeRegistry.PROTOCOL_REVISION && status.version.isNotEmpty() -> R.string.picker_instagram_hooks_old
                 status.stage == "selection_timeout" -> R.string.picker_instagram_capture_timeout
+                gif && status.gifStage=="gif_unavailable" -> R.string.picker_instagram_gif_unavailable
+                gif && status.gifStage=="session_missing" -> R.string.picker_instagram_thread_unresolved
+                gif && status.gifStage=="ready" -> R.string.picker_instagram_gif_reopen
                 status.videoStage == "gallery_loading" -> R.string.picker_instagram_gallery_loading
                 status.videoStage == "gallery_unavailable" -> R.string.picker_instagram_gallery_unavailable
                 status.videoStage == "thread_unresolved" -> R.string.picker_instagram_thread_unresolved
@@ -482,13 +494,18 @@ class PickerActivity : AppCompatActivity() {
         if (target.isWhatsapp && options.preferStickers && !item.hasMotion &&
             NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")) return ExportRendition.STICKER_WEBP
         val mime = nativeMediaMime(item)
+        if (target == MessagingTarget.INSTAGRAM && options.preferStickers &&
+            InstagramStickerFormat.sourceMime(mime) == null) return null
         return if ((target.isWhatsapp || target == MessagingTarget.INSTAGRAM || target == MessagingTarget.DISCORD) &&
             NativeBridgeRegistry.supports(targetPackage, nativeSession, mime)) ExportRendition.MEDIA else null
     }
     private fun nativeMediaMime(item: MediaItem): String {
-        return NativeMediaFormat.mime(item.mimeType,target==MessagingTarget.INSTAGRAM) {
+        if (target == MessagingTarget.INSTAGRAM && options.preferStickers &&
+            (item.mimeType == "image/gif" || item.isVideo && options.instagramVideoRoute == InstagramVideoRoute.GIF))
+            InstagramStickerFormat.forInput(item.mimeType)?.let { return it }
+        return NativeMediaFormat.mime(item.mimeType,target==MessagingTarget.INSTAGRAM,accepts={
             NativeBridgeRegistry.supports(targetPackage,nativeSession,it)
-        }
+        },route=options.instagramVideoRoute)
     }
     private fun renderDock() {
         if (!::binding.isInitialized) return
@@ -502,12 +519,17 @@ class PickerActivity : AppCompatActivity() {
         val nativeRendition = nativePasteRendition(item)
         val nativePaste = nativeRendition != null
         val nativePhoto = nativePaste && target == MessagingTarget.INSTAGRAM && item?.hasMotion == false
-        binding.pasteAction.isEnabled = !busy && (nativePaste || item != null &&
+        binding.pasteAction.isEnabled = !busy && targetPackage !in NativeBridgeRegistry.inserting.value && (nativePaste || item != null &&
+            !(target == MessagingTarget.INSTAGRAM && options.preferStickers) &&
             DeliveryPolicy.supportsPaste(item, target) && target != MessagingTarget.OTHER &&
             FloatingSession.active.value && options.pasteAssistance && pasteAnchor != null && PasteAssistService.connected())
         val native = NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")
-        binding.stickerAction.isEnabled = item != null && !item.hasMotion && !busy &&
-            (target == MessagingTarget.TELEGRAM && canShareSticker || target.isWhatsapp && native)
+        val gifChoice = item?.isVideo == true && target == MessagingTarget.INSTAGRAM
+        binding.stickerAction.isCheckable = gifChoice
+        binding.stickerAction.isChecked = gifChoice && options.instagramVideoRoute == InstagramVideoRoute.GIF
+        binding.stickerAction.setText(if (gifChoice) R.string.picker_as_gif else R.string.picker_sticker)
+        binding.stickerAction.isEnabled = !busy && (gifChoice || item != null && !item.hasMotion &&
+            (target == MessagingTarget.TELEGRAM && canShareSticker || target.isWhatsapp && native))
         binding.mediaAction.isEnabled = item != null && !busy && (nativePaste || target != MessagingTarget.INSTAGRAM || canAttachInstagram)
         val mediaLabel = getString(when (target) {
             MessagingTarget.DISCORD -> R.string.picker_attach
@@ -516,6 +538,14 @@ class PickerActivity : AppCompatActivity() {
         })
         if (binding.mediaAction.text.toString() != mediaLabel) binding.mediaAction.text = mediaLabel
         val hint = when {
+            targetPackage in NativeBridgeRegistry.inserting.value -> getString(R.string.picker_native_in_progress)
+            nativePaste && target == MessagingTarget.INSTAGRAM &&
+                InstagramStickerFormat.sourceMime(nativeMediaMime(item!!)) != null -> getString(R.string.picker_instagram_native_sticker_hint)
+            target == MessagingTarget.INSTAGRAM && item != null && !options.preferStickers &&
+                (item.mimeType == "image/gif" || item.isVideo && options.instagramVideoRoute == InstagramVideoRoute.GIF) -> getString(R.string.picker_instagram_select_sticker)
+            target == MessagingTarget.INSTAGRAM && options.preferStickers && item?.isVideo == true &&
+                options.instagramVideoRoute != InstagramVideoRoute.GIF -> getString(R.string.picker_instagram_enable_gif)
+            target == MessagingTarget.INSTAGRAM && options.preferStickers && item?.hasMotion == false -> getString(R.string.picker_instagram_select_media)
             nativePaste && target == MessagingTarget.INSTAGRAM && item?.mimeType == "image/gif" -> getString(R.string.picker_instagram_native_gif_hint)
             nativePaste && target == MessagingTarget.INSTAGRAM && item?.isVideo == true -> getString(
                 if(nativeMediaMime(item)=="image/gif") R.string.picker_instagram_video_gif_hint else R.string.picker_instagram_native_video_hint)
@@ -749,7 +779,8 @@ class PickerActivity : AppCompatActivity() {
     private suspend fun share(item: MediaItem, rendition: ExportRendition) {
         val receivingPackage = targetPackage
         val receivingTarget = target
-        val instagramGifFallback=receivingTarget==MessagingTarget.INSTAGRAM && item.isVideo && nativeMediaMime(item)=="image/gif"
+        val instagramGifFallback=receivingTarget==MessagingTarget.INSTAGRAM &&
+            (nativeMediaMime(item) == "image/gif" || InstagramStickerFormat.sourceMime(nativeMediaMime(item)) != null)
         if (rendition == ExportRendition.MEDIA && receivingTarget in setOf(MessagingTarget.INSTAGRAM, MessagingTarget.DISCORD) &&
             !instagramGifFallback && nativePasteRendition(item) != null) {
             nativeInsert(item, ExportRendition.MEDIA,UsageAction.SHARE)
@@ -800,7 +831,7 @@ class PickerActivity : AppCompatActivity() {
         }
         if(rendition==ExportRendition.MEDIA) {
             media=limitAttachment(item,media)
-            mime=media.mimeType
+            if (InstagramStickerFormat.sourceMime(mime) == null) mime=media.mimeType
             if(!NativeBridgeRegistry.supports(pkg,session,mime)) { inlineFailure(R.string.floating_native_rejected); return }
         }
         val context = applicationContext
@@ -808,15 +839,22 @@ class PickerActivity : AppCompatActivity() {
         val analytics=usage
         // Explicit handoff must outlive this activity while the original host regains focus.
         deliveryScope.launch {
+            val sticker = instagram && InstagramStickerFormat.sourceMime(mime) != null
+            if(sticker) Toast.makeText(context,R.string.picker_instagram_sticker_queued,Toast.LENGTH_LONG).show()
             val outcome = NativeBridgeRegistry.insert(context, pkg, media.uri, mime, session)
             analytics.record(event.copy(outcome=when(outcome) {
-                one.njk.sao.floating.nativebridge.NativeInsertResult.ACCEPTED -> UsageOutcome.ACCEPTED
-                one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED -> UsageOutcome.FAILED
-                one.njk.sao.floating.nativebridge.NativeInsertResult.UNKNOWN -> UsageOutcome.UNCERTAIN
+                NativeInsertResult.ACCEPTED -> UsageOutcome.ACCEPTED
+                NativeInsertResult.REJECTED,
+                NativeInsertResult.PREPARATION_FAILED -> UsageOutcome.FAILED
+                NativeInsertResult.UNKNOWN -> UsageOutcome.UNCERTAIN
             }))
+            // The native host already displayed preparation details; keep that feedback.
+            if(outcome==NativeInsertResult.PREPARATION_FAILED ||
+                sticker && outcome==NativeInsertResult.ACCEPTED) return@launch
             Toast.makeText(context, when {
-                outcome == one.njk.sao.floating.nativebridge.NativeInsertResult.UNKNOWN -> R.string.picker_native_uncertain
-                outcome == one.njk.sao.floating.nativebridge.NativeInsertResult.REJECTED -> R.string.floating_native_rejected
+                outcome == NativeInsertResult.UNKNOWN -> R.string.picker_native_uncertain
+                outcome == NativeInsertResult.REJECTED -> R.string.floating_native_rejected
+                instagram && InstagramStickerFormat.sourceMime(mime) != null -> R.string.picker_instagram_sticker_queued
                 instagram && mime == "image/gif" -> R.string.picker_instagram_native_gif_accepted
                 instagram && item.isVideo -> R.string.picker_instagram_native_video_accepted
                 instagram -> R.string.picker_instagram_native_accepted

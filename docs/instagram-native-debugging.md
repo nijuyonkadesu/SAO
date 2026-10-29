@@ -1,13 +1,19 @@
 # Instagram native Paste: investigation and verification
 
-Recorded 2026-10-27. This is a reproducible account of the investigation, not a claim
+Recorded 2026-10-27–28. This is a reproducible account of the investigation, not a claim
 that every structurally compatible Instagram build can deliver every format.
 
 **Result:** the user confirmed that a fresh Paste sends the original MP4 and playback
 works on Instagram 447.0.0.55.81 with Vector. A sender-side thumbnail was missing;
 the user accepted this behavior pending any recipient-side problem. Recipient-side
-rendering was not independently inspected. Local GIF delivery remains unresolved:
-the MP4-to-GIF attempt entered Instagram's pipeline but failed with HTTP 404.
+rendering was not independently inspected. **GIF delivery remains unresolved.** The
+initial converted-GIF attempt failed with HTTP 404. Subsequent native upload-only
+requests completed and returned attachment FBIDs; the animated-message route then
+reported unavailable media, while the generic attachment command remained Sending.
+The configurator adapter subsequently reached the native animated attachment
+request on the phone; its terminal callback confirmed HTTP 404 with both retries
+disabled. A subsequent native GIF-command candidate using the completed upload's
+actual FBID also failed with HTTP 404 on the phone. GIF delivery is not working.
 
 ## 1. Establish the failing layer
 
@@ -162,8 +168,9 @@ SAO uses `io.github.libxposed.api.XposedModule`, API **102**, without legacy
 
 In Vector, enable SAO and scope Instagram. After updating injected code, force-stop
 and reopen Instagram: replacing SAO's APK does not replace classes already loaded
-in Instagram. Hook protocol revision **3**, reported by the running host, identifies
-the loaded generation; SAO's unchanged APK version is not adequate evidence.
+in Instagram. The running host reports its hook protocol revision; the original
+MP4 verification used **3**, the rejected attachment experiment **4**, and the
+uploaded-ID GIF candidate **5**. SAO's unchanged APK version is not adequate evidence.
 
 `onModuleLoaded` rejects system-server/unscoped processes. `onPackageReady` installs
 `Instrumentation.callActivityOnCreate/Resume/Pause/Destroy` interceptors using
@@ -320,6 +327,191 @@ sender; the user confirmed send and playback. The sender thumbnail limitation is
 recorded above and left unchanged at the user's request. Native MP4 support is an
 internal Vector adapter, not a new public Instagram clipboard-video API.
 
+## 9. Follow-up: separate upload from GIF configuration
+
+The user explicitly enabled GIF conversion in the picker and performed each Paste.
+Request-scoped diagnostics established `File.exists()`, `canRead()` and a nonempty
+staged GIF inside Instagram's cache. Both sub-megabyte and larger GIFs failed, so
+size alone did not explain the failure. A large attempt exposed `X.f6l` wrapping
+`X.pfV` (`HttpResponseException`), with the static reason “Failed to complete POST
+request”; its exact HTTP status was not captured on that attempt. Do not infer a
+native-client size ceiling from the separate Instagram business messaging API.
+
+DEX tracing distinguished `PendingMediaManager.A0B(pending,false)` (**postMedia**)
+from `A0E(pending,false,true)` (**uploadMedia**). The stock `X.owF` upload-only flow
+registers `X.Plp` through manager `A0F`, handles terminal `FKq(pending)`, checks
+`pending.A19()` and positive attachment FBID `A3O`, then unregisters through `A0G`;
+`FaB` is the other callback. SAO now uses that event contract, a bounded request
+timeout, and a fresh recipient/session check before configuration. No upload poll,
+automatic resend, wake lock or source/credential change was introduced.
+
+`X.PHv.A01` also constructs a local-file `X.5aa` command with `2lR` pending metadata,
+`DirectAnimatedMedia`, and a `GifUrlImpl` file URI; `X.225.A0V` is simply
+`Uri.Builder.build().toString()`. This corrected the assumption that every
+`config_animated_media_message` must originate from a provider catalog. However,
+reconstructing that command still produced unavailable-media errors after a
+successful upload. Replacing it with `X.AOq` after upload produced a Sending stall,
+without reaching `X.5ak.A04` in the captured attempt. Neither experiment establishes
+working delivery. Do not manufacture a GIPHY/Tenor ID: `DirectAnimatedMedia` checks
+the `tenor:` ID prefix, but adding a prefix does not register arbitrary media.
+
+The configurator candidate registers only a completed SAO GIF upload, keyed by the native
+client context and matching `UserSession`/pending key. A modern libxposed interceptor
+at `X.5ak.GiQ` routes that owned request to `Ad2(callback,command,pending)`, which
+delegates to native `A04` and its explicit `animated_image_attachment`/FBID branch.
+Unregistered requests use `chain.proceed()`. This avoids the intervening generic
+image-processing path. A subsequent physical retry confirmed upload completion,
+positive attachment readiness and the exact configured route
+`direct_v2/threads/broadcast/animated_image_attachment/`. A further retry captured
+terminal `code=404`, `domain=SEND_FAILURE_DOMAIN_HTTP`, `channel=http`, with both
+retry flags false. This connects the 404 to this attachment request, unlike the
+initial unlocated failure. Successful blob upload is not evidence that the message
+endpoint accepts that blob. Registration is one-use and expires.
+If a registered command reaches the handler with a different session/pending key,
+SAO completes native `Wbb.FdI` with stock `LRk.A0X` (invalid mutation parameters),
+whose automatic/manual retry flags `A0D/A0E` are verified false. Silently consuming
+that command would itself leave the optimistic message in Sending.
+
+The isolated probe activates the dispatcher descriptor **without installing an
+Xposed hook**. It verifies actual 447 classes, completed-upload registration,
+different-account/unregistered-request rejection, one-use claiming and a recording
+native failure callback on rejected context; it never
+calls `Ad2`, uploads, or sends. Its 49 boolean checks passed. A debug-only,
+request-owned `Wbb` proxy now forwards every native callback unchanged and records
+only numeric `LRk.A05`, enum `A01`, allowlisted channel `A07`, and `A0D/A0E` retry flags at terminal
+`FdI`; it never stringifies the native error or logs the message ID. This diagnoses
+configuration failures independently of the upload worker's logs. Keep GIF delivery
+unverified until a fresh user Paste sends and plays.
+No chat IDs, client-context IDs, attachment FBIDs, filenames, media URLs, account
+credentials or raw response bodies belong in this document or committed logs.
+
+## 10. Uploaded-ID GIF candidate (failed on the phone)
+
+The actual 447 GIF command is `5aa`; `5ab.GiQ` schedules `UlA` case 1, which calls
+`Pz6.A05` and `direct_v2/threads/broadcast/animated_media/`. That request sends
+`DirectAnimatedMedia.A06` as `id`; it does not send the local GIF URL or pending
+metadata. A generated local ID therefore does not identify the uploaded blob in
+that HTTP route. The forwarding factory's local metadata has a different role in
+the native encrypted dispatcher; copying its shape did not establish an ordinary
+local-GIF send contract.
+
+The revision-5 candidate creates `5aa` only after upload succeeds, using actual `A3O`
+as its media ID, with local `GifUrlImpl` for preview and copied recipient metadata.
+`InstagramGifCommand` reproduces the inspected `Ayf` initialization; no `Unsafe`,
+provider-ID fabrication, public hosting or automatic resend is involved. The
+interceptor at `5ab.GiQ` verifies request ownership and calls `chain.proceed` with a
+forwarding completion observer. It no longer redirects into `5ak.Ad2`. The phone
+again confirmed upload success, followed by native `animated_media`
+dispatch and terminal HTTP 404 with both retry flags false. Substituting the real
+upload FBID therefore did not repair delivery. The updated isolated probe passes
+51 boolean checks, including refusal before upload and preservation of the actual
+uploaded ID; those checks still do not prove server support. Whether rejection is
+caused by missing resource registration or another server constraint is unverified.
+
+The separate native creation flow in `owF` performs upload **then**
+`ODp.A00` / `IGDirectConfigureCutoutStickerMutation`
+(`xig_direct_configure_cutout_sticker`), with `media_id`, creation-flow and cutout
+metadata. `mSG.EAm` requires a returned sticker ID and reports `missing_sticker_id`
+otherwise. This is native custom-sticker creation, not proof of arbitrary local-GIF
+message support. No registration mutation was invoked. Changing Media/As GIF into
+sticker creation needs a product decision; neither public hosting nor a fabricated
+provider ID was attempted.
+
 Related: [delivery architecture](instagram-dm-delivery.md),
 [encoder design and limits](video-gif-conversion-research.md),
 [capability matrix](media-capabilities.md).
+
+## 11. Native animated stickers: working path and corrected assumptions
+
+The user authorized native sticker creation after both local-GIF message APIs
+returned 404. Tracing `VideoCutoutStickerUploader.A00` / `owF` found its actual
+format: **animated WebP**, uploaded with `ANIMATED_MEDIA`, truthful `image/webp`,
+pending `A0I=6`, Riff/direct flags and `render_as_sticker`. A raw GIF upload followed
+by `ODp.A00` / `IGDirectConfigureCutoutStickerMutation` failed with `X.BEM` code
+**1675030**. That is a generic query failure, not proof of a URI, size or permission
+problem. The initial adapter also used `a06.BCV` (execute-and-subscribe); stock
+`215.A1O` uses **BCR** plus the `6mj.A00(request,session)` callback executor.
+
+Revision 8 used Instagram's installed `GifImage` / `GifFrame` and `WebPEncoder`.
+`MediaCompositionToWebpEncoder` and `owX` establish `prepare(w,h,true)` and
+`addFrame(RGBA,durationMs,0,0,0,0)`. Both JNI methods return **1** on success;
+the isolated codec test disproved a zero-success assumption. GIF composition
+honors frame offsets, transparency and disposal-to-background/previous. Full-size
+bitmaps/native frames are disposed and `HybridData.resetNative()` is guarded by
+its native `mDestructed` atomic. No codec library was copied into SAO.
+
+The phone then **successfully uploaded WebP and returned a registered sticker ID**.
+The following send failed with client code **6**, channel `na`, no automatic retry.
+`NcK` maps this to pending-media/configuration failure. This exposed a second wrong
+assumption: **`Ys9.A0F` is a media ID awaiting configuration, not a registered sticker
+ID.** `5aw.GiQ` → `oxF` case 3 → `m9A.A06` → `I5o.A00` performs the same GraphQL
+configuration. Supplying the already-registered ID asked Instagram to configure
+it again. The stock failure snackbar belongs to that duplicate operation.
+
+Revision **9** removes SAO's redundant GraphQL adapter. After `PendingMediaManager`
+reports successful upload and a positive `1jR.A3O`, SAO queues native `5av`
+(`configure_riff_sticker_message`) with that **upload ID** in `Ys9.A0F`.
+`I5o.A00` configures once; `5aw.A00` consumes its resulting `ch4.A02`, then
+`Pz6.A06` sends **that registered sticker ID** through `JdK.A00`. The owned
+`5aw.GiQ` interceptor only verifies session/request ownership and forwards the
+native callback. It does not replace the sender. The phone returned successful
+native completion and the user confirmed that the animated sticker sends/works.
+
+Keep the two IDs distinct even though both are opaque strings. An upload success
+alone proves no message delivery; a constructor probe alone proves no authenticated
+API behavior. Never substitute a fabricated Tenor/GIPHY ID or retry an uncertain
+native send. Changed recipients and failed/expired uploads cannot queue a sticker.
+Only explicit **Paste** in **Sticker** mode creates a native sticker; Copy remains
+original media. The separate **DM** fallback still attaches a normal video.
+
+The account-free probe loads the installed ARM64 codecs and Superpack SoSource
+(`assets/lib/libs.spo`) into probe-owned writable directories. Its synthetic GIFs
+verify dimensions, variable durations, alpha, and both disposal modes; Pillow
+independently checks their WebP output. No Instagram libraries, account state,
+raw API responses, media URLs or identifiers enter the repository. Resource-backed
+failure feedback is loaded on IO and posted on Main only for the explicit request.
+Obsolete global HTTP-builder/old-GIF-configurator diagnostics were removed.
+
+## 12. Conversion latency, busy picker and remaining work
+
+The first working path did two encodes: video → gifski GIF → native WebP. The user
+reported slow preparation, some failed MP4s, and an icon that would not reopen
+while processing a longer/higher-resolution item. `NativeBridgeRegistry` also held
+one global operations mutex across synchronous `remote.insert`; `FloatingService`
+awaited that same mutex before showing the picker. This was coroutine waiting,
+not evidence that the Binder call ran on Main, but it still blocked picker access.
+
+Revision **10** passes original video bytes under a private sticker-rendition MIME
+and encodes decoded RGBA frames **directly to WebP** in Instagram's process.
+SAO's shared `VideoFrameDecoder` uses sequential `MediaCodec` decoding and the
+existing Media3 GL rotation/HDR-to-SDR pipeline; it emits one frame at a time with
+presentation timestamps. One owned RGBA lookahead buffer supplies native WebP
+frame durations. There is no intermediate GIF, gifski quantization, added dependency,
+blind byte target or silent resolution/frame-rate reduction. `As GIF` still means
+animated-sticker delivery to the user; Instagram's accepted transport format is WebP.
+
+Bridge operation gates are per client. Selection uses a nonwaiting gate and does
+not re-arm an in-progress recipient lease. Another explicit Paste is rejected
+instead of queued; picker browsing/Copy and another app's capture stay available.
+An event-driven in-progress state explains the temporarily unavailable Paste.
+No idle timer, polling, wake lock or background media scan was introduced.
+
+Memory, decode and conversion-deadline failures receive separate localized
+messages. Wire result `PREPARATION_FAILED` means no send side effect and specific
+feedback was already presented; SAO must not overwrite it with a generic rejection.
+Unknown remains terminal and never triggers replay. The worker owns its codec
+resources, is background-priority, and joins
+before cleanup; interruption is preserved during callback-thread teardown.
+The native format/rotation/frame-memory limits remain explicit. The direct MP4
+and WebM fixtures each preserved **128×192, 24 frames, 2000 ms**. A synthetic
+1080p H.264 fixture also preserved **1920×1080, 24 frames, 2000 ms**; outputs were
+independently verified with ffprobe/Pillow. All 59 native probe checks passed.
+Targeted device checks cover GIF bytes/colors/timing/rotation/cancellation, bounded
+staging, stalled handoff access and client replacement during an ongoing operation.
+A replaced client cannot clear its replacement’s operation or editor state. Physical
+latency/high-resolution verification is pending; these fixture checks are not a speed benchmark for the user's phone.
+
+Pending: **static-photo native stickers**. Ordinary photo Paste already works,
+but Sticker mode for a static photo is not implemented; it must not silently
+send a normal attachment. Also complete the source-independent As GIF control and
+size feedback after the Instagram performance path is verified.

@@ -33,7 +33,8 @@ data class FloatingOptions(val preferStickers: Boolean = true, val pasteAssistan
     val autoHide: Boolean = true, val idleSeconds: Int = 3, val telegramPackages: Set<String> = emptySet(),
     val browseSequence: Boolean = false, val longPressMs: Int = DEFAULT_LONG_PRESS_MS,
     val showOnLaunch: Boolean = true, val showEmojiShortcuts: Boolean = false,
-    val emojiShortcuts: String = EmojiShortcuts.DEFAULT) {
+    val emojiShortcuts: String = EmojiShortcuts.DEFAULT,
+    val instagramVideoRoute: InstagramVideoRoute = InstagramVideoRoute.VIDEO) {
     companion object {
         const val DEFAULT_LONG_PRESS_MS = 160
         const val MIN_LONG_PRESS_MS = 100
@@ -55,12 +56,15 @@ class FloatingPreferences @Inject constructor(@ApplicationContext private val co
     private val launch = booleanPreferencesKey("show_on_launch")
     private val emojiRow = booleanPreferencesKey("show_emoji_shortcuts")
     private val emojiList = stringPreferencesKey("emoji_shortcuts")
+    private val instagramRoute = stringPreferencesKey("instagram_video_route")
     val options = context.floatingDataStore.data.map {
         FloatingOptions(it[stickers] ?: true, it[paste] ?: false, it[edge] ?: true, it[position] ?: .35f,
             it[hide] ?: true, (it[idle] ?: 3).coerceIn(3, 10), it[telegram].orEmpty(), it[sequence] ?: false,
             (it[hold] ?: FloatingOptions.DEFAULT_LONG_PRESS_MS).coerceIn(FloatingOptions.MIN_LONG_PRESS_MS, FloatingOptions.MAX_LONG_PRESS_MS),
-            it[launch] ?: true, it[emojiRow] ?: false, it[emojiList] ?: EmojiShortcuts.DEFAULT)
+            it[launch] ?: true, it[emojiRow] ?: false, it[emojiList] ?: EmojiShortcuts.DEFAULT,
+            InstagramVideoRoute.entries.firstOrNull { route -> route.name==it[instagramRoute] } ?: InstagramVideoRoute.VIDEO)
     }
+    suspend fun instagramVideoRoute(value: InstagramVideoRoute) { context.floatingDataStore.edit { it[instagramRoute]=value.name } }
     suspend fun showEmojiShortcuts(value: Boolean) { context.floatingDataStore.edit { it[emojiRow]=value } }
     suspend fun emojiShortcuts(value: String) {
         val normalized=EmojiShortcuts.parse(value).joinToString(" ")

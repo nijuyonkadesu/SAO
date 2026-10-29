@@ -137,7 +137,7 @@ final class InstagramComposerPolicy implements ComposerPolicy {
     @Override public String[] additionalMimeTypes(EditText view) {
         List<String> types = new ArrayList<>();
         if (videoSender(view) != null) { types.add("video/mp4"); types.add("video/webm"); }
-        if (animatedSession(view) != null) types.add("image/gif");
+        if (animatedSession(view) != null) java.util.Collections.addAll(types, InstagramStickerFormat.renditions());
         return types.toArray(new String[0]);
     }
     private Object animatedSession(EditText view) {
@@ -178,7 +178,8 @@ final class InstagramComposerPolicy implements ComposerPolicy {
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { return "thread_unresolved"; }
     }
     @Override public NativeContentPreparation captureContent(Context context, EditText view, android.net.Uri uri, String mimeType) {
-        if (!"image/gif".equals(mimeType)) return ComposerPolicy.super.captureContent(context, view, uri, mimeType);
+        String sourceMime = InstagramStickerFormat.sourceMime(mimeType);
+        if (sourceMime == null) return ComposerPolicy.super.captureContent(context, view, uri, mimeType);
         InstagramAnimatedContract contract = animated;
         Binding binding = bindings.get(view);
         Object session = animatedSession(view);
@@ -189,7 +190,7 @@ final class InstagramComposerPolicy implements ComposerPolicy {
             Object controller = binding.thread.controller(view);
             if (key == null || controller == null) return null;
             WeakReference<EditText> original = new WeakReference<>(view);
-            return () -> contract.prepare(context, uri, session, key, () -> {
+            return () -> contract.prepare(context, uri, sourceMime, session, key, () -> {
                 EditText current = original.get();
                 return current != null && bindings.get(current) == binding &&
                     originalIdentity.equals(identity(null, current)) && binding.thread.controller(current) == controller && animatedSession(current) == session;

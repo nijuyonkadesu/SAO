@@ -178,8 +178,10 @@ public final class SaoXposedModule extends XposedModule {
         try {
             Class<?> composer;
             if (processName.equals("com.instagram.android")) {
+                installGifDispatcher(loader);
                 InstagramComposerPolicy instagram = new InstagramComposerPolicy(loader, bridgeIo);
                 policy = instagram;
+                if (one.njk.sao.BuildConfig.DEBUG) installGifDiagnostics(loader);
                 editorSession = new NativeEditorSession(policy, modulePackage);
                 composer = Class.forName("com.instagram.ui.widget.textview.ComposerAutoCompleteTextView", false, loader);
                 for (Method method : composer.getMethods()) {
@@ -243,6 +245,95 @@ public final class SaoXposedModule extends XposedModule {
                 if (manager != null) manager.restartInput(view);
             }
         });
+    }
+    private void installGifDispatcher(ClassLoader loader) {
+        try {
+            InstagramStickerDispatch dispatch = new InstagramStickerDispatch(loader);
+            Method method = dispatch.entryPoint();
+            if (!installed.add(method)) return;
+            hook(method).intercept(chain -> {
+                InstagramStickerDispatch.Invocation invocation = dispatch.prepareInvocation(chain.getThisObject(), chain.getArg(1), chain.getArg(2));
+                if (!invocation.owned()) return chain.proceed();
+                if (invocation.rejected()) return null;
+                return chain.proceed(new Object[]{chain.getArg(0), invocation.callback(), chain.getArg(2)});
+            });
+            dispatch.installed();
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            warn("GIF attachment handler unavailable: " + error.getClass().getSimpleName());
+        }
+    }
+    private void installGifDiagnostics(ClassLoader loader) {
+        try {
+            InstagramAnimatedContract.enableDiagnostics();
+            Class<?> pending = loader.loadClass("X.1jR");
+            for (Method method : loader.loadClass("com.instagram.pendingmedia.service.upload.ImageUploadUtil").getDeclaredMethods()) {
+                if (!method.getName().equals("A02") || method.getParameterCount() != 2 || !installed.add(method)) continue;
+                hook(method).intercept(chain -> {
+                    Object upload = chain.getArg(1);
+                    if (InstagramAnimatedContract.traces(upload.getClass().getField("A07").get(upload))) {
+                        Object failure = chain.getArg(0);
+                        Class<?> failureType = failure.getClass();
+                        Object category = failureType.getField("A01").get(failure);
+                        android.util.Log.i("SAO.InstagramGif", "creation failure=" + (category instanceof Enum<?> value ? value.name() : "unknown") + "; code=" + failureType.getField("A00").getInt(failure));
+                        Object reason = failureType.getField("A02").get(failure);
+                        if (reason instanceof String text && text.matches("[A-Za-z_0-9 .,:()-]{1,160}"))
+                            android.util.Log.i("SAO.InstagramGif", "creation reason=" + text);
+                    }
+                    return chain.proceed();
+                });
+            }
+            for (Method method : loader.loadClass("com.instagram.pendingmedia.service.upload.FbUploaderUtil").getDeclaredMethods()) {
+                if (!method.getName().equals("A01") || method.getParameterCount() != 3 || method.getParameterTypes()[2] != Throwable.class || !installed.add(method)) continue;
+                hook(method).intercept(chain -> {
+                    Object upload = chain.getArg(0);
+                    if (InstagramAnimatedContract.traces(upload.getClass().getField("A07").get(upload))) {
+                        Throwable failure = (Throwable) chain.getArg(2);
+                        String value = String.valueOf(failure.getMessage());
+                        String kind = "unknown";
+                        for (String allowed : new String[]{"messenger_gif", "animated_image_attachment", "configure_photo", "rupload_igphoto"})
+                            if (value.contains(allowed)) kind = allowed;
+                        android.util.Log.i("SAO.InstagramGif", "upload failure=" + failure.getClass().getSimpleName() + "; http404=" + value.contains("404") + "; route=" + kind);
+                        if (failure.getClass().getName().equals("X.f6l")) {
+                            Object reason = failure.getClass().getField("A02").get(failure);
+                            if (reason instanceof String text && text.matches("[A-Za-z_ .,:()-]{1,160}"))
+                                android.util.Log.i("SAO.InstagramGif", "upload reason=" + text);
+                            android.util.Log.i("SAO.InstagramGif", "upload cause=" + (failure.getCause() == null ? "none" : failure.getCause().getClass().getSimpleName()));
+                            Throwable cause = failure.getCause();
+                            if (cause != null && cause.getClass().getName().equals("X.pfV")) {
+                                Object code = cause.getClass().getMethod("getStatusCode").invoke(cause);
+                                android.util.Log.i("SAO.InstagramGif", "upload HTTP status=" + code);
+                                Object response = cause.getClass().getField("A00").get(cause);
+                                if (response instanceof String text) {
+                                    try {
+                                        org.json.JSONObject body = new org.json.JSONObject(text);
+                                        for (String key : new String[]{"error_code", "error_subcode"}) {
+                                            long detail = body.optLong(key, -1);
+                                            if (detail >= 0 && detail <= Integer.MAX_VALUE)
+                                                android.util.Log.i("SAO.InstagramGif", "upload response " + key + "=" + detail);
+                                        }
+                                    } catch (org.json.JSONException ignored) { }
+                                }
+                            }
+                        }
+                    }
+                    return chain.proceed();
+                });
+            }
+            for (Method method : loader.loadClass("X.Jc2").getDeclaredMethods()) {
+                if (!method.getName().equals("A02") || method.getParameterCount() != 4 || method.getParameterTypes()[2] != pending || !installed.add(method)) continue;
+                hook(method).intercept(chain -> {
+                    boolean ours = InstagramAnimatedContract.traces(chain.getArg(2));
+                    Object result = chain.proceed();
+                    if (ours && result != null) {
+                        Object kind = result.getClass().getField("A03").get(result);
+                        android.util.Log.i("SAO.InstagramGif", "upload channel=" + (kind instanceof Enum<?> value ? value.name() : "unknown"));
+                    }
+                    return result;
+                });
+            }
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            android.util.Log.i("SAO.InstagramGif", "diagnostic contract unavailable: " + error.getClass().getSimpleName());
+        }
     }
     private void warn(String message) { log(android.util.Log.WARN, "SAO", message); }
     private void connect(Context context) {
@@ -484,6 +575,8 @@ public final class SaoXposedModule extends XposedModule {
                         editorSession.insert(activity.get(), resumed, uri, mimeType, expected, requestId, content); }
                     finally { publishState(); }
                 }, 3000, () -> bridgeIo.execute(content::close)).wireValue;
+            } catch (NativePreparationException error) {
+                return NativeInsertResult.PREPARATION_FAILED.wireValue;
             } catch (Exception | LinkageError error) {
                 warn("Native media insertion did not return a definitive result");
                 return (dispatching ? NativeInsertResult.UNKNOWN : NativeInsertResult.REJECTED).wireValue;

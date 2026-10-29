@@ -43,6 +43,33 @@ public final class NativeInstagramProbe extends Instrumentation {
     private static void set(Object object, String field, Object value) throws Exception {
         Field f = object.getClass().getDeclaredField(field); f.setAccessible(true); f.set(object, value);
     }
+    private void initializeCodecRuntime(Context instagram, ClassLoader loader) throws Exception {
+        Context fixture = getTargetContext();
+        // Only the APK/native-library paths come from Instagram. SoLoader's writable
+        // directories belong to this account-free probe, never to the installed app.
+        Context runtime = new ContextWrapper(instagram) {
+            @Override public Context getApplicationContext() { return this; }
+            @Override public android.content.pm.ApplicationInfo getApplicationInfo() {
+                android.content.pm.ApplicationInfo info = new android.content.pm.ApplicationInfo(super.getApplicationInfo());
+                info.dataDir = fixture.getApplicationInfo().dataDir;
+                return info;
+            }
+            @Override public File getDataDir() { return fixture.getDataDir(); }
+            @Override public File getFilesDir() { return fixture.getFilesDir(); }
+            @Override public File getCacheDir() { return fixture.getCacheDir(); }
+            @Override public File getDir(String name, int mode) { return fixture.getDir(name, mode); }
+        };
+        Method init = loader.loadClass("X.3xZ").getDeclaredMethod("A06", Context.class, loader.loadClass("X.FvN"), int.class);
+        init.setAccessible(true); init.invoke(null, runtime, null, 0);
+        Class<?> archiveType = loader.loadClass("X.3z4");
+        Method getArchive = archiveType.getDeclaredMethod("A00"); getArchive.setAccessible(true);
+        Object archive = getArchive.invoke(null);
+        Method getReader = archiveType.getDeclaredMethod("A01"); getReader.setAccessible(true);
+        Constructor<?> source = loader.loadClass("X.3z6").getConstructor(Context.class, loader.loadClass("X.77z"), archiveType, File.class, String.class);
+        Object packed = source.newInstance(runtime, getReader.invoke(archive), archive, fixture.getDir("codec-libs", 0), "base");
+        Method prepend = loader.loadClass("X.3z0").getDeclaredMethod("A02", loader.loadClass("X.3y0"), String.class);
+        prepend.setAccessible(true); prepend.invoke(null, packed, "lib-compressed");
+    }
     @Override public void onCreate(Bundle args) { super.onCreate(args); start(); }
     @Override public void onStart() {
         JSONObject report = new JSONObject(); Bundle result = new Bundle();
@@ -61,6 +88,8 @@ public final class NativeInstagramProbe extends Instrumentation {
                     Context themed = new ContextThemeWrapper(ig, android.R.style.Theme_Material_Light_NoActionBar) {
                         @Override public android.content.res.Resources getResources() { return resources; }
                     };
+                    try { new InstagramStickerDispatch(loader).installed(); }
+                    catch (ReflectiveOperationException ignored) { }
                     Class<?> composer = Class.forName("com.instagram.ui.widget.textview.ComposerAutoCompleteTextView", false, loader);
                     Class<?> keyType = Class.forName("com.instagram.model.direct.DirectThreadKey", false, loader);
                     EditText view = (EditText) composer.getConstructor(Context.class).newInstance(themed);
@@ -123,16 +152,16 @@ public final class NativeInstagramProbe extends Instrumentation {
                     }
                     if (animated != null) {
                         set(owner, fixture.sessionField(), blank(loader, "com.instagram.common.session.UserSession"));
-                        report.put("animated_gif_capability", java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains("image/gif"));
+                        report.put("animated_gif_capability", java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains(InstagramStickerFormat.GIF));
                         report.put("animated_gif_status_ready", policy.gifStatus().equals("ready"));
                         set(owner, fixture.ownerSender(), null);
-                        report.put("animated_gif_independent_of_gallery", java.util.Arrays.asList(policy.additionalMimeTypes(view)).equals(java.util.List.of("image/gif")));
+                        report.put("animated_gif_independent_of_gallery", java.util.Arrays.asList(policy.additionalMimeTypes(view)).equals(java.util.Arrays.asList(InstagramStickerFormat.renditions())));
                         set(owner, fixture.ownerSender(), gallerySender);
                         Object copied = InstagramThreadBinding.discover(listener, view, keyType).copyKey(view);
                         report.put("recipient_key_is_copied", copied != key[0] && copied.equals(key[0]));
                         // Remove the synthetic session before any native service could use it.
                         set(owner, fixture.sessionField(), null);
-                        report.put("missing_animated_session_disabled", !java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains("image/gif"));
+                        report.put("missing_animated_session_disabled", !java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains(InstagramStickerFormat.GIF));
                         report.put("missing_animated_session_reason", policy.gifStatus().equals("session_missing"));
                     }
                     set(gallerySender, "A01", host.getApplicationContext());
@@ -231,21 +260,85 @@ public final class NativeInstagramProbe extends Instrumentation {
                         });
                     } finally { clip.delete(); }
                 }
-                try (InstagramGifFile gif = InstagramGifFile.prepare(getTargetContext(),
+                try (InstagramAnimationFile gif = InstagramAnimationFile.prepareGif(getTargetContext(),
                         () -> getTargetContext().getAssets().open("floating/hello.gif"))) {
-                    ClassLoader loader = host.createPackageContext("com.instagram.android", Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY).getClassLoader();
+                    Context instagram = host.createPackageContext("com.instagram.android", Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY);
+                    ClassLoader loader = instagram.getClassLoader();
                     InstagramAnimatedContract animated = InstagramAnimatedContract.load(loader);
                     if (animated != null) {
-                        InstagramAnimatedContract.LocalAnimation local = animated.localAnimation(gif);
+                        initializeCodecRuntime(instagram, loader);
+                        for (String extension : java.util.List.of("mp4", "webm", "hd")) {
+                            File clip = new File(getTargetContext().getCacheDir(), "sticker-video-fixture." + extension);
+                            try (java.io.InputStream in = getTargetContext().getAssets().open(extension.equals("hd") ? "sticker-hd.mp4" : "preview-video." + extension);
+                                 java.io.OutputStream out = new java.io.FileOutputStream(clip)) { in.transferTo(out); }
+                            File resultFile = new InstagramStickerEncoder(loader).convertVideo(getTargetContext(), clip);
+                            try (InstagramAnimationFile videoSticker = InstagramAnimationFile.prepareWebp(getTargetContext(), resultFile)) {
+                                report.put(extension + "_direct_sticker_decodable", videoSticker.width > 0 && videoSticker.height > 0);
+                                Files.copy(videoSticker.file.toPath(), new File(getTargetContext().getFilesDir(), "native-video-" + extension + ".webp").toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            } finally { clip.delete(); resultFile.delete(); }
+                        }
+                        File encoded = new InstagramStickerEncoder(loader).convert(gif.file);
+                        try (InstagramAnimationFile webp = InstagramAnimationFile.prepareWebp(getTargetContext(), encoded)) {
+                        report.put("native_webp_encoded", webp.file.length() > 0 && webp.mimeType.equals("image/webp"));
+                        report.put("native_webp_dimensions_preserved", webp.width == gif.width && webp.height == gif.height);
+                        Files.copy(webp.file.toPath(), new File(getTargetContext().getFilesDir(), "native-sticker-fixture.webp").toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        InstagramAnimatedContract.LocalAnimation local = animated.localAnimation(webp);
                         Object descriptor = local.metadata();
                         report.put("local_animation_type", descriptor.getClass().getField("A02").get(descriptor).toString());
-                        report.put("local_animation_file_path", descriptor.getClass().getMethod("A02").invoke(descriptor).equals(gif.file.getAbsolutePath()));
-                        report.put("local_animation_not_sticker", !descriptor.getClass().getField("A0C").getBoolean(descriptor));
+                        report.put("local_animation_file_path", descriptor.getClass().getMethod("A02").invoke(descriptor).equals(webp.file.getAbsolutePath()));
+                        report.put("local_animation_is_sticker", descriptor.getClass().getField("A0C").getBoolean(descriptor));
+                        report.put("sticker_upload_uses_truthful_webp_mime", local.pending().getClass().getField("A4r").get(local.pending()).equals("image/webp"));
+                        report.put("sticker_upload_uses_native_webp_format", local.pending().getClass().getField("A0I").getInt(local.pending()) == 6);
                         Object key = loader.loadClass("com.instagram.model.direct.DirectThreadKey").getConstructor(String.class, java.util.List.class)
                             .newInstance("synthetic-gif-thread", null);
-                        Object command = animated.command(local, key, animated.request(null), null);
-                        report.put("local_animation_command_uses_pending_media", command.getClass().getField("A03").get(command) == descriptor);
+                        boolean unuploadedRejected = false;
+                        try { animated.command(local.pending(), key, animated.request(null), null); }
+                        catch (IllegalStateException expected) { unuploadedRejected = true; }
+                        report.put("gif_command_rejects_unuploaded_media", unuploadedRejected);
+                        Object originalAttachment = local.pending().getClass().getField("A3O").get(local.pending());
+                        local.pending().getClass().getField("A3O").set(local.pending(), 42L);
+                        Object command = animated.command(local.pending(), key, animated.request(null), null);
+                        report.put("native_riff_command_type", command.getClass().getMethod("getTypeName").invoke(command).equals("configure_riff_sticker_message"));
                         report.put("local_animation_command_has_original_recipient", command.getClass().getMethod(fixture(loader).recipients()).invoke(command).equals(java.util.List.of(key)));
+                        Object animation = command.getClass().getField("A01").get(command);
+                        report.put("sticker_configuration_uses_actual_upload_id", animation.getClass().getField("A0F").get(animation).equals("42"));
+                        Object ownerSession = blank(loader, "com.instagram.common.session.UserSession");
+                        InstagramStickerDispatch dispatcher = InstagramStickerDispatch.forCommand(command.getClass());
+                        try (AutoCloseable registered = dispatcher.register(command, ownerSession, local.pending())) {
+                            report.put("completed_gif_attachment_can_be_registered", true);
+                            Object handler = blank(loader, "X.5aw");
+                            set(handler, "A00", blank(loader, "com.instagram.common.session.UserSession"));
+                            InstagramStickerDispatch.Claim wrongAccount = dispatcher.claim(handler, command);
+                            report.put("gif_attachment_rejects_other_account", wrongAccount.owned() && wrongAccount.pending() == null);
+                            java.util.concurrent.atomic.AtomicInteger rejected = new java.util.concurrent.atomic.AtomicInteger();
+                            Class<?> callbackType = loader.loadClass("X.Wbb");
+                            Object callback = Proxy.newProxyInstance(loader, new Class<?>[]{callbackType}, (p, m, a) -> {
+                                if (m.getName().equals("FdI") && a[0] != null && a[1] == null &&
+                                    !a[0].getClass().getField("A0D").getBoolean(a[0]) &&
+                                    !a[0].getClass().getField("A0E").getBoolean(a[0])) rejected.incrementAndGet();
+                                return null;
+                            });
+                            try (AutoCloseable invalid = dispatcher.register(command, ownerSession, local.pending())) {
+                                report.put("gif_context_rejection_completes_native_callback", dispatcher.prepareInvocation(handler, callback, command).rejected() && rejected.get() == 1);
+                                report.put("gif_context_rejection_is_once", !dispatcher.prepareInvocation(handler, callback, command).owned() && rejected.get() == 1);
+                            }
+                            set(handler, "A00", ownerSession);
+                            try (AutoCloseable valid = dispatcher.register(command, ownerSession, local.pending())) {
+                                Object other = animated.command(local.pending(), key, animated.request(null), null);
+                                report.put("gif_attachment_rejects_unregistered_request", !dispatcher.claim(handler, other).owned());
+                                report.put("gif_attachment_claim_preserves_uploaded_pending", dispatcher.claim(handler, command).pending() == local.pending());
+                                report.put("gif_attachment_claim_is_once", !dispatcher.claim(handler, command).owned());
+                            }
+                        } finally { local.pending().getClass().getField("A3O").set(local.pending(), originalAttachment); }
+                        } finally { encoded.delete(); }
+                        try (InstagramAnimationFile source = InstagramAnimationFile.prepareGif(getTargetContext(),
+                                () -> getTargetContext().getAssets().open("floating/disposal.gif"))) {
+                            File converted = new InstagramStickerEncoder(loader).convert(source.file);
+                            try (InstagramAnimationFile webp = InstagramAnimationFile.prepareWebp(getTargetContext(), converted)) {
+                                report.put("disposal_fixture_is_decodable", webp.width == 64 && webp.height == 64);
+                                Files.copy(webp.file.toPath(), new File(getTargetContext().getFilesDir(), "native-disposal-fixture.webp").toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            } finally { converted.delete(); }
+                        }
                         try (java.io.InputStream original = getTargetContext().getAssets().open("floating/hello.gif")) {
                             report.put("gif_bytes_preserved", java.util.Arrays.equals(Files.readAllBytes(gif.file.toPath()), original.readAllBytes()));
                         }
@@ -254,6 +347,9 @@ public final class NativeInstagramProbe extends Instrumentation {
             }
             host.finish(); Files.write(new File(getTargetContext().getFilesDir(),"native-report.json").toPath(),report.toString(2).getBytes());
             result.putString("report",report.toString());finish(report.has("error")?Activity.RESULT_CANCELED:Activity.RESULT_OK,result);
-        }catch(Throwable error){result.putString("error",error.toString());finish(Activity.RESULT_CANCELED,result);}
+        }catch(Throwable error){
+            java.io.StringWriter trace=new java.io.StringWriter(); error.printStackTrace(new java.io.PrintWriter(trace));
+            result.putString("error",trace.toString());finish(Activity.RESULT_CANCELED,result);
+        }
     }
 }

@@ -2,16 +2,22 @@ plugins { id 'com.android.application' version '9.3.3' }
 android {
     namespace 'one.njk.sao.instagramprobe'
     compileSdk 37
+    ndkVersion '28.2.13676358'
     defaultConfig {
         applicationId 'one.njk.sao.instagramprobe'
         minSdk 30
         targetSdk 36
         versionCode 1
         versionName '1'
+        ndk { abiFilters 'arm64-v8a' }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
     sourceSets.main.java.srcDir 'build/generated/production-adapter'
+    sourceSets.main.kotlin.directories.add('build/generated/production-adapter')
     sourceSets.main.assets.srcDir '../../../app/src/androidTest/assets'
+    // Force an ARM64 process on x86-64 emulators with native bridge support. The
+    // installed Instagram codecs are ARM64; this marker contains no codec code.
+    externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.22.1' } }
 }
 // Generate only the production adapter sources, avoiding javac's implicit compilation
 // of the rest of SAO's package. Sync runs on every source change before compilation.
@@ -22,12 +28,24 @@ def adapterSources = tasks.register('syncProductionAdapter', Sync) {
     include 'one/njk/sao/floating/nativebridge/InstagramThreadBinding.java'
     include 'one/njk/sao/floating/nativebridge/PreparedNativeContent.java'
     include 'one/njk/sao/floating/nativebridge/NativeContentPreparation.java'
+    include 'one/njk/sao/floating/nativebridge/NativePreparationException.java'
     include 'one/njk/sao/floating/nativebridge/InstagramGalleryContract.java'
     include 'one/njk/sao/floating/nativebridge/InstagramAnimatedContract.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramStickerUpload.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramStickerDispatch.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramStickerCommand.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramStickerFormat.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramStickerEncoder.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramInsertMessages.java'
     include 'one/njk/sao/floating/nativebridge/InstagramMediaFile.java'
-    include 'one/njk/sao/floating/nativebridge/InstagramGifFile.java'
+    include 'one/njk/sao/floating/nativebridge/InstagramAnimationFile.java'
     include 'one/njk/sao/floating/nativebridge/InstagramVideoFile.java'
     include 'one/njk/sao/floating/nativebridge/NativeVideoMetadata.java'
+    include 'one/njk/sao/floating/VideoFrameDecoder.kt'
     into layout.buildDirectory.dir('generated/production-adapter')
 }
 tasks.named('preBuild').configure { dependsOn adapterSources }
+dependencies {
+    implementation 'androidx.media3:media3-effect:1.11.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
+}

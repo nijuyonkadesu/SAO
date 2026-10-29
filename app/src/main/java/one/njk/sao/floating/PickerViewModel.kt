@@ -288,6 +288,9 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         clearSelection()
         searchQuery(query.value.copy(text = "", randomRequest = java.util.UUID.randomUUID().toString()))
     }
+    fun instagramVideoRoute(value: InstagramVideoRoute) {
+        viewModelScope.launch { preferences.instagramVideoRoute(value) }
+    }
     fun preferStickers(value: Boolean) {
         preferredOverride = value
         viewModelScope.launch { preferences.preferStickers(value) }

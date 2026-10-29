@@ -10,7 +10,6 @@ import android.os.SystemClock
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import one.njk.sao.floating.FloatingSession
 
@@ -23,6 +22,7 @@ object NativeBridgeRegistry {
     private data class Snapshot(val selection: Selection?, val status: HostStatus, val resumed: Boolean)
     private class Client(val remote: INativeStickerClient, val uid: Int) {
         val binder: IBinder = remote.asBinder()
+        val operation = Mutex()
         var death: IBinder.DeathRecipient? = null
         lateinit var observer: INativeStateObserver
         val state = MutableStateFlow<Snapshot?>(null)
@@ -30,7 +30,8 @@ object NativeBridgeRegistry {
         @Volatile var observing = false
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
-    private val operations = Mutex()
+    private val insertState = MutableStateFlow<Set<String>>(emptySet())
+    val inserting = insertState.asStateFlow()
     private val clients = ConcurrentHashMap<String, Client>()
     private val cached = ConcurrentHashMap<String, Pair<Selection, Long>>()
     private val connection = MutableStateFlow(false)
@@ -55,7 +56,21 @@ object NativeBridgeRegistry {
         }
         scope.launch { FloatingSession.pickerVisibility.collect { clients.values.forEach(::observe) } }
     }
-    private fun wanted(client: Client) = FloatingSession.active.value && (FloatingSession.pickerVisible || client.inserting)
+    private fun wanted(client: Client) = FloatingSession.active.value && clients.containsValue(client) &&
+        (FloatingSession.pickerVisible || client.inserting)
+    @Synchronized private fun insertion(packageName: String, client: Client, active: Boolean): Boolean {
+        client.inserting = active
+        if(clients[packageName] !== client) return false
+        insertState.update { if(active) it + packageName else it - packageName }
+        if(!active) { cached.remove(packageName); sessionState.update { it - packageName } }
+        return true
+    }
+    @Synchronized private fun disconnected(packageName: String, client: Client) {
+        if(!clients.remove(packageName,client)) return
+        cached.remove(packageName); insertState.update { it - packageName }
+        sessionState.update { it - packageName }; statusState.update { it - packageName }
+        connection.value = FloatingSession.active.value && clients.isNotEmpty()
+    }
     @Synchronized private fun observe(client: Client) {
         val observing = wanted(client)
         if (client.observing == observing) return
@@ -80,15 +95,10 @@ object NativeBridgeRegistry {
                 scope.launch { if (wanted(client)) accept(packageName, client, snapshot) }
             }
         }
-        client.death = IBinder.DeathRecipient {
-            if (clients.remove(packageName, client)) {
-                cached.remove(packageName)
-                sessionState.update { it - packageName }; statusState.update { it - packageName }
-                connection.value = FloatingSession.active.value && clients.isNotEmpty()
-            }
-        }
+        client.death = IBinder.DeathRecipient { disconnected(packageName,client) }
         binder.linkToDeath(client.death!!, 0)
         clients.put(packageName, client)?.let(::unlink)
+        insertState.update { it - packageName }
         cached.remove(packageName); sessionState.update { it - packageName }
         statusState.update { it + (packageName to HostStatus("waiting_editor", "")) }
         connection.value = FloatingSession.active.value
@@ -141,11 +151,11 @@ object NativeBridgeRegistry {
     @Synchronized internal fun clear() {
         clients.values.forEach(::unlink)
         clients.clear(); cached.clear()
-        sessionState.value = emptyMap(); statusState.value = emptyMap(); connection.value = false
+        sessionState.value = emptyMap(); statusState.value = emptyMap(); insertState.value = emptySet(); connection.value = false
     }
     fun available(packageName: String?) = FloatingSession.active.value && packageName != null && clients[packageName]?.binder?.isBinderAlive == true
     fun supports(packageName: String?, session: String?, mimeType: String): Boolean =
-        available(packageName) && session != null && sessionState.value[packageName]?.let {
+        available(packageName) && packageName !in insertState.value && session != null && sessionState.value[packageName]?.let {
             it.session == session && mimeType in it.mimeTypes
         } == true
     fun cachedSelection(packageName: String?): Selection? {
@@ -155,62 +165,65 @@ object NativeBridgeRegistry {
         }.singleOrNull()?.first
     }
     suspend fun beginSelection(packageName: String?): Selection? = withContext(Dispatchers.IO) {
-        operations.withLock {
-            if (!FloatingSession.active.value) return@withLock null
-            // Unknown foreground: an explicit icon press may query the small registered set once.
-            val names = packageName?.let(::listOf) ?: clients.keys.toList()
-            val selections = names.mapNotNull { name ->
-                val client = clients[name] ?: return@mapNotNull null
-                try {
-                    val state = decode(name, client.remote.snapshot(true))
-                    accept(name, client, state)
-                    state.selection.takeIf { state.resumed && clients[name] === client && FloatingSession.active.value }
-                } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: android.os.RemoteException) { null }
-                catch (_: RuntimeException) { null }
-            }
-            selections.singleOrNull()
+        if (!FloatingSession.active.value) return@withContext null
+        // Unknown foreground: an explicit icon press may query the small registered set once.
+        val names = packageName?.let(::listOf) ?: clients.keys.toList()
+        val selections = names.mapNotNull { name ->
+            val client = clients[name] ?: return@mapNotNull null
+            // Reopening the picker must never queue behind an ongoing encode/RPC.
+            // Do not re-arm its one-use recipient lease while that request owns it.
+            if (!client.operation.tryLock()) return@mapNotNull null
+            try {
+                val state = decode(name, client.remote.snapshot(true))
+                accept(name, client, state)
+                state.selection.takeIf { state.resumed && clients[name] === client && FloatingSession.active.value }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: android.os.RemoteException) { null }
+            catch (_: RuntimeException) { null }
+            finally { client.operation.unlock() }
         }
+        selections.singleOrNull()
     }
     suspend fun insert(context: Context, packageName: String, uri: Uri, mimeType: String,
         session: String): NativeInsertResult = withContext(Dispatchers.IO) {
-        operations.withLock {
-            if (!FloatingSession.active.value) return@withLock NativeInsertResult.REJECTED
-            val client = clients[packageName] ?: return@withLock NativeInsertResult.REJECTED
-            var granted = false
-            var dispatched = false
-            var outcome = NativeInsertResult.REJECTED
-            client.inserting = true
-            try {
-                observe(client)
-                accept(packageName, client, decode(packageName, client.remote.snapshot(false)))
-                // Focus recovery is event-driven and bounded to this explicit user operation.
-                val ready = withTimeoutOrNull(2000) {
-                    combine(client.state, FloatingSession.active) { state, active -> state to active }
-                        .first { (state, active) -> !active || clients[packageName] !== client ||
-                            state != null && (state.selection?.session != session || mimeType !in state.selection.mimeTypes || state.resumed) }
-                }
-                val state = ready?.first
-                if (ready?.second != true || clients[packageName] !== client || state?.resumed != true ||
-                    state.selection?.session != session || mimeType !in state.selection.mimeTypes) return@withLock outcome
-                val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                val uid = context.packageManager.getPackageUid(packageName, 0)
-                if (context.checkUriPermission(uri, -1, uid, read) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    context.grantUriPermission(packageName, uri, read); granted = true
-                }
-                dispatched = true
-                outcome = NativeInsertResult.fromWire(client.remote.insert(uri, mimeType, session, SystemClock.elapsedRealtimeNanos()))
-                outcome
-            } catch (cancelled: CancellationException) { if (dispatched) outcome = NativeInsertResult.UNKNOWN; throw cancelled }
-            catch (_: Exception) {
-                outcome = if (dispatched) NativeInsertResult.UNKNOWN else NativeInsertResult.REJECTED
-                outcome
-            } finally {
-                // An uncertain send must retain its grant: the host may already be reading it.
-                if (granted && outcome == NativeInsertResult.REJECTED) runCatching { context.revokeUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                client.inserting = false; observe(client)
-                cached.remove(packageName); sessionState.update { it - packageName }
+        if (!FloatingSession.active.value) return@withContext NativeInsertResult.REJECTED
+        val client = clients[packageName] ?: return@withContext NativeInsertResult.REJECTED
+        if (!client.operation.tryLock()) return@withContext NativeInsertResult.REJECTED
+        var granted = false
+        var dispatched = false
+        var outcome = NativeInsertResult.REJECTED
+        try {
+            if (!insertion(packageName,client,true) || !FloatingSession.active.value) return@withContext outcome
+            observe(client)
+            accept(packageName, client, decode(packageName, client.remote.snapshot(false)))
+            // Focus recovery is event-driven and bounded to this explicit user operation.
+            val ready = withTimeoutOrNull(2000) {
+                combine(client.state, FloatingSession.active) { state, active -> state to active }
+                    .first { (state, active) -> !active || clients[packageName] !== client ||
+                        state != null && (state.selection?.session != session || mimeType !in state.selection.mimeTypes || state.resumed) }
             }
+            val state = ready?.first
+            if (ready?.second != true || clients[packageName] !== client || state?.resumed != true ||
+                state.selection?.session != session || mimeType !in state.selection.mimeTypes) return@withContext outcome
+            val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
+            val uid = context.packageManager.getPackageUid(packageName, 0)
+            if (context.checkUriPermission(uri, -1, uid, read) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                context.grantUriPermission(packageName, uri, read); granted = true
+            }
+            dispatched = true
+            outcome = NativeInsertResult.fromWire(client.remote.insert(uri, mimeType, session, SystemClock.elapsedRealtimeNanos()))
+            outcome
+        } catch (cancelled: CancellationException) { if (dispatched) outcome = NativeInsertResult.UNKNOWN; throw cancelled }
+        catch (_: Exception) {
+            outcome = if (dispatched) NativeInsertResult.UNKNOWN else NativeInsertResult.REJECTED
+            outcome
+        } finally {
+            // An uncertain send must retain its grant: the host may already be reading it.
+            if (granted && outcome in setOf(NativeInsertResult.REJECTED,NativeInsertResult.PREPARATION_FAILED))
+                runCatching { context.revokeUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            try {
+                if(insertion(packageName,client,false)) observe(client)
+            } finally { client.operation.unlock() }
         }
     }
 }

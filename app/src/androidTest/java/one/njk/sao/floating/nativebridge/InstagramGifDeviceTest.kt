@@ -27,7 +27,7 @@ class InstagramGifDeviceTest {
                 one.njk.sao.floating.VideoGifTranscoder(app).gif(input,output)
                 val uri=FileProvider.getUriForFile(app,"${app.packageName}.fileprovider",output)
                 withContext(Dispatchers.IO) {
-                    InstagramGifFile.prepare(app,uri).use { staged ->
+                    InstagramAnimationFile.prepareGif(app,uri).use { staged ->
                         assertTrue(staged.width>0 && staged.height>0)
                         assertArrayEquals(output.readBytes(),staged.file.readBytes())
                     }
@@ -42,8 +42,8 @@ class InstagramGifDeviceTest {
         val uri = FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", original)
         try {
             withContext(Dispatchers.IO) {
-                InstagramGifFile.prepare(app, uri).use { fromUri ->
-                    InstagramGifFile.prepare(app) { ByteArrayInputStream(bytes) }.use { fromBytes ->
+                InstagramAnimationFile.prepareGif(app, uri).use { fromUri ->
+                    InstagramAnimationFile.prepareGif(app) { ByteArrayInputStream(bytes) }.use { fromBytes ->
                         assertTrue(fromUri.width > 0 && fromUri.height > 0)
                         assertEquals(fromUri.width, fromBytes.width)
                         assertEquals(fromUri.height, fromBytes.height)
@@ -60,7 +60,7 @@ class InstagramGifDeviceTest {
         withContext(Dispatchers.IO) {
             val png = instrumentation.context.assets.open("floating/happy.png").use { it.readBytes() }
             for (bytes in listOf(png, "GIF89a".toByteArray(), byteArrayOf())) {
-                try { InstagramGifFile.prepare(app) { ByteArrayInputStream(bytes) }.use { }; fail("Invalid GIF accepted") }
+                try { InstagramAnimationFile.prepareGif(app) { ByteArrayInputStream(bytes) }.use { }; fail("Invalid GIF accepted") }
                 catch (_: IOException) { }
             }
             try {
@@ -68,7 +68,7 @@ class InstagramGifDeviceTest {
                 fail("Bounded copy accepted oversized input")
             } catch (_: IOException) { }
             try {
-                InstagramGifFile.prepare(app) { object : InputStream() {
+                InstagramAnimationFile.prepareGif(app) { object : InputStream() {
                     override fun read(): Int = throw IOException("Source was revoked")
                 } }.use { }
                 fail("Revoked source accepted")
@@ -80,13 +80,13 @@ class InstagramGifDeviceTest {
         var opened = false
         instrumentation.runOnMainSync {
             try {
-                InstagramGifFile.prepare(app) { opened = true; ByteArrayInputStream(byteArrayOf()) }
+                InstagramAnimationFile.prepareGif(app) { opened = true; ByteArrayInputStream(byteArrayOf()) }
                 fail("Preparation must reject Main")
             } catch (_: IllegalStateException) { }
         }
         assertFalse(opened)
         withContext(Dispatchers.IO) {
-            val gif = InstagramGifFile.prepare(app) { ByteArrayInputStream(bytes()) }
+            val gif = InstagramAnimationFile.prepareGif(app) { ByteArrayInputStream(bytes()) }
             try {
                 gif.submitted(); gif.close()
                 assertTrue(gif.file.exists())
