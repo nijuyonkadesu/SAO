@@ -501,7 +501,7 @@ class PickerActivity : AppCompatActivity() {
     }
     private fun nativeMediaMime(item: MediaItem): String {
         if (target == MessagingTarget.INSTAGRAM && options.preferStickers &&
-            (item.mimeType == "image/gif" || item.isVideo && options.instagramVideoRoute == InstagramVideoRoute.GIF))
+            (!item.isVideo || options.instagramVideoRoute == InstagramVideoRoute.GIF))
             InstagramStickerFormat.forInput(item.mimeType)?.let { return it }
         return NativeMediaFormat.mime(item.mimeType,target==MessagingTarget.INSTAGRAM,accepts={
             NativeBridgeRegistry.supports(targetPackage,nativeSession,it)
@@ -525,9 +525,9 @@ class PickerActivity : AppCompatActivity() {
             FloatingSession.active.value && options.pasteAssistance && pasteAnchor != null && PasteAssistService.connected())
         val native = NativeBridgeRegistry.supports(targetPackage, nativeSession, "image/webp.wasticker")
         val gifChoice = item?.isVideo == true && target == MessagingTarget.INSTAGRAM
-        binding.stickerAction.isCheckable = gifChoice
+        binding.stickerAction.isCheckable = target == MessagingTarget.INSTAGRAM
         binding.stickerAction.isChecked = gifChoice && options.instagramVideoRoute == InstagramVideoRoute.GIF
-        binding.stickerAction.setText(if (gifChoice) R.string.picker_as_gif else R.string.picker_sticker)
+        binding.stickerAction.setText(if (target == MessagingTarget.INSTAGRAM) R.string.picker_as_gif else R.string.picker_sticker)
         binding.stickerAction.isEnabled = !busy && (gifChoice || item != null && !item.hasMotion &&
             (target == MessagingTarget.TELEGRAM && canShareSticker || target.isWhatsapp && native))
         binding.mediaAction.isEnabled = item != null && !busy && (nativePaste || target != MessagingTarget.INSTAGRAM || canAttachInstagram)

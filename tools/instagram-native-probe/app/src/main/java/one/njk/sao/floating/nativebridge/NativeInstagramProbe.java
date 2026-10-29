@@ -277,6 +277,7 @@ public final class NativeInstagramProbe extends Instrumentation {
                     InstagramAnimatedContract animated = InstagramAnimatedContract.load(loader);
                     if (animated != null) {
                         initializeCodecRuntime(instagram, loader);
+                        StaticStickerProbe.verify(getTargetContext(), new InstagramStickerEncoder(loader), animated, report);
                         Context mediaContext=NativeModuleResources.mediaContext(instagram,
                             android.net.Uri.parse("content://"+getTargetContext().getPackageName()+".fileprovider/fixture"));
                         int shader=getTargetContext().getResources().getIdentifier("vertex_shader_transformation_es2","raw",getTargetContext().getPackageName());
@@ -367,6 +368,12 @@ public final class NativeInstagramProbe extends Instrumentation {
                     }
                 }
             }
+            java.util.List<String> failedChecks = new java.util.ArrayList<>();
+            for (var keys = report.keys(); keys.hasNext();) {
+                String name = keys.next();
+                if (Boolean.FALSE.equals(report.get(name))) failedChecks.add(name);
+            }
+            if (!failedChecks.isEmpty()) report.put("error", "Failed checks: " + String.join(", ", failedChecks));
             host.finish(); Files.write(new File(getTargetContext().getFilesDir(),"native-report.json").toPath(),report.toString(2).getBytes());
             result.putString("report",report.toString());finish(report.has("error")?Activity.RESULT_CANCELED:Activity.RESULT_OK,result);
         }catch(Throwable error){

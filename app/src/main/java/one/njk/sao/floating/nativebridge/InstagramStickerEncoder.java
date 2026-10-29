@@ -4,6 +4,8 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
+import android.graphics.ImageDecoder;
+import android.graphics.ColorSpace;
 import android.os.Looper;
 import android.content.Context;
 import java.io.File;
@@ -18,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import one.njk.sao.floating.VideoFrameDecoder;
 
-/** Uses codecs already shipped by Instagram; all native frames/resources belong to one explicit request. */
+/** Platform/native-app codecs; all frames and encoder resources belong to one explicit request. */
 final class InstagramStickerEncoder {
     enum Limit { MEMORY, TIMEOUT }
     static final class LimitException extends IOException {
@@ -62,6 +64,9 @@ final class InstagramStickerEncoder {
     File convertVideo(Context context, File input) throws IOException {
         return convert(input, output -> encodeVideo(context, input, output));
     }
+    File convertImage(File input) throws IOException {
+        return convert(input, output -> encodeImage(input, output));
+    }
     private File convert(File input, Encode action) throws IOException {
         if (Looper.myLooper() == Looper.getMainLooper()) throw new IllegalStateException("Convert stickers on IO");
         File output = File.createTempFile("sao-sticker-", ".webp", input.getParentFile());
@@ -86,6 +91,31 @@ final class InstagramStickerEncoder {
             return output;
         } catch (IOException error) { output.delete(); throw error; }
         finally { if (interrupted) Thread.currentThread().interrupt(); }
+    }
+
+    private void encodeImage(File input, File output) throws IOException {
+        long began = System.nanoTime();
+        Bitmap image = ImageDecoder.decodeBitmap(ImageDecoder.createSource(input), (decoder, info, source) -> {
+            if (info.isAnimated()) throw new IllegalArgumentException("Animated input requires its animation decoder");
+            int w = info.getSize().getWidth(), h = info.getSize().getHeight();
+            if (w <= 0 || h <= 0 || w > 16383 || h > 16383) throw new IllegalArgumentException("Image dimensions are unsupported by WebP");
+            if ((long) w * h > Runtime.getRuntime().maxMemory() / 64)
+                throw new IllegalArgumentException("Image exceeds decode budget", new LimitException(Limit.MEMORY));
+            decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+            // Encoding does not draw on Canvas. Keep straight alpha so decoding
+            // and re-encoding do not round RGB through premultiplied pixels twice.
+            decoder.setUnpremultipliedRequired(true);
+            decoder.setTargetColorSpace(ColorSpace.get(ColorSpace.Named.SRGB));
+        });
+        try (FileOutputStream stream = new FileOutputStream(output)) {
+            if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("Sticker encoding cancelled");
+            // In lossless mode this is compression effort, not visual quality.
+            // Keep the decoded pixels, alpha, EXIF orientation and original dimensions.
+            if (!image.compress(Bitmap.CompressFormat.WEBP_LOSSLESS, 75, stream)) throw new IOException("Static WebP encoding failed");
+            if (InstagramAnimatedContract.diagnosticsEnabled()) android.util.Log.i("SAO.InstagramGif",
+                "static WebP encoded; width=" + image.getWidth() + "; height=" + image.getHeight() + "; alpha=" + image.hasAlpha() +
+                "; bytes=" + output.length() + "; elapsedMs=" + (System.nanoTime() - began) / 1_000_000);
+        } finally { image.recycle(); }
     }
 
     private void encodeVideo(Context context, File input, File output) throws Exception {

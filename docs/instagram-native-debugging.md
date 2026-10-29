@@ -1,19 +1,24 @@
 # Instagram native Paste: investigation and verification
 
-Recorded 2026-10-27–28. This is a reproducible account of the investigation, not a claim
+Recorded 2026-10-27–29. This is a reproducible account of the investigation, not a claim
 that every structurally compatible Instagram build can deliver every format.
 
 **Result:** the user confirmed that a fresh Paste sends the original MP4 and playback
 works on Instagram 447.0.0.55.81 with Vector. A sender-side thumbnail was missing;
 the user accepted this behavior pending any recipient-side problem. Recipient-side
-rendering was not independently inspected. **GIF delivery remains unresolved.** The
-initial converted-GIF attempt failed with HTTP 404. Subsequent native upload-only
-requests completed and returned attachment FBIDs; the animated-message route then
-reported unavailable media, while the generic attachment command remained Sending.
-The configurator adapter subsequently reached the native animated attachment
-request on the phone; its terminal callback confirmed HTTP 404 with both retries
-disabled. A subsequent native GIF-command candidate using the completed upload's
-actual FBID also failed with HTTP 404 on the phone. GIF delivery is not working.
+rendering was not independently inspected. **Native animated-sticker delivery also
+works:** the user confirmed the revision-12 video → WebP → native Riff route, with
+the floating picker remaining responsive. This is Sticker + As GIF → Paste; it is
+distinct from Instagram's provider-GIF message route. The latter returned HTTP 404
+for locally uploaded GIFs and remains unsupported. Sections 8–11 retain those
+failed experiments and their corrections; sections 12–14 describe the committed
+implementation and its physical verification. Section 15 records the static-photo
+candidate and its separate verification boundary. Conversion-speed optimization
+is deferred at the user's request.
+
+The working animated-sticker chain is:
+
+`explicit Paste → capture recipient/consume lease → stage granted URI on IO → decode original video or GIF → WebP → upload-only PendingMediaManager → positive upload FBID → 5av/Ys9 → stock Riff configuration once → registered sticker ID → stock native send/callback`
 
 ## 1. Establish the failing layer
 
@@ -170,7 +175,8 @@ In Vector, enable SAO and scope Instagram. After updating injected code, force-s
 and reopen Instagram: replacing SAO's APK does not replace classes already loaded
 in Instagram. The running host reports its hook protocol revision; the original
 MP4 verification used **3**, the rejected attachment experiment **4**, and the
-uploaded-ID GIF candidate **5**. SAO's unchanged APK version is not adequate evidence.
+uploaded-ID GIF candidate **5**, and the verified responsive animated-sticker path
+**12**. SAO's unchanged APK version is not adequate evidence.
 
 `onModuleLoaded` rejects system-server/unscoped processes. `onPackageReady` installs
 `Instrumentation.callActivityOnCreate/Resume/Pause/Destroy` interceptors using
@@ -230,8 +236,8 @@ disposable emulator. Never uninstall the user's Instagram to make a probe instal
 ```bash
 export SAO_EMULATOR='EMULATOR_SERIAL'
 ./gradlew -p tools/instagram-native-probe :app:assembleDebug
-adb -s "$SAO_EMULATOR" install -r tools/instagram-native-probe/app/build/outputs/apk/debug/app-debug.apk
-adb -s "$SAO_EMULATOR" shell am instrument -w \
+adb -s "$SAO_EMULATOR" install --abi arm64-v8a -r tools/instagram-native-probe/app/build/outputs/apk/debug/app-debug.apk
+adb -s "$SAO_EMULATOR" shell am instrument --abi arm64-v8a -w \
   one.njk.sao.instagramprobe/one.njk.sao.floating.nativebridge.NativeInstagramProbe
 adb -s "$SAO_EMULATOR" shell run-as one.njk.sao.instagramprobe cat files/native-report.json
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest
@@ -271,7 +277,8 @@ export IG_LAUNCHER='COMPONENT_RETURNED_ABOVE'
 adb -s "$SAO_DEVICE" shell am start -a android.intent.action.MAIN \
   -c android.intent.category.LAUNCHER -n "$IG_LAUNCHER"
 # Open the intended DM manually.
-adb -s "$SAO_DEVICE" logcat -d -v threadtime -s 'SAO.NativeBridge:I' '*:S'
+adb -s "$SAO_DEVICE" logcat -v brief -T 1 \
+  -s 'SAO.NativeBridge:I' 'SAO.InstagramGif:I' '*:S'
 ```
 
 Open the picker over that DM and center the intended media. The observed sanitized
@@ -288,13 +295,14 @@ Modern module logging may go to Vector's own log store; an empty generic SAO
 logcat filter does not establish absent hooks. Likewise, an unavailable `su`
 executable does not establish absent injection.
 
-For send failures, resolve Instagram's current PID with `pidof com.instagram.android`
-and inspect only that process around the user's explicit retry. During this session,
-logcat was captured in Python memory, restricted to `PendingMediaWorker` and
-`IgFunctionalErrorEvent`, and sanitized before output. For repeatable minimal
-diagnostics, extract only `failureDomain`, `errorCode`, `sendAttemptChannel` and the
-two retry booleans; never save raw logs or print whole error messages/stacks.
-Resolve PID again after restart. Do not automate Paste or Send on a real conversation.
+For current builds use those two SAO-owned tags only. Check the loaded hook
+revision, encoder completion, upload completion and final native callback separately;
+successful staging/upload is not delivery. Early investigation temporarily parsed
+`PendingMediaWorker` / `IgFunctionalErrorEvent` in memory and emitted only bounded
+domain/code/channel/retry fields; the owned callback diagnostics now supply those
+fields without collecting raw Instagram logs. Never persist raw host logs or print
+native exception messages, account/thread IDs, filenames, URLs or lease tokens.
+Do not automate Paste or Send on a real conversation.
 
 ## 8. HTTP 404, incorrect assumptions and correction
 
@@ -512,10 +520,10 @@ A replaced client cannot clear its replacement’s operation or editor state. Ph
 verification exposed the two integration regressions below; fixture checks alone
 do not establish injected-process correctness or phone latency.
 
-Pending: **static-photo native stickers**. Ordinary photo Paste already works,
-but Sticker mode for a static photo is not implemented; it must not silently
-send a normal attachment. Also complete the source-independent As GIF control and
-size feedback after the Instagram performance path is verified.
+Static-photo Sticker mode is tracked separately in section 15; it must not silently
+send a normal attachment. Conversion-speed optimization, source-independent As GIF
+controls and size feedback are deferred; the user accepted the working video
+path's latency.
 
 ## 13. Injected Media3 resource context (revision 11)
 
@@ -572,3 +580,43 @@ retries completed native upload/configuration/send without a native error for bo
 tested videos, and the user confirmed delivery. The picker remained responsive.
 Conversion latency remains a separate follow-up; no speed claim follows from the
 correctness checks.
+
+## 15. Static-photo sticker preparation (revision 13 candidate)
+
+`InstagramStickerFormat` now advertises private still-image renditions only when
+`ImageDecoder.isMimeTypeSupported` accepts the source MIME on that device; this
+capability set is computed once. The picker requests them only for **Sticker**
+mode. The third button remains **As GIF**, disabled for still photos; static
+stickers require no animation toggle. Media mode continues through the existing
+photo handler. Neither Copy nor source uploads use this conversion.
+
+`InstagramAnimatedContract.prepare` stages JPEG/PNG and other supported stills on
+IO, then calls `InstagramStickerEncoder.convertImage`. Platform `ImageDecoder`
+bakes EXIF orientation into full-size software pixels, rejects animated input
+instead of flattening it, and explicitly converts to sRGB. Straight alpha avoids
+rounding RGB through a premultiplied decode/encode cycle. The encoder writes
+`WEBP_LOSSLESS` directly to a request-owned file; its quality argument **75 is
+compression effort**, not a lossy visual-quality target. No square canvas, padding,
+background replacement, resize or arbitrary byte target is added. The existing
+WhatsApp/Telegram static encoder deliberately produces constrained 512×512 assets,
+so using it here would impose unrelated receiving-app requirements.
+[ImageDecoder contract](https://developer.android.com/reference/android/graphics/ImageDecoder#setUnpremultipliedRequired(boolean)),
+[WebP lossless contract](https://developer.android.com/reference/android/graphics/Bitmap.CompressFormat#WEBP_LOSSLESS).
+
+Existing WebP is validated/staged byte-for-byte, preserving animation as well as
+stills. Both paths reuse the verified upload-only/Riff command and captured
+recipient ticket; the native wire metadata remains `ANIMATED_MEDIA`, `image/webp`,
+format **6**, with `render_as_sticker`. No second configurator, URI publication,
+new dependency or account/credential access is introduced. Before bitmap allocation,
+dimensions must fit WebP's 16,383-pixel edge and `width*height <= maxMemory/64`;
+the existing owned worker, cancellation/60-second bound and typed failure feedback
+apply. Original/staged temporary files follow existing cleanup rules.
+
+The account-free 447 probe passes **80 boolean checks**, including a 64×48 PNG
+with alpha 0/128/255, EXIF-6 JPEG rotation from 32×24 to 24×32, unchanged source
+bytes, unpremultiplied decoded-pixel equality, exact WebP pass-through and native
+pending metadata. Comparing premultiplied PNG/WebP decoder output initially showed
+small rounding differences; compare straight RGBA when testing lossless encoded
+content. Failed boolean checks now fail instrumentation rather than merely
+appearing as `false` in a successful report. These checks invoke no uploader or
+sender: **revision-13 static-sticker delivery still needs the physical phone test**.

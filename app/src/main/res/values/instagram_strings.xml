@@ -8,7 +8,7 @@
     <string name="picker_instagram_native_sticker_hint">Paste creates an Instagram custom sticker and sends it to this conversation.</string>
     <string name="picker_instagram_select_sticker">Select Sticker to send this animation as an Instagram custom sticker.</string>
     <string name="picker_instagram_enable_gif">Turn on As GIF to create an animated Instagram sticker from this video.</string>
-    <string name="picker_instagram_select_media">Select Media to paste this photo. Native stickers currently support animations.</string>
+    <string name="picker_instagram_select_media">This image format is unavailable for native stickers. Select Media to send the original.</string>
     <string name="picker_instagram_sticker_queued">Instagram is preparing the custom sticker.</string>
     <string name="picker_as_gif">As GIF</string>
     <string name="picker_instagram_gif_unavailable">Instagram’s GIF handler is unavailable. Turn off As GIF or use DM.</string>

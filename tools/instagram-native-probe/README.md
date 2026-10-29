@@ -91,4 +91,11 @@ the module resource context and verify that the wrapper keeps the native host's
 identity/storage. The foreign resource ID is read only as a negative control;
 it is never compiled as shader code. The probe also recreates the same native
 listener Binding, validates the captured recipient again, and rejects a changed
-account. The current complete probe passes 65 boolean checks.
+account. The revision-12 probe passed 65 boolean checks.
+
+The static-image candidate adds a synthetic transparent PNG and a tiny JPEG with
+EXIF orientation 6. Checks compare straight decoded RGBA, dimensions/orientation,
+alpha, untouched source bytes, exact staged WebP bytes and native sticker upload
+metadata. The still encoder must reject animated input instead of flattening it.
+The complete 447 probe now passes **80 boolean checks**; any false boolean fails
+instrumentation. These tests do not establish authenticated static-sticker delivery.

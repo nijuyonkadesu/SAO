@@ -12,7 +12,7 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-/** Bounded, request-owned animation with independently validated bytes, MIME and dimensions. */
+/** Bounded, request-owned GIF/WebP with independently validated bytes, MIME and dimensions. */
 final class InstagramAnimationFile implements AutoCloseable {
     final File file;
     final int width, height;
@@ -31,6 +31,9 @@ final class InstagramAnimationFile implements AutoCloseable {
     }
     static InstagramAnimationFile prepareWebp(Context context, File file) throws IOException {
         return prepare(context, () -> new FileInputStream(file), "image/webp", ".webp");
+    }
+    static InstagramAnimationFile prepareWebp(Context context, Uri uri) throws IOException {
+        return prepare(context, InstagramMediaFile.fromUri(context, uri), "image/webp", ".webp");
     }
     private static InstagramAnimationFile prepare(Context context, InstagramMediaFile.Source source, String mimeType, String extension) throws IOException {
         InstagramMediaFile staged = InstagramMediaFile.prepare(context, source, extension, NativeVideoMetadata.MAX_BYTES);

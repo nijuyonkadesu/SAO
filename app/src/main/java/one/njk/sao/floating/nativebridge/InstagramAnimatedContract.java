@@ -171,6 +171,16 @@ final class InstagramAnimatedContract {
                     try { gif = InstagramAnimationFile.prepareWebp(context, webp); }
                     finally { webp.delete(); }
                 }
+            } else if (sourceMime.equals("image/webp")) {
+                // Both still and animated WebP are already in the native wire format.
+                gif = InstagramAnimationFile.prepareWebp(context, uri);
+            } else if (!sourceMime.equals("image/gif")) {
+                try (InstagramMediaFile original = InstagramMediaFile.prepare(context,
+                        InstagramMediaFile.fromUri(context, uri), ".image", NativeVideoMetadata.MAX_BYTES)) {
+                    java.io.File webp = stickerEncoder.convertImage(original.file);
+                    try { gif = InstagramAnimationFile.prepareWebp(context, webp); }
+                    finally { webp.delete(); }
+                }
             } else try (InstagramAnimationFile original = InstagramAnimationFile.prepareGif(context, uri)) {
                 java.io.File webp = stickerEncoder.convert(original.file);
                 try { gif = InstagramAnimationFile.prepareWebp(context, webp); }
