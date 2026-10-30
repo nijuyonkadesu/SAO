@@ -41,8 +41,8 @@ internal data class MediaExportKey(val item: MediaItem, val policy: MediaExportP
                         data.writeInt(operation.sticker.maxBytes)
                     }
                     MediaExportPolicy.CompatibleMp4 -> field("compatible-mp4")
-                    MediaExportPolicy.AsGif -> field("instagram-gif-gifski-1.34-v1")
-                    is MediaExportPolicy.DecodeInput -> { field("decode-input-v1"); data.writeBoolean(operation.playback) }
+                    MediaExportPolicy.AsGif -> field("gif-gifski-1.34-q90-lossy-no-upscale-v2")
+                    is MediaExportPolicy.DecodeInput -> { field("decode-input-no-upscale-v2"); data.writeBoolean(operation.playback) }
                     is MediaExportPolicy.Limited -> {
                         field("limited"); field(operation.mime); data.writeLong(operation.maxBytes)
                     }

@@ -5,6 +5,7 @@
 #include "gifski.h"
 
 namespace {
+constexpr uint8_t kQuality = 90;
 struct Encoder {
     gifski* gif = nullptr;
     FILE* output = nullptr;
@@ -43,9 +44,13 @@ Java_one_njk_sao_gif_GifskiEncoder_nativeCreate(JNIEnv* env,jobject,jstring path
     // Zero/None activates upstream's automatic ~800x600 resizing. Explicit maxima
     // preserve every valid GIF dimension; never silently shrink larger clips.
     settings.width=65535; settings.height=65535;
-    settings.quality=100; settings.fast=false; settings.repeat=0;
+    settings.quality=kQuality; settings.fast=false; settings.repeat=0;
     encoder->gif=gifski_new(&settings);
-    if(!encoder->gif || gifski_set_progress_callback(encoder->gif,progress,encoder.get())!=GIFSKI_OK ||
+    // Keep palette, temporal denoising and optional lossy LZW at the same quality.
+    // Cargo enables only the gifsicle feature, without CLI or decoder dependencies.
+    if(!encoder->gif || gifski_set_motion_quality(encoder->gif,kQuality)!=GIFSKI_OK ||
+        gifski_set_lossy_quality(encoder->gif,kQuality)!=GIFSKI_OK ||
+        gifski_set_progress_callback(encoder->gif,progress,encoder.get())!=GIFSKI_OK ||
         gifski_set_write_callback(encoder->gif,write,encoder.get())!=GIFSKI_OK) return 0;
     return reinterpret_cast<jlong>(encoder.release());
 }

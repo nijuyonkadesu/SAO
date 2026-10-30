@@ -134,6 +134,36 @@ class VideoGifDeviceTest {
             colors(output,width,height).also { try { near(Color.RED,it.getPixel(width/2,height/2)) } finally { it.recycle() } }
         } finally { output.delete() }
     }
+    @Test fun lossyCompressionKeepsTransparentBordersAndAnimationTiming(): Unit=runBlocking(Dispatchers.IO) {
+        val output=File.createTempFile("lossy-alpha-",".gif",app.cacheDir)
+        val width=160; val height=96
+        try {
+            GifskiEncoder(output,1024*1024).use { encoder ->
+                repeat(2) { index ->
+                    val pixels=ByteBuffer.allocateDirect(width*height*4)
+                    repeat(height) { y -> repeat(width) { x ->
+                        val opaque=x in 16..143 && y in 16..79
+                        pixels.put((x*255/(width-1)).toByte()).put((y*255/(height-1)).toByte())
+                            .put((x+y+index*40).toByte()).put(if(opaque) 255.toByte() else 0)
+                    } }
+                    encoder.add(index,width,height,width*4,pixels,index*0.2)
+                }
+                encoder.finish()
+            }
+            GifContainer.finish(output,400_000,width,height)
+            val movie=requireNotNull(Movie.decodeFile(output.path))
+            assertEquals(400,movie.duration())
+            val bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888)
+            try {
+                for(time in listOf(0,200)) {
+                    bitmap.eraseColor(Color.TRANSPARENT)
+                    movie.setTime(time); movie.draw(Canvas(bitmap),0f,0f)
+                    assertEquals(0,Color.alpha(bitmap.getPixel(2,2)))
+                    assertEquals(255,Color.alpha(bitmap.getPixel(width/2,height/2)))
+                }
+            } finally { bitmap.recycle() }
+        } finally { output.delete() }
+    }
     @Test fun cancellingConversionJoinsWorkersBeforeReleasingSourceAndAllowsRetry(): Unit=runBlocking {
         val input=fixture("export/busy.webm"); val source=Files(input)
         val store=MediaExportStore(app); val exports=MediaExports(app,source,store=store); val media=item()

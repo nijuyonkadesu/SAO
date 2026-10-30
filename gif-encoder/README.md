@@ -3,9 +3,11 @@
 Small JNI boundary around **gifski 1.34.0**, built from crates.io source with locked
 dependency checksums. This module encodes timestamped RGBA frames; it knows nothing
 about sources, Instagram, Android decoding, cache policies or coroutines. Its sole
-runtime library is `libsao_gif.so`. CLI, PNG decoding, FFmpeg and gifski's optional
-lossy-LZW feature are disabled. Quality and motion quality are 100, fast mode is off,
-and dimensions are not changed. Identical frames/regions may be merged losslessly.
+runtime library is `libsao_gif.so`. CLI, PNG decoding and FFmpeg are disabled. The
+`gifsicle` feature enables lossy LZW within the pinned Rust implementation; it adds
+no external executable or dependency. Palette, motion and lossy-LZW quality are 90,
+fast mode is off, and dimensions are not changed. All source timestamps are supplied;
+the encoder may merge frames/regions or denoise subtle changes at this quality.
 
 ## Building
 

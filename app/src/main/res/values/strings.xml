@@ -106,7 +106,7 @@
     <string name="gif_conversion_large_title">Large GIF conversion</string>
     <string name="gif_conversion_large_message">%1$d × %2$d · %3$s
 
-About %4$s of indexed frame data before compression. The final file size depends on motion and detail and may exceed the receiving app’s limit. Conversion preserves resolution and frame rate and can take a while.</string>
+GIFs can be much larger than videos. The final size depends on motion and detail and may exceed the receiving app’s limit. Conversion uses lossy compression without enlarging the source and can take a while.</string>
     <string name="gif_conversion_continue">Convert</string>
     <plurals name="gif_conversion_frame_count">
         <item quantity="one">about %1$d frame</item>

@@ -9,7 +9,7 @@ license = "AGPL-3.0-or-later"
 crate-type = ["staticlib"]
 
 [dependencies]
-gifski = { version = "=1.34.0", default-features = false }
+gifski = { version = "=1.34.0", default-features = false, features = ["gifsicle"] }
 
 [profile.release]
 lto = true
