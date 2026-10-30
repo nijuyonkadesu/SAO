@@ -17,7 +17,7 @@ from pathlib import Path
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serial", default="emulator-5554")
-    parser.add_argument("--apk", type=Path, default=Path("app/build/outputs/apk/debug/app-debug.apk"))
+    parser.add_argument("--apk", type=Path, help="Defaults to the standalone debug APK matching the emulator ABI")
     args = parser.parse_args()
     package = "one.njk.sao"
 
@@ -30,6 +30,11 @@ def main():
 
     if shell("getprop", "ro.kernel.qemu") != "1":
         raise SystemExit("Refusing to kill an app on a physical device; use an emulator.")
+    if args.apk is None:
+        abi = shell("getprop", "ro.product.cpu.abi")
+        args.apk = Path("app/build/outputs/apk/debug") / f"app-{abi}-debug.apk"
+    if not args.apk.is_file():
+        raise SystemExit(f"Build the matching debug APK first: {args.apk}")
     shell("run-as", package, "id")  # Only the installed debug build is eligible.
     shell("su", "0", "id")  # Emulator fixture only: discard a non-exported service record.
     operation = shell("appops", "get", package, "SYSTEM_ALERT_WINDOW")

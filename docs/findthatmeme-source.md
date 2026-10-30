@@ -31,7 +31,7 @@ The site API is unofficial. Service changes may require an extension-only update
 
 ```sh
 ./gradlew :findthatmeme-extension:assembleDebug :findthatmeme-extension:assembleDebugAndroidTest :findthatmeme-extension:assembleRelease :findthatmeme-extension:lintDebug
-cp app/build/outputs/apk/debug/app-debug.apk /srv/samba/share/
+cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk /srv/samba/share/app-debug.apk
 ```
 
 The optimized APK is approximately **2.2 MiB**, signed with the same development certificate as the supplied SAO build. The host APK itself remains byte-for-byte unchanged. Test fixtures contain synthetic PNG/GIF/MP4/WebM files; live tests are explicit opt-in and access only the public catalog.

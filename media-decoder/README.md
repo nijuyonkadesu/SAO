@@ -23,9 +23,11 @@ components, executables, encoders, muxers, network or external codec packages.
 Zlib is explicitly enabled for PNG/APNG. Built-in decoder/demuxer registration
 remains dynamic: there is no application MIME/filename codec allowlist. The
 small JNI shared object links these archives and uses 16-KiB ELF alignment.
-All four Android ABIs are built. This broad fallback has a substantial size cost:
-the local minified universal release is about **49 MiB**, versus about 9 MiB
-before bundling it. R8 cannot remove native codec implementations.
+All four Android ABIs are built, but SAO packages **one ABI per standalone APK**,
+without a universal output. Decoder libraries are about 9–11 MiB per architecture;
+the earlier universal APK duplicated approximately 39 MiB across four builds.
+R8 cannot remove native codec implementations. ABI packaging changes neither
+codec support nor encoding quality. See the [build commands](../README.md#building).
 
 FFmpeg is licensed under [LGPL 2.1 or later](https://ffmpeg.org/legal.html) with
 this configuration; the license is bundled at `assets/licenses/ffmpeg.txt`.
@@ -60,6 +62,8 @@ Normal processes load their installed native library. Injection can resolve the
 public module APK's compatible process ABI and extract a read-only library into
 the receiving process's own cache; it never reads the other app's private data.
 Native entrypoint names/descriptors are retained by consumer R8 rules.
+With per-ABI APKs, software decoding inside an injected app requires that app's
+process ABI to match the installed SAO APK's ABI as well.
 
 ## SAO consumers
 

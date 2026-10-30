@@ -33,7 +33,16 @@ The [Moeview extension](docs/moeview-source.md) adds Yande.re, Konachan, Gelboor
 - 
 ## Building
 
-Building SAO also requires the small native GIF encoder's [Rust/NDK build setup](gif-encoder/README.md). Video decoding uses Android/Media3; FFmpeg is not bundled.
+Building SAO requires the native GIF encoder's [Rust/NDK setup](gif-encoder/README.md)
+and the [shared software decoder's build tools](media-decoder/README.md). Android/
+Media3 handles supported media; source playback renditions and bundled software
+decoding provide fallbacks.
+
+`./gradlew :app:assembleRelease` produces separate standalone APKs for `arm64-v8a`,
+`armeabi-v7a`, `x86_64` and `x86` under `app/build/outputs/apk/release/`. Each APK
+contains one architecture; install only the matching APK. No universal APK is
+generated. Debug builds follow the same naming, for example
+`app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`.
 
 ## Download APK
 

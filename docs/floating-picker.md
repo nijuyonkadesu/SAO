@@ -674,7 +674,7 @@ Inline **Background reliability** settings show the real battery-optimization ex
 
 Device tests cover actual task removal, durable dismissal, discarded-service restoration, duplicate restore events, isolation from browsing preferences, settings intents and large-text layouts. With the debug APK installed and **Show icon on app launch** enabled, run `python3 tools/test-floating-recovery.py --serial emulator-5554`. This emulator-only driver tests real process death, Android accessibility reconnect after discarding the service record, app replacement, manual Stop, device sleep/Doze without a SAO wake lock, and Force stop. It temporarily enables Paste assistance and overlay access, restores those settings and leaves SAO stopped. Emulator `su` is used only to discard the non-exported service record in the test fixture; the implementation needs no root.
 
-On development machines, setting `sao.debugApkShareDir=/srv/samba/share/` in `~/.gradle/gradle.properties` automatically copies `app-debug.apk` after debug packaging/assembly, including incremental builds. The task tracks only this APK and never scans the rest of the share.
+On development machines, setting `sao.debugApkShareDir=/srv/samba/share/` in `~/.gradle/gradle.properties` automatically copies the four architecture-specific debug APKs after packaging/assembly, including incremental builds. The share's `app-debug.apk` is an additional copy of the ARM64 APK for phone testing; it is not universal. The task reads AGP's output metadata and tracks only these named APKs, without scanning the rest of the share. Emulator installs use the matching named APK, such as `app-x86_64-debug.apk`.
 
 ### Automatic current-chat attachments with Vector
 

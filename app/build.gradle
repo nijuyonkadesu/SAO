@@ -10,6 +10,8 @@ plugins {
 
 apply from: rootProject.file('gradle/localization.gradle')
 
+def saoApkAbis = ['arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86']
+
 android {
     lint { disable += 'MissingTranslation' } // Partial translations deliberately fall back to English.
     namespace 'one.njk.sao'
@@ -23,6 +25,15 @@ android {
         versionName "1.2.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    splits {
+        abi {
+            enable true
+            reset()
+            include(*saoApkAbis)
+            universalApk false
+        }
     }
 
     buildTypes {
@@ -63,17 +74,33 @@ androidComponents {
     onVariants(selector().withBuildType('debug')) { variant ->
         if (debugApkShareDir.isPresent()) {
             def variantTaskName = variant.name.capitalize()
-            def sourceApk = variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.APK.INSTANCE)
-                .map { it.file('app-debug.apk') }
-            def sharedApk = debugApkShareDir.map { new File(it, 'app-debug.apk') }
+            def apkDirectory = variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.APK.INSTANCE)
+            def artifactsLoader = variant.artifacts.getBuiltArtifactsLoader()
+            def sharedApks = debugApkShareDir.map { directory ->
+                saoApkAbis.collect { new File(directory, "app-${it}-debug.apk") } + new File(directory, 'app-debug.apk')
+            }
             def publishApk = tasks.register("copy${variantTaskName}ApkToShare") {
-                inputs.file(sourceApk)
-                // Track this file only; never traverse or snapshot the rest of the user's share.
-                outputs.file(sharedApk)
+                inputs.dir(apkDirectory)
+                // Track only our named APKs; never snapshot the rest of the user's share.
+                outputs.files(sharedApks)
                 outputs.upToDateWhen { false }
                 doLast {
-                    java.nio.file.Files.copy(sourceApk.get().asFile.toPath(), sharedApk.get().toPath(),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    def built = artifactsLoader.load(apkDirectory.get())
+                    if (built == null) throw new GradleException('Debug APK metadata is missing')
+                    def byAbi = built.elements.collectEntries { artifact ->
+                        def abi = artifact.filters.find { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI }?.identifier
+                        [(abi): new File(artifact.outputFile)]
+                    }
+                    if (byAbi.keySet() != saoApkAbis.toSet() || byAbi.values().any { !it.isFile() })
+                        throw new GradleException('Expected one standalone debug APK for each supported ABI')
+                    def directory = new File(debugApkShareDir.get())
+                    byAbi.each { abi, source ->
+                        java.nio.file.Files.copy(source.toPath(), new File(directory, "app-${abi}-debug.apk").toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    }
+                    // Preserve the phone's familiar share filename without creating a universal APK.
+                    java.nio.file.Files.copy(byAbi['arm64-v8a'].toPath(), new File(directory, 'app-debug.apk').toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
                 }
             }
             tasks.matching { it.name == "package${variantTaskName}" || it.name == "assemble${variantTaskName}" }.configureEach {

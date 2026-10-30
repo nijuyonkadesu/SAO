@@ -241,8 +241,8 @@ adb -s "$SAO_EMULATOR" shell am instrument --abi arm64-v8a -w \
   one.njk.sao.instagramprobe/one.njk.sao.floating.nativebridge.NativeInstagramProbe
 adb -s "$SAO_EMULATOR" shell run-as one.njk.sao.instagramprobe cat files/native-report.json
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest
-cp app/build/outputs/apk/debug/app-debug.apk /srv/samba/share/
-adb -s "$SAO_EMULATOR" install -r app/build/outputs/apk/debug/app-debug.apk
+cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk /srv/samba/share/app-debug.apk
+adb -s "$SAO_EMULATOR" install -r app/build/outputs/apk/debug/app-x86_64-debug.apk
 adb -s "$SAO_EMULATOR" install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb -s "$SAO_EMULATOR" shell am instrument -w \
   -e class 'one.njk.sao.floating.VideoDeviceTest#instagramPasteUsesVideoCapabilityAndOriginalBytesWithoutARecipientPicker,one.njk.sao.floating.VideoDeviceTest#instagramGifOnlyCapabilityConvertsCenteredMp4OnExplicitPaste' \
@@ -268,7 +268,7 @@ debug/minified release builds, lint and targeted staging/lease/conversion tests.
 ## 7. Verify the loaded phone hook, then the asynchronous result
 
 ```bash
-adb -s "$SAO_DEVICE" install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s "$SAO_DEVICE" install -r app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
 # After changes to injected code; this closes Instagram, so coordinate the restart:
 adb -s "$SAO_DEVICE" shell am force-stop com.instagram.android
 adb -s "$SAO_DEVICE" shell cmd package resolve-activity --brief \
