@@ -51,6 +51,14 @@ final class InstagramInsertMessages {
     private static void diagnose(Throwable error) {
         for (int depth = 0; error != null && depth < 8; depth++, error = error.getCause()) {
             android.util.Log.i("SAO.InstagramGif", "preparation cause=" + error.getClass().getName());
+            if (error instanceof one.njk.sao.floating.VideoFrameDecoder.DecodeException failure && failure.getConfiguration() != null) {
+                var configuration = failure.getConfiguration();
+                android.util.Log.i("SAO.InstagramGif", "codec configure rejected; mime=" + configuration.getMime() +
+                    "; decoder=" + configuration.getDecoder() + "; compatible=" + configuration.getCompatibleDecoder() +
+                    "; width=" + configuration.getWidth() + "; height=" + configuration.getHeight() +
+                    "; profile=" + configuration.getProfile() + "; level=" + configuration.getLevel() +
+                    "; frameRate=" + configuration.getFrameRate());
+            }
             StackTraceElement[] frames = error.getStackTrace();
             for (int index = 0; index < Math.min(frames.length, 3); index++)
                 android.util.Log.i("SAO.InstagramGif", "at " + frames[index].getClassName() + "." + frames[index].getMethodName() + ":" + frames[index].getLineNumber());

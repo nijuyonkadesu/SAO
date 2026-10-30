@@ -128,17 +128,24 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
         store.exported(file,"video/mp4")
     }
 
-    /** Only the explicit Instagram GIF fallback uses this cache policy; ordinary copies stay exact. */
+    /** Request-owned native sticker input; ordinary copies and uploads keep the original bytes. */
+    suspend fun nativeStickerInput(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
+        MediaDecodeInputs.withInput(source, item, store.directory) { input, playback ->
+            if (one.njk.sao.BuildConfig.DEBUG) android.util.Log.i("SAO.MediaDecode", "sticker input selected; sourcePlayback=$playback")
+            val file = store.write(MediaExportKey(item, MediaExportPolicy.DecodeInput(playback)), "bin") { staging ->
+                input.inputStream().use { from -> staging.outputStream().use { MediaExportStore.copy(from, it) } }
+            }
+            store.exported(file, item.mimeType)
+        }
+    }
+
+    /** Source rendition choice and software fallback are shared with native animation preparation. */
     suspend fun instagramGif(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
-        require(item.isVideo)
+        require(item.hasMotion)
         require(item.id.matches(Regex("[a-z0-9_-]+")))
         val file=store.write(MediaExportKey(item,MediaExportPolicy.InstagramGif),"gif") { staging ->
-            source.withRendition(item,Rendition.ORIGINAL) { handle ->
-                val scratch=if(handle.file==null) File.createTempFile("gif-input-",".pending",store.directory) else null
-                try {
-                    if(scratch!=null) handle.openStream().use { from -> scratch.outputStream().use { MediaExportStore.copy(from,it) } }
-                    store.conversions.withPermit { gifs.gif(handle.file ?: requireNotNull(scratch),staging) }
-                } finally { scratch?.delete() }
+            MediaDecodeInputs.withInput(source, item, store.directory) { input, _ ->
+                store.conversions.withPermit { gifs.gif(input, staging) }
             }
         }
         store.exported(file,"image/gif")

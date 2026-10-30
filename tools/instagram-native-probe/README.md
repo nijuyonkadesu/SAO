@@ -101,3 +101,12 @@ The complete 447 probe now passes **80 boolean checks**; any false boolean fails
 instrumentation. These tests do not establish authenticated static-sticker delivery;
 the user separately confirmed a JPEG sticker send on physical Instagram 447 with
 hooks 13 after force-stopping the process that still held pre-update hooks.
+
+Revision 15 adds the shared source-built software decoder and generic native
+sticker operation capability. The current probe passes **81 boolean checks**.
+Its synthetic odd-width MPEG-4 fixture (`sticker-odd.mp4`) reproduces a format
+Android cannot decode: native WebP output independently verifies **357×372,
+10 frames, 400 ms**, without resizing or an intermediate GIF. Animated PNG
+output verifies a 64×48 canvas, three frames and 600 ms. The probe owns all
+fixtures/output and invokes no authenticated uploader or sender. Build details,
+native licensing and reuse boundaries are in [media-decoder](../../media-decoder/README.md).

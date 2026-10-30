@@ -22,6 +22,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import androidx.media3.common.Player
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
@@ -46,6 +49,7 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     private var videoHolder: Holder? = null
     private var videoId: MediaIdentity? = null
     private var videoLoading: Job? = null
+    private val videoPlayback = Mutex()
     private var videoRelease: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     private var videoVersion = 0L
     private var closed = false
@@ -160,6 +164,9 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (holder.previewVersion == version && samePreview(holder.item, item) && !closed) holder.binding.preview.setImageResource(
                 if (home) one.njk.sao.R.drawable.eager else one.njk.sao.R.drawable.ic_picker_media) }
+            finally {
+                if (holder.previewVersion == version && !closed) { holder.loading = null; syncVideo() }
+            }
         }
     }
     private fun cancelPreview(holder: Holder) {
@@ -194,21 +201,34 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         }
     }
     private fun syncVideo() {
-        val holder = if (playing && !scrolling && !closed) attached.firstOrNull { it.item?.let { item -> item.identityKey == focusedId && item.isVideo } == true } else null
+        val holder = if (playing && !scrolling && !closed) attached.firstOrNull { holder ->
+            holder.item?.let { item -> item.identityKey == focusedId &&
+                (item.isVideo || item.animated && holder.loading?.isActive != true && holder.binding.preview.drawable !is Animatable) } == true
+        } else null
         val item = holder?.item
         if (holder === videoHolder && item?.identityKey == videoId) return
         stopVideo()
         if (holder == null || item == null) return
         videoHolder = holder; videoId = item.identityKey
         val version = videoVersion
-        videoLoading = scope.launch {
+        videoLoading = scope.launch { videoPlayback.withLock {
+            if (version != videoVersion || closed) return@withLock
             try {
                 // Scrolling has settled; allow any final layout/focus adjustment to finish.
                 delay(200)
-                source.withRendition(item, Rendition.PLAYBACK) { handle ->
+                source.withRendition(item, if (item.isVideo) Rendition.PLAYBACK else Rendition.ORIGINAL) { handle ->
                     val file = handle.requireFile()
                     if (version != videoVersion || !playing || scrolling || holder !in attached || !samePreview(holder.item, item)) return@withRendition
-                    val created = ExoPlayer.Builder(holder.binding.root.context)
+                    if (!item.isVideo) {
+                        holder.binding.videoPreview.isVisible = true
+                        SoftwareVideoPreview.play(holder.binding.videoPreview, file) {
+                            if (version == videoVersion && videoHolder === holder) holder.binding.videoPreview.alpha = 1f
+                        }
+                        return@withRendition
+                    }
+                    val failed = kotlinx.coroutines.CompletableDeferred<Unit>()
+                    val created = ExoPlayer.Builder(holder.binding.root.context,
+                        androidx.media3.exoplayer.DefaultRenderersFactory(holder.binding.root.context).setEnableDecoderFallback(true))
                         .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(1000, 5000, 250, 500)
                             .setTargetBufferBytes(8 * 1024 * 1024).build()).build().apply {
                         volume = 0f
@@ -219,7 +239,16 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
                                 if (version == videoVersion && videoHolder === holder) holder.binding.videoPreview.alpha = 1f
                             }
                             override fun onPlayerError(error: PlaybackException) {
-                                if (version == videoVersion) stopVideo()
+                                if (version == videoVersion) {
+                                    if (one.njk.sao.BuildConfig.DEBUG) {
+                                        val failure = error as? androidx.media3.exoplayer.ExoPlaybackException
+                                        val format = failure?.rendererFormat
+                                        android.util.Log.i("SAO.VideoPreview", "playback failed; code=${error.errorCode}; " +
+                                            "mime=${format?.sampleMimeType}; codecs=${format?.codecs}; width=${format?.width}; " +
+                                            "height=${format?.height}; support=${failure?.rendererFormatSupport}")
+                                    }
+                                    failed.complete(Unit)
+                                }
                             }
                         })
                     }
@@ -232,12 +261,31 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
                     created.prepare(); created.play()
                     val released = kotlinx.coroutines.CompletableDeferred<Unit>()
                     videoRelease = released
-                    released.await()
+                    select<Unit> {
+                        released.onAwait { }
+                        failed.onAwait {
+                            if (version == videoVersion) {
+                                holder.binding.videoPreview.player = null
+                                if (player === created) player = null
+                                created.release()
+                                SoftwareVideoPreview.play(holder.binding.videoPreview, file) {
+                                    if (version == videoVersion && videoHolder === holder) holder.binding.videoPreview.alpha = 1f
+                                    if (one.njk.sao.BuildConfig.DEBUG) android.util.Log.i("SAO.VideoPreview", "software playback started")
+                                }
+                            }
+                        }
+                    }
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (version == videoVersion) stopVideo() }
+            catch (error: Exception) {
+                if (version == videoVersion) {
+                    if (one.njk.sao.BuildConfig.DEBUG) android.util.Log.i("SAO.VideoPreview",
+                        "playback preparation failed; cause=${error.javaClass.name}")
+                    stopVideo()
+                }
+            }
             finally { if (version == videoVersion) stopVideo() }
-        }
+        } }
     }
     private fun stopVideo() {
         videoVersion++

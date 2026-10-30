@@ -159,32 +159,45 @@ final class InstagramAnimatedContract {
     Object request(Object thread) throws ReflectiveOperationException {
         return requestConstructor.newInstance(thread, null, null, null, null, false, false, false);
     }
-    PreparedNativeContent prepare(Context context, Uri uri, String sourceMime, Object session, Object key, BooleanSupplier valid) throws Exception {
+    private record ImageType(String mime, boolean animated) { }
+    private static ImageType imageType(java.io.File file) {
+        ImageType[] result = new ImageType[1];
+        try {
+            android.graphics.ImageDecoder.decodeDrawable(android.graphics.ImageDecoder.createSource(file), (decoder, info, source) -> {
+                result[0] = new ImageType(info.getMimeType(), info.isAnimated());
+                decoder.setTargetSize(1, 1);
+            });
+        } catch (java.io.IOException | IllegalArgumentException ignored) { return null; }
+        return result[0];
+    }
+    PreparedNativeContent prepare(Context context, Uri uri, Object session, Object key, BooleanSupplier valid) throws Exception {
         if (Looper.myLooper() == Looper.getMainLooper()) throw new IllegalStateException("Animation preparation must run on IO");
         InstagramInsertMessages messages = InstagramInsertMessages.load(context, uri);
         InstagramAnimationFile gif;
-        try {
-            if (sourceMime.startsWith("video/")) {
-                try (InstagramMediaFile original = InstagramMediaFile.prepare(context,
-                        InstagramMediaFile.fromUri(context, uri), ".video", NativeVideoMetadata.MAX_BYTES)) {
-                    java.io.File webp = stickerEncoder.convertVideo(NativeModuleResources.mediaContext(context, uri), original.file);
-                    try { gif = InstagramAnimationFile.prepareWebp(context, webp); }
-                    finally { webp.delete(); }
-                }
-            } else if (sourceMime.equals("image/webp")) {
-                // Both still and animated WebP are already in the native wire format.
-                gif = InstagramAnimationFile.prepareWebp(context, uri);
-            } else if (!sourceMime.equals("image/gif")) {
-                try (InstagramMediaFile original = InstagramMediaFile.prepare(context,
-                        InstagramMediaFile.fromUri(context, uri), ".image", NativeVideoMetadata.MAX_BYTES)) {
-                    java.io.File webp = stickerEncoder.convertImage(original.file);
-                    try { gif = InstagramAnimationFile.prepareWebp(context, webp); }
-                    finally { webp.delete(); }
-                }
-            } else try (InstagramAnimationFile original = InstagramAnimationFile.prepareGif(context, uri)) {
+        try (InstagramMediaFile original = InstagramMediaFile.prepare(context,
+                InstagramMediaFile.fromUri(context, uri), ".media", NativeVideoMetadata.MAX_BYTES)) {
+            ImageType image = imageType(original.file);
+            boolean motion = image == null || image.animated();
+            if (!motion) {
+                try (one.njk.sao.media.NativeDecoder probe = one.njk.sao.media.NativeDecoder.Companion.open(
+                        NativeModuleResources.mediaContext(context, uri), original.file, Runtime.getRuntime().maxMemory() / 64)) {
+                    motion = probe.getInfo().getFrameCount() > 1 || probe.hasMultipleFrames();
+                } catch (java.io.IOException ignored) { /* The platform still decoder may support more image formats. */ }
+            }
+            if (image != null && image.mime().equals("image/webp")) {
+                gif = InstagramAnimationFile.prepareWebp(context, original.file);
+            } else if (image != null && image.mime().equals("image/gif")) {
                 java.io.File webp = stickerEncoder.convert(original.file);
                 try { gif = InstagramAnimationFile.prepareWebp(context, webp); }
                 finally { webp.delete(); }
+            } else if (motion) {
+                    java.io.File webp = stickerEncoder.convertVideo(NativeModuleResources.mediaContext(context, uri), original.file);
+                    try { gif = InstagramAnimationFile.prepareWebp(context, webp); }
+                    finally { webp.delete(); }
+            } else {
+                    java.io.File webp = stickerEncoder.convertImage(original.file);
+                    try { gif = InstagramAnimationFile.prepareWebp(context, webp); }
+                    finally { webp.delete(); }
             }
         } catch (Exception | LinkageError error) {
             if (messages.preparationFailed(error)) throw new NativePreparationException(error);

@@ -32,7 +32,8 @@ class VideoGifDeviceTest {
         override suspend fun filters()=emptyList<String>()
         override suspend fun <T> withPreview(item: MediaItem,block: suspend (Preview)->T): T=error("Use original")
         override suspend fun <T> withRendition(item: MediaItem,kind: Rendition,block: suspend (MediaHandle)->T): T {
-            assertEquals(Rendition.ORIGINAL,kind); originals++; held=true; opened.complete(Unit)
+            if (kind != Rendition.ORIGINAL) throw java.io.IOException("No compatible fixture rendition")
+            originals++; held=true; opened.complete(Unit)
             try { return block(MediaHandle.Local(file)) } finally { held=false }
         }
     }

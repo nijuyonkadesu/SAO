@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.media.ImageReader
 import android.media.MediaCodec
+import android.media.MediaCodecList
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.os.ConditionVariable
@@ -21,6 +22,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.DefaultVideoFrameProcessor
 import androidx.media3.effect.ScaleAndRotateTransformation
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicReference
@@ -30,9 +32,65 @@ import kotlin.coroutines.CoroutineContext
 @androidx.annotation.OptIn(UnstableApi::class)
 internal class VideoFrameDecoder(private val context: Context) {
     enum class Failure { DECODE, FORMAT, MEMORY }
-    class DecodeException(val reason: Failure, cause: Throwable? = null) : java.io.IOException(reason.name,cause)
-    data class Result(val width: Int,val height: Int,val durationUs: Long)
+    data class CodecConfiguration(val mime: String, val decoder: String, val compatibleDecoder: String?,
+        val width: Int, val height: Int, val profile: Int, val level: Int, val frameRate: Float)
+    class DecodeException(val reason: Failure, cause: Throwable? = null,
+        val configuration: CodecConfiguration? = null) : java.io.IOException(reason.name,cause)
+    enum class Backend { PLATFORM, SOFTWARE }
+    data class Result(val width: Int,val height: Int,val durationUs: Long, val backend: Backend = Backend.PLATFORM)
     fun decode(input: File,cancellation: CoroutineContext, maxPixels: Long = Runtime.getRuntime().maxMemory()/128,
+        frame: (index: Int,width: Int,height: Int,rowBytes: Int,rgba: ByteBuffer,ptsUs: Long)->Unit): Result {
+        var delivered = 0
+        var consumerFailure: Throwable? = null
+        try {
+            return decodePlatform(input, cancellation, maxPixels) { index, width, height, stride, rgba, time ->
+                try { frame(index, width, height, stride, rgba, time) }
+                catch (error: Throwable) { consumerFailure = error; throw error }
+                delivered++
+            }
+        } catch (error: Throwable) {
+            consumerFailure?.let { throw it }
+            if (error !is DecodeException) throw error
+            // A consumer must never receive a second copy of already-encoded frames.
+            // Source/rendition selection happens before this local decoder fallback.
+            if (delivered != 0 || error.reason == Failure.MEMORY) throw error
+            cancellation.ensureActive()
+            return decodeSoftware(input, cancellation, maxPixels, frame)
+        }
+    }
+
+    fun decodeSoftware(input: File, cancellation: CoroutineContext,
+        maxPixels: Long = Runtime.getRuntime().maxMemory()/128,
+        frame: (index: Int,width: Int,height: Int,rowBytes: Int,rgba: ByteBuffer,ptsUs: Long)->Unit): Result {
+        one.njk.sao.media.NativeDecoder.open(context, input, maxPixels,
+            java.util.function.BooleanSupplier { !cancellation.isActive || Thread.currentThread().isInterrupted }).use { decoder ->
+            val info = decoder.info
+            val rgba = ByteBuffer.allocateDirect(Math.multiplyExact(Math.multiplyExact(info.width, info.height), info.bytesPerPixel))
+            var frames = 0
+            var end = 0L
+            var width = info.width; var height = info.height
+            val colors = if (info.bytesPerPixel == 8 || info.rotationDegrees != 0f || info.pixelWidthHeightRatio != 1f)
+                SoftwareFrameColorConverter(context, info, maxPixels) else null
+            try {
+                while (true) {
+                    cancellation.ensureActive()
+                    if (Thread.currentThread().isInterrupted) throw java.io.InterruptedIOException("Frame decoding cancelled")
+                    rgba.clear()
+                    if (!decoder.next(rgba)) break
+                    if (colors == null) frame(frames++, info.width, info.height, info.width * 4, rgba, decoder.presentationTimeUs)
+                    else colors.convert(rgba, decoder.presentationTimeUs, cancellation) { stride, pixels ->
+                        width = colors.width; height = colors.height
+                        frame(frames++, width, height, stride, pixels, decoder.presentationTimeUs)
+                    }
+                    end = decoder.presentationTimeUs + decoder.frameDurationUs
+                }
+                if (frames == 0) throw DecodeException(Failure.DECODE)
+                return Result(width, height, maxOf(info.durationUs, end), Backend.SOFTWARE)
+            } finally { colors?.close() }
+        }
+    }
+
+    private fun decodePlatform(input: File,cancellation: CoroutineContext, maxPixels: Long,
         frame: (index: Int,width: Int,height: Int,rowBytes: Int,rgba: ByteBuffer,ptsUs: Long)->Unit): Result {
         fun checkCancellation() {
             cancellation.ensureActive()
@@ -62,6 +120,8 @@ internal class VideoFrameDecoder(private val context: Context) {
             if(width<=0 || height<=0 || width>65535 || height>65535 ||
                 width.toLong()*height>maxPixels)
                 throw DecodeException(Failure.MEMORY)
+            val compatible = MediaCodecList(MediaCodecList.REGULAR_CODECS).findDecoderForFormat(mediaFormat)
+                ?: throw DecodeException(Failure.FORMAT)
             val declared=format.colorInfo
             // Containers may declare only one color field. Fill absent SDR defaults
             // without discarding any provided primaries, transfer or HDR metadata.
@@ -95,8 +155,20 @@ internal class VideoFrameDecoder(private val context: Context) {
             error.get()?.let { throw DecodeException(Failure.FORMAT,it) }
             // The GL pipeline owns rotation, including devices whose decoder rotates surfaces.
             mediaFormat.setInteger(MediaFormat.KEY_ROTATION,0)
-            decoder=MediaCodec.createDecoderByType(requireNotNull(mediaFormat.getString(MediaFormat.KEY_MIME)))
-            decoder.configure(mediaFormat,pipeline.inputSurface,null,0)
+            decoder=MediaCodec.createByCodecName(compatible)
+            try { decoder.configure(mediaFormat,pipeline.inputSurface,null,0) }
+            catch (failure: RuntimeException) {
+                // Only public codec/track properties, never paths, CSD bytes or metadata text.
+                // A diagnostics failure must not replace the original configure failure.
+                val configuration = runCatching {
+                    CodecConfiguration(requireNotNull(format.sampleMimeType), decoder.name,
+                        MediaCodecList(MediaCodecList.REGULAR_CODECS).findDecoderForFormat(mediaFormat),
+                        format.width, format.height,
+                        MediaFormatUtil.getInteger(mediaFormat, MediaFormat.KEY_PROFILE, -1),
+                        MediaFormatUtil.getInteger(mediaFormat, MediaFormat.KEY_LEVEL, -1), format.frameRate)
+                }.getOrNull()
+                throw DecodeException(Failure.FORMAT, failure, configuration)
+            }
             decoder.start(); started=true
             val info=MediaCodec.BufferInfo()
             var inputEnded=false; var outputEnded=false

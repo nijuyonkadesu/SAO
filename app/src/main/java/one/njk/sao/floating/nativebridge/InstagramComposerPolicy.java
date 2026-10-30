@@ -178,8 +178,7 @@ final class InstagramComposerPolicy implements ComposerPolicy {
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) { return "thread_unresolved"; }
     }
     @Override public NativeContentPreparation captureContent(Context context, EditText view, android.net.Uri uri, String mimeType) {
-        String sourceMime = InstagramStickerFormat.sourceMime(mimeType);
-        if (sourceMime == null) return ComposerPolicy.super.captureContent(context, view, uri, mimeType);
+        if (!InstagramStickerFormat.isRendition(mimeType)) return ComposerPolicy.super.captureContent(context, view, uri, mimeType);
         InstagramAnimatedContract contract = animated;
         Binding binding = bindings.get(view);
         Object session = animatedSession(view);
@@ -193,7 +192,7 @@ final class InstagramComposerPolicy implements ComposerPolicy {
             return new NativeContentPreparation() {
                 @Override public boolean hasCapturedRecipient() { return true; }
                 @Override public PreparedNativeContent prepare() throws Exception {
-                    return contract.prepare(context, uri, sourceMime, session, key, () -> {
+                    return contract.prepare(context, uri, session, key, () -> {
                         EditText current = original.get();
                         // Listener wrappers can be recreated during normal focus changes.
                         // Validate their actual account/controller/recipient, not allocation identity.

@@ -154,7 +154,7 @@ final class InstagramStickerEncoder {
             write(target, output);
             if (InstagramAnimatedContract.diagnosticsEnabled()) android.util.Log.i("SAO.InstagramGif",
                 "direct video WebP encoded; frames=" + frames[0] + "; width=" + video.getWidth() + "; height=" + video.getHeight() +
-                "; bytes=" + output.length() + "; elapsedMs=" + (System.nanoTime() - began) / 1_000_000);
+                "; backend=" + video.getBackend() + "; bytes=" + output.length() + "; elapsedMs=" + (System.nanoTime() - began) / 1_000_000);
         } finally { release(target); }
     }
 

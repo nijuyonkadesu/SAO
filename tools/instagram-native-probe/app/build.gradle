@@ -43,10 +43,12 @@ def adapterSources = tasks.register('syncProductionAdapter', Sync) {
     include 'one/njk/sao/floating/nativebridge/InstagramVideoFile.java'
     include 'one/njk/sao/floating/nativebridge/NativeVideoMetadata.java'
     include 'one/njk/sao/floating/VideoFrameDecoder.kt'
+    include 'one/njk/sao/floating/SoftwareFrameColorConverter.kt'
     into layout.buildDirectory.dir('generated/production-adapter')
 }
 tasks.named('preBuild').configure { dependsOn adapterSources }
 dependencies {
+    implementation project(':media-decoder')
     implementation 'androidx.media3:media3-effect:1.11.1'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
 }

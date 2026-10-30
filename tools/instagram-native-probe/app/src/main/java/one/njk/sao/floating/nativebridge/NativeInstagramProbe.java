@@ -155,14 +155,14 @@ public final class NativeInstagramProbe extends Instrumentation {
                         set(owner, fixture.sessionField(), capturedSession);
                         String capturedIdentity=policy.identity(host,view);
                         NativeContentPreparation captured=policy.captureContent(getTargetContext(),view,
-                            android.net.Uri.parse("content://one.njk.sao.instagramprobe.fileprovider/fixture.gif"),InstagramStickerFormat.GIF);
+                            android.net.Uri.parse("content://one.njk.sao.instagramprobe.fileprovider/fixture.gif"),InstagramStickerFormat.RENDITION);
                         report.put("native_sticker_captures_recipient_before_preparation",captured!=null && captured.hasCapturedRecipient());
                         policy.configured(view,listener,configure.getParameterTypes()[1]);
                         report.put("listener_recreation_keeps_same_native_recipient",policy.sameCapturedRecipient(view,capturedIdentity,owner,capturedSession));
                         set(owner,fixture.sessionField(),blank(loader,"com.instagram.common.session.UserSession"));
                         report.put("recreated_listener_rejects_changed_account",!policy.sameCapturedRecipient(view,capturedIdentity,owner,capturedSession));
                         set(owner,fixture.sessionField(),capturedSession);
-                        report.put("animated_gif_capability", java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains(InstagramStickerFormat.GIF));
+                        report.put("animated_gif_capability", java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains(InstagramStickerFormat.RENDITION));
                         report.put("animated_gif_status_ready", policy.gifStatus().equals("ready"));
                         set(owner, fixture.ownerSender(), null);
                         report.put("animated_gif_independent_of_gallery", java.util.Arrays.asList(policy.additionalMimeTypes(view)).equals(java.util.Arrays.asList(InstagramStickerFormat.renditions())));
@@ -171,7 +171,7 @@ public final class NativeInstagramProbe extends Instrumentation {
                         report.put("recipient_key_is_copied", copied != key[0] && copied.equals(key[0]));
                         // Remove the synthetic session before any native service could use it.
                         set(owner, fixture.sessionField(), null);
-                        report.put("missing_animated_session_disabled", !java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains(InstagramStickerFormat.GIF));
+                        report.put("missing_animated_session_disabled", !java.util.Arrays.asList(policy.additionalMimeTypes(view)).contains(InstagramStickerFormat.RENDITION));
                         report.put("missing_animated_session_reason", policy.gifStatus().equals("session_missing"));
                     }
                     set(gallerySender, "A01", host.getApplicationContext());
@@ -290,13 +290,21 @@ public final class NativeInstagramProbe extends Instrumentation {
                         report.put("foreign_context_cannot_supply_module_shader",!java.util.Arrays.equals(expectedShader,foreignShader));
                         report.put("shader_context_keeps_native_host_identity",mediaContext.getPackageName().equals(instagram.getPackageName()) &&
                             mediaContext.getApplicationInfo().dataDir.equals(instagram.getApplicationInfo().dataDir));
-                        for (String extension : java.util.List.of("mp4", "webm", "hd")) {
+                        for (String extension : java.util.List.of("mp4", "webm", "hd", "odd", "apng")) {
                             File clip = new File(getTargetContext().getCacheDir(), "sticker-video-fixture." + extension);
-                            try (java.io.InputStream in = getTargetContext().getAssets().open(extension.equals("hd") ? "sticker-hd.mp4" : "preview-video." + extension);
+                            String asset = switch (extension) {
+                                case "hd" -> "sticker-hd.mp4";
+                                case "odd" -> "sticker-odd.mp4";
+                                case "apng" -> "software-animation.png";
+                                default -> "preview-video." + extension;
+                            };
+                            try (java.io.InputStream in = getTargetContext().getAssets().open(asset);
                                  java.io.OutputStream out = new java.io.FileOutputStream(clip)) { in.transferTo(out); }
                             File resultFile = new InstagramStickerEncoder(loader).convertVideo(mediaContext, clip);
                             try (InstagramAnimationFile videoSticker = InstagramAnimationFile.prepareWebp(getTargetContext(), resultFile)) {
                                 report.put(extension + "_direct_sticker_decodable", videoSticker.width > 0 && videoSticker.height > 0);
+                                if (extension.equals("odd")) report.put("software_sticker_preserves_odd_width", videoSticker.width == 357 && videoSticker.height == 372);
+                                if (extension.equals("apng")) report.put("animated_png_sticker_preserves_canvas", videoSticker.width == 64 && videoSticker.height == 48);
                                 Files.copy(videoSticker.file.toPath(), new File(getTargetContext().getFilesDir(), "native-video-" + extension + ".webp").toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                             } finally { clip.delete(); resultFile.delete(); }
                         }

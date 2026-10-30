@@ -13,6 +13,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.EditedMediaItemSequence
+import androidx.media3.transformer.Effects
+import androidx.media3.common.C
+import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.transformer.InAppMp4Muxer
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -60,13 +64,30 @@ class VideoTranscoder @Inject constructor(@ApplicationContext private val contex
     }
 
     private suspend fun export(input: File, output: File, original: VideoInfo, bitrate: Int?): ExportResult {
+        if (!MediaDecodeInputs.platformSupports(input)) return exportOnce(input, output, original, bitrate, software = true)
+        return try { exportOnce(input, output, original, bitrate, software = false) }
+        catch (error: MediaExportException) {
+            val code = (error.cause as? ExportException)?.errorCode
+            if (code != ExportException.ERROR_CODE_DECODER_INIT_FAILED && code != ExportException.ERROR_CODE_DECODING_FAILED &&
+                code != ExportException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED) throw error
+            currentCoroutineContext().ensureActive()
+            output.delete()
+            exportOnce(input, output, original, bitrate, software = true)
+        }
+    }
+
+    private suspend fun exportOnce(input: File, output: File, original: VideoInfo, bitrate: Int?, software: Boolean): ExportResult {
         val videoMime = if (original.hdr) MimeTypes.VIDEO_H265 else MimeTypes.VIDEO_H264
         val thread = HandlerThread("SAO video export").apply { start() }
         val handler = Handler(thread.looper)
         val worker = handler.asCoroutineDispatcher("SAO video export")
         var transformer: Transformer? = null
+        var softwareLoader: SoftwareVideoAssetLoader.Factory? = null
         return try {
             withContext(worker) {
+                val decoder = DefaultDecoderFactory.Builder(context).setEnableDecoderFallback(true).build()
+                val loader = DefaultAssetLoaderFactory(context, decoder, Clock.DEFAULT, null)
+                if (software) softwareLoader = SoftwareVideoAssetLoader.Factory(context, input, loader)
                 suspendCancellableCoroutine<ExportResult> { continuation ->
                     val listener = object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
@@ -95,7 +116,6 @@ class VideoTranscoder @Inject constructor(@ApplicationContext private val contex
                             }
                         }
                     }
-                    val decoder = DefaultDecoderFactory.Builder(context).setEnableDecoderFallback(true).build()
                     val encoder = DefaultEncoderFactory.Builder(context)
                         .setEnableFormatFallback(false)
                         .apply { if(bitrate!=null) setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(bitrate).build()) }
@@ -105,12 +125,22 @@ class VideoTranscoder @Inject constructor(@ApplicationContext private val contex
                         // Fast-start reservation can outweigh a short clip. Budgeted copies are
                         // local attachments: keep those bytes for media instead of reserved space.
                         .setMuxerFactory(InAppMp4Muxer.Factory().setAttemptStreamableOutputEnabled(bitrate==null))
-                        .setAssetLoaderFactory(DefaultAssetLoaderFactory(context,decoder,Clock.DEFAULT,null))
+                        .setAssetLoaderFactory(softwareLoader ?: loader)
+                        .apply { softwareLoader?.let { setVideoFrameProcessorFactory(it.frames) } }
                         .setEncoderFactory(encoder)
                         .addListener(listener).build()
                     transformer = created
                     continuation.invokeOnCancellation { handler.post { created.cancel() } }
-                    created.start(EditedMediaItem.Builder(MediaItem.fromUri(android.net.Uri.fromFile(input))).build(), output.path)
+                    val media = MediaItem.fromUri(android.net.Uri.fromFile(input))
+                    if (software) {
+                        // CPU RGBA rows start at the top; raw GL textures start at the bottom.
+                        val video = EditedMediaItem.Builder(media).setRemoveAudio(true).setDurationUs(original.durationUs)
+                            .setEffects(Effects(emptyList(), listOf(ScaleAndRotateTransformation.Builder().setScale(1f, -1f).build()))).build()
+                        val sequences = mutableListOf(EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO)).addItem(video).build())
+                        if (original.hasAudio) sequences += EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO))
+                            .addItem(EditedMediaItem.Builder(media).setRemoveVideo(true).build()).build()
+                        created.start(Composition.Builder(sequences).build(), output.path)
+                    } else created.start(EditedMediaItem.Builder(media).build(), output.path)
                 }
             }.also { result ->
                 currentCoroutineContext().ensureActive()
@@ -125,8 +155,9 @@ class VideoTranscoder @Inject constructor(@ApplicationContext private val contex
                     throw MediaExportException(R.string.media_export_hdr_unavailable)
             }
         } finally {
-            withContext(NonCancellable + worker) { transformer?.cancel() }
-            thread.quitSafely()
+            try { withContext(NonCancellable + worker) {
+                try { transformer?.cancel() } finally { softwareLoader?.close() }
+            } } finally { thread.quitSafely() }
         }
     }
 

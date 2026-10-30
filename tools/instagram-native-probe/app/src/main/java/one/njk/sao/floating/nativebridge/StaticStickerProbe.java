@@ -14,9 +14,6 @@ import org.json.JSONObject;
 final class StaticStickerProbe {
     static void verify(Context context, InstagramStickerEncoder encoder,
             InstagramAnimatedContract contract, JSONObject report) throws Exception {
-        report.put("static_png_sticker_capability", InstagramStickerFormat.forInput("image/png") != null);
-        report.put("static_jpeg_sticker_capability", InstagramStickerFormat.forInput("image/jpeg") != null);
-        report.put("static_webp_sticker_capability", InstagramStickerFormat.forInput("image/webp") != null);
         File png = new File(context.getCacheDir(), "static-alpha.png");
         Bitmap pixels = Bitmap.createBitmap(64, 48, Bitmap.Config.ARGB_8888);
         try (FileOutputStream stream = new FileOutputStream(png)) {

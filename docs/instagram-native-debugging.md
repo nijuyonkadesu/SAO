@@ -636,3 +636,75 @@ stickers work. The picker now reserves the format warning for an unrecognized
 source MIME; supported stills use the actual hook/session/handler diagnostic,
 including an explicit **force-stop/reopen** instruction for older hooks. No
 conversion or native sending changes were required for this incident.
+
+## 16. Decoder failure before sticker preparation (revision 15)
+
+A subsequent MP4 failed both ExoPlayer preview and native animation preparation.
+Scoped diagnostics identified `video/mp4v-es`, MPEG-4 Simple profile **1**, level
+**4** (`MPEG4Level1`), coded size **357×372**, 25 fps, with
+`c2.android.mpeg4.decoder` throwing during `MediaCodec.configure`. This occurred
+before WebP encoding, PendingMedia upload or Riff configuration; changing upload
+MIME, URI grants, sticker registration or GIF providers could not fix it.
+
+The same synthetic dimensions on the account-free emulator report decoder
+alignment **2×2**, unsupported at 357×372 and supported at 358×372. This
+corroborates the [AOSP MPEG-4 component's size step](https://android.googlesource.com/platform/frameworks/av/+/master/media/codec2/components/mpeg4_h263/C2SoftMpeg4Dec.cpp),
+not a measurement of the phone's capability table. Container suffix `mp4` says
+nothing about the inner codec/profile/alignment. The earlier assumption that a
+platform decoder advertising a MIME could decode every such file was wrong.
+Use `MediaCodecList.findDecoderForFormat` and `MediaCodec.createByCodecName`,
+as [Android recommends](https://developer.android.com/reference/android/media/MediaCodec),
+then handle actual initialization failure as well. Do not silently resize an
+original merely to satisfy that decoder's alignment.
+
+`MediaDecodeInputs` first retains an original lease. If Android cannot advertise
+a decoder for its complete format, a distinct compatible source PLAYBACK rendition
+is preferred; otherwise the original uses the shared FFmpeg software decoder.
+Immich now serves PLAYBACK from `/api/assets/{id}/video/playback`, leaving its
+ORIGINAL endpoint unchanged. Preview starts with ExoPlayer and falls back on
+decoder failure. GIF/native WebP preparation and MP4 exports reuse that software
+backend; HDR color processing remains in Media3 GL. See the
+[decoder implementation contract](../media-decoder/README.md) for build/license,
+budgets, source selection, thread/surface ownership and limitations.
+
+Revision **15** advertises one private operation MIME,
+`application/vnd.sao.instagram-sticker`, instead of input-format-specific fake
+MIMEs. This is an operation capability, not a claim that a particular source
+format is decodable. Preparation stages bytes on IO, probes actual image content
+and motion (including APNG Android can expose as a still), then chooses WebP
+pass-through, the existing GIF decoder, shared visual-frame decoding, or the
+lossless still encoder. The native wire format remains truthful WebP. Request
+capture, one-use recipient validation and the verified upload-only → raw FBID →
+single stock configurator path are unchanged. An unsupported codec produces a
+preparation failure; it does not retry an uncertain send.
+
+To reproduce without private media, use `odd-mpeg4.mp4` in Android tests and
+`sticker-odd.mp4` in the isolated probe. The latter independently decodes as
+**357×372, 10 frames, 40 ms/frame** after Instagram's own WebP encoder. Probe
+booleans do not establish authenticated delivery. The minified APK's JNI ABI was
+also exercised using a synthetic local file; 10 decoded frames retained geometry
+and colors. The software MP4 export test preserves dimensions, orientation,
+duration and AAC audio from an unsupported H.264 4:4:4 source.
+
+The final focused emulator run passes **26 tests**: software decode/preview/GIF/
+MP4 paths, HDR/rotation/alpha/timing, cancellation, input-rendition leases and
+no-replay boundaries, plus the existing native operation/recipient-lease checks.
+Immich's client/timeline suite passes **18 tests**. Debug, R8 release and Android
+lint builds pass. The source-only extension build contains no software-codec
+dependency. These results do not substitute for the pending physical retry.
+
+After installing the new module, force-stop/reopen Instagram before reading
+capabilities. Inspect only bounded SAO-owned diagnostics:
+
+```sh
+adb -s "$DEVICE" logcat -v threadtime \
+  SAO.NativeBridge:I SAO.VideoPreview:I SAO.MediaDecode:I SAO.InstagramGif:I '*:S'
+```
+
+Confirm hooks **15** and the operation MIME, then let the user initiate one Paste.
+`sourcePlayback=true/false` identifies source selection; `backend=SOFTWARE` on
+the native encoded-frame log establishes local fallback. Verify preview and
+native completion separately. Avoid raw logcat dumps, exception messages, media
+paths, filenames, account/chat identifiers or private URLs in shared reports.
+Physical revision-15 verification is pending a reconnected device; earlier
+revision-13 static/animated delivery results are not proof of this new fallback.
