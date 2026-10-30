@@ -474,6 +474,16 @@ class SourceHomeDeviceTest {
                 }
                 scenario.onActivity { activity ->
                     val viewer=home(activity).childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG) as MediaViewerFragment
+                    val video=viewer.requireView().findViewById<androidx.media3.ui.PlayerView>(R.id.media_viewer_player)
+                    assertFalse("The original-video preview must open without controls",video.isControllerFullyVisible)
+                    video.performClick()
+                }
+                await(scenario,"Tapping the preview reveals its controls") { activity ->
+                    val viewer=home(activity).childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG) as? MediaViewerFragment
+                    viewer?.view?.findViewById<androidx.media3.ui.PlayerView>(R.id.media_viewer_player)?.isControllerFullyVisible==true
+                }
+                scenario.onActivity { activity ->
+                    val viewer=home(activity).childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG) as MediaViewerFragment
                     val player=requireNotNull(viewer.requireView().findViewById<androidx.media3.ui.PlayerView>(R.id.media_viewer_player).player)
                     assertTrue("The full-size Media3 timeline must expose seeking",player.isCurrentMediaItemSeekable)
                     player.seekTo(player.duration/2)

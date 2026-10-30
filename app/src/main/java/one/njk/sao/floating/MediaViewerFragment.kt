@@ -81,6 +81,8 @@ class MediaViewerFragment : DialogFragment() {
             id=R.id.media_viewer_player
             visibility=View.GONE; setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
             setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+            controllerAutoShow=false
+            hideController()
         }
         body.addView(video,FrameLayout.LayoutParams(-1,-1))
         body.addView(poster,FrameLayout.LayoutParams(-1,-1))
