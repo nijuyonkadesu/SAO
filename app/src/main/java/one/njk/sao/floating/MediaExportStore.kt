@@ -79,6 +79,17 @@ class MediaExportStore @Inject constructor(@ApplicationContext private val conte
         if(remaining==0) active.remove(file.absolutePath) else active[file.absolutePath]=remaining
     }
 
+    /** A validated media revision already prepared here needs no source read or codec probe. */
+    internal suspend fun cached(key: MediaExportKey,extension: String): File? = withContext(dispatchers.io) {
+        maintenance.withLock {
+            val file=File(directory,key.filename(extension))
+            if(!file.isFile || file.length()==0L) return@withLock null
+            file.setLastModified(System.currentTimeMillis())
+            handoffs[file.absolutePath]=android.os.SystemClock.elapsedRealtime()+HANDOFF_MS
+            file
+        }
+    }
+
     /** One persisted clipboard pin, written only when SAO publishes a new clip. */
     suspend fun clipboard(file: File?) = withContext(dispatchers.io) { maintenance.withLock {
         clipboardMarker.parentFile!!.mkdirs()

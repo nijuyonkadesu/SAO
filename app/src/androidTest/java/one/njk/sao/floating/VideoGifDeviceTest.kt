@@ -50,20 +50,42 @@ class VideoGifDeviceTest {
         val source=Files(input); val exports=MediaExports(app,source); val item=item()
         val output=mutableListOf<File>()
         try {
-            val gif=withTimeout(30_000) { exports.instagramGif(item) }; output+=gif.file
+            val gif=withTimeout(30_000) { exports.asGif(item) }; output+=gif.file
             assertEquals("image/gif",gif.mimeType); assertEquals("image/gif",app.contentResolver.getType(gif.uri))
             assertEquals("GIF89a",gif.file.inputStream().use { it.readNBytes(6).toString(Charsets.US_ASCII) })
             assertEquals(1000,requireNotNull(Movie.decodeFile(gif.file.path)).duration())
             colors(gif.file,96,64).also { bitmap -> try {
                 near(Color.GREEN,bitmap.getPixel(20,16)); near(Color.BLUE,bitmap.getPixel(72,48)); near(Color.RED,bitmap.getPixel(72,16))
             } finally { bitmap.recycle() } }
-            assertEquals(gif.uri,exports.instagramGif(item).uri); assertEquals(1,source.originals)
+            assertEquals(gif.uri,exports.asGif(item).uri); assertEquals(1,source.originals)
             assertFalse(source.held)
             val unchanged=exports.prepare(item,ExportRendition.MEDIA); output+=unchanged.file
             assertEquals("video/mp4",unchanged.mimeType); assertNotEquals(gif.uri,unchanged.uri)
             assertArrayEquals(original,unchanged.file.readBytes()); assertArrayEquals(original,input.readBytes())
         } finally { input.delete(); output.forEach(File::delete) }
     }
+    @Test fun cachedStickerInputAvoidsRepeatingSourceReadsAndConversionProbes(): Unit=runBlocking {
+        val input=fixture("gif/colors.mp4"); val source=Files(input); val exports=MediaExports(app,source); val item=item()
+        try {
+            val first=exports.nativeStickerInput(item)
+            try {
+                assertEquals(1,source.originals)
+                assertEquals(first.uri,exports.nativeStickerInput(item).uri)
+                assertEquals("An unchanged prepared revision must not reopen its source",1,source.originals)
+                assertArrayEquals(input.readBytes(),first.file.readBytes())
+            } finally { first.file.delete() }
+        } finally { input.delete() }
+    }
+    @Test fun existingGifsStayByteExactAndNeverRunTheVideoEncoder(): Unit=runBlocking {
+        val input=fixture("floating/hello.gif"); val source=Files(input); val exports=MediaExports(app,source)
+        val media=item().copy(mimeType="image/gif",animated=true)
+        try {
+            val gif=exports.asGif(media) { error("A GIF does not need another conversion") }
+            try { assertArrayEquals(input.readBytes(),gif.file.readBytes()) }
+            finally { gif.file.delete() }
+        } finally { input.delete() }
+    }
+
     @Test fun rotationIsAppliedOnceWithoutChangingAspectOrSwappingColors(): Unit=runBlocking {
         val input=fixture("gif/rotated.mp4"); val output=File.createTempFile("rotated-",".gif",app.cacheDir)
         try {
@@ -116,15 +138,15 @@ class VideoGifDeviceTest {
         val input=fixture("export/busy.webm"); val source=Files(input)
         val store=MediaExportStore(app); val exports=MediaExports(app,source,store=store); val media=item()
         val previous=store.directory.listFiles().orEmpty().filter { it.name.endsWith(".pending") }.toSet()
-        val running=async(Dispatchers.IO) { exports.instagramGif(media) }
+        val running=async(Dispatchers.IO) { exports.asGif(media) }
         try {
             withTimeout(10_000) { source.opened.await() }; delay(150)
             withTimeout(10_000) { running.cancelAndJoin() }
             assertFalse("The scoped input is released only after native/GL cleanup",source.held)
-            assertFalse(File(store.directory,MediaExportKey(media,MediaExportPolicy.InstagramGif).filename("gif")).exists())
+            assertFalse(File(store.directory,MediaExportKey(media,MediaExportPolicy.AsGif).filename("gif")).exists())
             assertEquals(previous,store.directory.listFiles().orEmpty().filter { it.name.endsWith(".pending") }.toSet())
             val small=fixture("gif/colors.mp4")
-            try { val retry=withTimeout(30_000) { MediaExports(app,Files(small),store=store).instagramGif(media) }; retry.file.delete() }
+            try { val retry=withTimeout(30_000) { MediaExports(app,Files(small),store=store).asGif(media) }; retry.file.delete() }
             finally { small.delete() }
         } finally { running.cancelAndJoin(); input.delete() }
     }
@@ -134,7 +156,7 @@ class VideoGifDeviceTest {
         try {
             val exports=MediaExports(app,Files(input))
             try {
-                val converted=withTimeout(30_000) { exports.instagramGif(item()) }
+                val converted=withTimeout(30_000) { exports.asGif(item()) }
                 try {
                     assertEquals("image/gif",converted.mimeType)
                     val decoded=Movie.decodeFile(converted.file.path)

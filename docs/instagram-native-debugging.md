@@ -691,7 +691,7 @@ MP4 paths, HDR/rotation/alpha/timing, cancellation, input-rendition leases and
 no-replay boundaries, plus the existing native operation/recipient-lease checks.
 Immich's client/timeline suite passes **18 tests**. Debug, R8 release and Android
 lint builds pass. The source-only extension build contains no software-codec
-dependency. These results do not substitute for the pending physical retry.
+dependency. The user subsequently confirmed software decoding works on the physical device.
 
 After installing the new module, force-stop/reopen Instagram before reading
 capabilities. Inspect only bounded SAO-owned diagnostics:
@@ -706,8 +706,7 @@ Confirm hooks **15** and the operation MIME, then let the user initiate one Past
 the native encoded-frame log establishes local fallback. Verify preview and
 native completion separately. Avoid raw logcat dumps, exception messages, media
 paths, filenames, account/chat identifiers or private URLs in shared reports.
-Physical revision-15 verification is pending a reconnected device; earlier
-revision-13 static/animated delivery results are not proof of this new fallback.
+The user subsequently confirmed revision-15 software decoding on the physical device. Account-free probes remain separate evidence from authenticated delivery.
 
 ### Optimized APK packaging and resource verification
 
@@ -728,3 +727,12 @@ bit-identical software-decoded frames and retained audio after MP4 export. Nativ
 ThinLTO was evaluated but increased ARM64 code size, so it was not retained.
 These packaging/compilation changes do not establish authenticated delivery;
 that boundary remains the explicit, user-triggered physical-device check.
+
+
+### Progressive playback and conversion follow-up
+
+The user confirmed the software fallback works on-device. Playback no longer requires a completed source-media download: source SDK 1.2 exposes a scoped content-URI playback lease. SAO's Media3 byte cache and provider DataSource serve both hardware playback and FFmpeg AVIO callbacks. Proxy descriptors negotiate HTTP ranges inside each source APK; credentials never enter SAO. Hardware IO is cancelled before `ExoPlayer.release()`, including a transition to software decoding. IO/auth errors do not initiate codec fallback or automatic network retries. [Contract, bounds and cancellation](media-playback.md).
+
+**As GIF** is source/target independent. Its inactive state preserves original/compatible video; unavailable native video no longer silently selects GIF. Static images disable the action. Existing GIFs remain byte exact. Instagram Sticker + As GIF still decodes source frames directly into native WebP; it does not create a GIF intermediary. The ordinary GIF path warns before a large uncached conversion using declared dimensions/frame count, with no automatic quality/frame-rate/resolution reduction. Unknown metadata is not replaced by an invented size estimate.
+
+Prepared native inputs are reused by media revision before another source/codec probe. Contiguous RGBA frames use one bulk buffer copy; padded rows keep the verified stride-aware path. The one-frame delay needed for exact variable frame durations, native worker ownership, recipient lease, WebP/Riff metadata and one-use send boundary remain unchanged. Gifski quantization remains CPU work at quality 100; these changes do not establish a phone conversion-speed benchmark.

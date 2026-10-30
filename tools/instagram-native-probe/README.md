@@ -133,3 +133,6 @@ SDR/HDR shader bytes, and the synthetic 357×372 clip's 10 RGBA frames/timestamp
 The runner rejects physical devices; it accesses no account, source credentials,
 chat or real media, and performs no upload/send. Restore the normal debug APK
 after the check when continuing ordinary emulator instrumentation.
+
+
+The minified module probe resolves the production library loader and its singleton from the matching R8 map; decoder factory methods may be fully inlined and are not stable reflection entries. It then invokes the retained native file/stream entry points and checks both ten-frame outputs. `ModuleDecoderInput` is loaded beside the installed module so it implements that exact loader's `DecoderInput`; a Java dynamic proxy is unsuitable for this ARM translation/CheckJNI boundary. The callback interface declares checked IO failures for Java consumers. No production keep rule is added to preserve test-only entry points.

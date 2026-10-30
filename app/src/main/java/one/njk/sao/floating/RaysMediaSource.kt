@@ -124,6 +124,8 @@ class RaysMediaSource(private val context: Context, private val config: RaysConf
         val stream = open()
         return try { block(stream) } finally { stream.close() }
     }
+    override suspend fun <T> withPlayback(item: MediaItem,original: Boolean,block: suspend (MediaPlayback)->T): T =
+        block(MediaPlayback(uri(item),"${digest(sourceId).take(32)}:${digest(item.id+":original")}"))
     override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
         block: suspend (MediaHandle) -> T): T = when (kind) {
         Rendition.ORIGINAL -> if (item.isVideo) withVideoFile(item) { file -> block(MediaHandle.Local(file)) }

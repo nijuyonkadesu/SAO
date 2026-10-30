@@ -44,6 +44,8 @@ struct Decoder {
     bool draining = false;
     bool buffered = false;
     FILE *input = nullptr;
+    jobject streamInput = nullptr;
+    jmethodID streamRead = nullptr, streamSeek = nullptr;
     AVIOContext *io = nullptr;
     std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
     ~Decoder() {
@@ -52,15 +54,28 @@ struct Decoder {
         avcodec_free_context(&codec); avformat_close_input(&format);
         if (io) { av_freep(&io->buffer); avio_context_free(&io); }
         if (input) fclose(input);
+        if (streamInput) environment->DeleteGlobalRef(streamInput);
         if (cancellation) environment->DeleteGlobalRef(cancellation);
     }
     void open(const char *path, int64_t budget) {
+        input = fopen(path, "rb");
+        require(input != nullptr, "software input file");
+        initialize(budget);
+    }
+    void open(jobject source, int64_t budget) {
+        streamInput = environment->NewGlobalRef(source);
+        auto type = environment->GetObjectClass(source);
+        streamRead = environment->GetMethodID(type, "read", "(Ljava/nio/ByteBuffer;)I");
+        streamSeek = environment->GetMethodID(type, "seek", "(JI)J");
+        environment->DeleteLocalRef(type);
+        require(streamInput && streamRead && streamSeek, "software stream interface");
+        initialize(budget);
+    }
+    void initialize(int64_t budget) {
         require(frame && packet && cancellation && isCancelled, "software allocation");
         maxPixels = budget;
         format = avformat_alloc_context();
         require(format != nullptr, "software demux allocation");
-        input = fopen(path, "rb");
-        require(input != nullptr, "software input file");
         auto *buffer = static_cast<uint8_t *>(av_malloc(64 * 1024));
         require(buffer != nullptr, "software input buffer");
         io = avio_alloc_context(buffer, 64 * 1024, 0, this,
@@ -69,10 +84,27 @@ struct Decoder {
                 if (std::chrono::steady_clock::now() > instance->deadline ||
                     instance->environment->CallBooleanMethod(instance->cancellation, instance->isCancelled) ||
                     instance->environment->ExceptionCheck()) return AVERROR_EXIT;
+                if (instance->streamInput) {
+                    auto *env = instance->environment;
+                    auto bytes = env->NewDirectByteBuffer(target, size);
+                    if (!bytes) return AVERROR(ENOMEM);
+                    jvalue args[1]{}; args[0].l = bytes;
+                    int count = env->CallIntMethodA(instance->streamInput, instance->streamRead, args);
+                    env->DeleteLocalRef(bytes);
+                    if (env->ExceptionCheck()) return AVERROR_EXIT;
+                    return count < 0 ? AVERROR_EOF : count <= size ? count : AVERROR(EIO);
+                }
                 size_t count = fread(target, 1, size, instance->input);
                 return count ? int(count) : feof(instance->input) ? AVERROR_EOF : AVERROR(EIO);
             }, nullptr, [](void *owner, int64_t offset, int whence) -> int64_t {
-                auto *file = static_cast<Decoder *>(owner)->input;
+                auto *instance = static_cast<Decoder *>(owner);
+                if (instance->streamInput) {
+                    jvalue args[2]{}; args[0].j = offset; args[1].i = whence & ~AVSEEK_FORCE;
+                    auto result = instance->environment->CallLongMethodA(instance->streamInput, instance->streamSeek, args);
+                    if (instance->environment->ExceptionCheck()) return AVERROR_EXIT;
+                    return result < 0 ? AVERROR(ENOSYS) : result;
+                }
+                auto *file = instance->input;
                 if (whence & AVSEEK_SIZE) {
                     auto position = ftello(file);
                     if (fseeko(file, 0, SEEK_END) != 0) return AVERROR(EIO);
@@ -218,6 +250,13 @@ extern "C" JNIEXPORT jlong JNICALL Java_one_njk_sao_media_NativeDecoder_nativeOp
         env->ReleaseStringUTFChars(path, input);
         return reinterpret_cast<jlong>(instance.release());
     } catch (const std::exception &error) { env->ReleaseStringUTFChars(path, input); fail(env, error); return 0; }
+}
+extern "C" JNIEXPORT jlong JNICALL Java_one_njk_sao_media_NativeDecoder_nativeOpenStream(JNIEnv *env, jclass, jobject input, jlong maxPixels, jobject poll) {
+    try {
+        av_log_set_level(AV_LOG_QUIET);
+        auto instance = std::make_unique<Decoder>(env, poll); instance->open(input, maxPixels);
+        return reinterpret_cast<jlong>(instance.release());
+    } catch (const std::exception &error) { fail(env, error); return 0; }
 }
 extern "C" JNIEXPORT jlongArray JNICALL Java_one_njk_sao_media_NativeDecoder_nativeInfo(JNIEnv *env, jobject, jlong handle) {
     try {

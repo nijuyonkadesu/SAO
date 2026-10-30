@@ -130,6 +130,10 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
 
     /** Request-owned native sticker input; ordinary copies and uploads keep the original bytes. */
     suspend fun nativeStickerInput(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
+        check(source.owns(item))
+        for(playback in listOf(false,true)) store.cached(MediaExportKey(item,MediaExportPolicy.DecodeInput(playback)),"bin")?.let {
+            return@withContext store.exported(it,item.mimeType)
+        }
         MediaDecodeInputs.withInput(source, item, store.directory) { input, playback ->
             if (one.njk.sao.BuildConfig.DEBUG) android.util.Log.i("SAO.MediaDecode", "sticker input selected; sourcePlayback=$playback")
             val file = store.write(MediaExportKey(item, MediaExportPolicy.DecodeInput(playback)), "bin") { staging ->
@@ -140,11 +144,13 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
     }
 
     /** Source rendition choice and software fallback are shared with native animation preparation. */
-    suspend fun instagramGif(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
+    suspend fun asGif(item: MediaItem, beforeEncode: suspend (GifConversionCost?) -> Unit = {}): ExportedMedia = withContext(dispatchers.io) {
         require(item.hasMotion)
+        if(item.mimeType=="image/gif") return@withContext prepare(item,ExportRendition.MEDIA)
         require(item.id.matches(Regex("[a-z0-9_-]+")))
-        val file=store.write(MediaExportKey(item,MediaExportPolicy.InstagramGif),"gif") { staging ->
+        val file=store.write(MediaExportKey(item,MediaExportPolicy.AsGif),"gif") { staging ->
             MediaDecodeInputs.withInput(source, item, store.directory) { input, _ ->
+                beforeEncode(GifConversionCost.inspect(input))
                 store.conversions.withPermit { gifs.gif(input, staging) }
             }
         }
@@ -153,14 +159,15 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
 
     /** Called only after the user explicitly chooses the receiving app's smaller-copy option. */
     suspend fun smaller(item: MediaItem, original: ExportedMedia, maxBytes: Long): ExportedMedia = withContext(dispatchers.io) {
-        require(maxBytes>0 && AttachmentSizePolicy.canReduce(original.mimeType,item.animated))
+        require(maxBytes>0 && AttachmentSizePolicy.canReduce(original.mimeType,item.animated || original.mimeType=="image/gif"))
         if(original.file.length()<=maxBytes) return@withContext original
-        val mime=if(item.isVideo) "video/mp4" else original.mimeType
-        val extension=if(item.isVideo) "mp4" else if(mime=="image/jpeg") "jpg" else "png"
+        val video=original.mimeType.startsWith("video/")
+        val mime=if(video) "video/mp4" else original.mimeType
+        val extension=if(video) "mp4" else if(mime=="image/jpeg") "jpg" else "png"
         val file=store.write(MediaExportKey(item,MediaExportPolicy.Limited(mime,maxBytes)),extension) { staging ->
             store.using(original.file) {
                 store.conversions.withPermit {
-                    if(item.isVideo) transcoder.mp4(original.file,staging,maxBytes)
+                    if(video) transcoder.mp4(original.file,staging,maxBytes)
                     else withContext(dispatchers.conversion) { AttachmentImageEncoder.write(original.file,staging,mime,maxBytes) }
                 }
             }

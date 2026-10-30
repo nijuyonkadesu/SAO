@@ -24,7 +24,7 @@ internal object MediaDecodeInputs {
     suspend fun <T> withInput(source: MediaSource, item: MediaItem, directory: File,
         block: suspend (file: File, playback: Boolean) -> T): T =
         source.withRendition(item, Rendition.ORIGINAL) { original ->
-            seekable(original, directory) { file ->
+            withLocalFile(original, directory) { file ->
                 val revisions = item.remote?.cacheKeys.orEmpty()
                 val same = revisions["original"] != null && revisions["original"] == revisions["video"]
                 if (!item.isVideo || same || platformSupports(file)) block(file, false)
@@ -32,7 +32,7 @@ internal object MediaDecodeInputs {
                     var used = false
                     try {
                         source.withRendition(item, Rendition.PLAYBACK) { compatible ->
-                            seekable(compatible, directory) { playback ->
+                            withLocalFile(compatible, directory) { playback ->
                                 if (playback != file && platformSupports(playback)) {
                                     used = true
                                     block(playback, true)
@@ -51,13 +51,16 @@ internal object MediaDecodeInputs {
             }
         }
 
-    private suspend fun <T> seekable(handle: MediaHandle, directory: File, block: suspend (File) -> T): T {
+    suspend fun <T> withLocalFile(handle: MediaHandle, directory: File, block: suspend (File) -> T): T {
         handle.file?.let { return block(it) }
-        directory.mkdirs()
-        val file = File.createTempFile("decode-", ".pending", directory)
-        try {
-            handle.openStream().use { input -> file.outputStream().use { MediaExportStore.copy(input, it) } }
-            return block(file)
-        } finally { file.delete() }
+        val file=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            directory.mkdirs()
+            File.createTempFile("decode-", ".pending", directory).also { file ->
+                try { handle.openStream().use { input -> file.outputStream().use { MediaExportStore.copy(input,it) } } }
+                catch(error: Throwable) { file.delete(); throw error }
+            }
+        }
+        try { return block(file) }
+        finally { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable+kotlinx.coroutines.Dispatchers.IO) { file.delete() } }
     }
 }

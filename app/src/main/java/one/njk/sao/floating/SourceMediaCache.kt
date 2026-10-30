@@ -119,7 +119,8 @@ class SourceMediaCache @Inject constructor(@ApplicationContext private val conte
             .toList().sortedBy { it.lastModified() }
         var total = files.sumOf { it.length() }
         for (file in files) {
-            if (total <= 192L * 1024 * 1024) break
+            // The remaining 64 MiB budget belongs to progressive playback spans.
+            if (total <= 128L * 1024 * 1024) break
             if (file != keep && file.absolutePath !in readers) {
                 val bytes = file.length()
                 if (file.delete()) total -= bytes
@@ -128,6 +129,7 @@ class SourceMediaCache @Inject constructor(@ApplicationContext private val conte
     }
 
     suspend fun remove(owner: String) = withContext(Dispatchers.IO) {
+        PlaybackCache.remove(context, owner)
         maintenance.withLock {
             val folder = File(directory, digest(owner).take(32))
             if (readers.keys.any { it.startsWith(folder.absolutePath + File.separator) }) retired.add(folder.absolutePath)

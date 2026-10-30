@@ -139,10 +139,23 @@ class ExtensionMediaSource(private val context: Context, private val profile: So
     override suspend fun <T> withPreview(item: MediaItem, block: suspend (Preview) -> T): T =
         withFile(item,"preview") { block(Preview.Local(it)) }
     private fun playbackKind(item: MediaItem) = if (item.remote?.cacheKeys?.containsKey("playback") == true) "playback" else "video"
+    override suspend fun <T> withPlayback(item: MediaItem, original: Boolean, block: suspend (MediaPlayback) -> T): T {
+        check(item.remote?.sourceId == profile.identity && !closed)
+        val kind = if (original || !item.isVideo) "original" else playbackKind(item)
+        val variant = requireNotNull(item.remote).cacheKeys[kind] ?: kind
+        return mediaRead(SourceFeature.RENDITION) {
+            val uri = validate(request(ExtensionProtocol.MEDIA, JSONObject().put("item", SourceWire.item(item)).put("kind", kind)).getString("uri"))
+            block(MediaPlayback(uri, "${digest(profile.identity).take(32)}:${digest("${item.id}:$variant")}"))
+        }
+    }
     override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
         block: suspend (MediaHandle) -> T): T = when (kind) {
         Rendition.ORIGINAL -> withFile(item, "original") { file -> block(MediaHandle.Local(file)) }
-        Rendition.PLAYBACK -> { require(item.isVideo); withFile(item, playbackKind(item)) { file -> block(MediaHandle.Local(file)) } }
+        Rendition.PLAYBACK -> {
+            require(item.isVideo)
+            withPlayback(item) { media -> PlaybackCache.withFile(context, media,
+                if (playbackKind(item) == "playback") 8L * 1024 * 1024 else 64L * 1024 * 1024) { block(MediaHandle.Local(it)) } }
+        }
         Rendition.STILL -> withFile(item, "raster") { file -> block(MediaHandle.Local(file)) }
     }
     override suspend fun <T> withPersonPreview(person: SearchPerson, block: suspend (Preview?) -> T): T {

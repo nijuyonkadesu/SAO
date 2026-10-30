@@ -142,11 +142,13 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
             catch(_: Exception) { if(request.current(version)) copyStatus.value=one.njk.sao.R.string.picker_copy_failed }
         }
     }
-    suspend fun prepareClipboard(target: MessagingTarget, delivery: suspend (ExportedMedia) -> ExportedMedia = { it }): Boolean {
+    suspend fun prepareClipboard(target: MessagingTarget, gifCheck: suspend (GifConversionCost?) -> Unit = {}, delivery: suspend (ExportedMedia) -> ExportedMedia = { it }): Boolean {
         val item = selection.value ?: return false
         val version = request.next(); copying?.cancel()
-        val choice = DeliveryPolicy.clipboard(item, preferredOverride ?: preferences.current().preferStickers, target)
-        val media = delivery(exports.prepare(item, choice.rendition, DeliveryPolicy.stickerRequirements(target)))
+        val options=preferences.current()
+        val asGif=item.hasMotion && options.motionDelivery==MotionDelivery.GIF
+        val choice = DeliveryPolicy.clipboard(item, preferredOverride ?: options.preferStickers, target)
+        val media = delivery(if(asGif) exports.asGif(item,gifCheck) else exports.prepare(item, choice.rendition, DeliveryPolicy.stickerRequirements(target)))
         return source.owns(item) && clipboard.publish(item, media, request, version, recordUsage=false)
     }
     override fun onCleared() { session.releaseSequence(visibilityOwner); request.next(); pickerVisible(false) }
@@ -288,8 +290,8 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         clearSelection()
         searchQuery(query.value.copy(text = "", randomRequest = java.util.UUID.randomUUID().toString()))
     }
-    fun instagramVideoRoute(value: InstagramVideoRoute) {
-        viewModelScope.launch { preferences.instagramVideoRoute(value) }
+    fun motionDelivery(value: MotionDelivery) {
+        viewModelScope.launch { preferences.motionDelivery(value) }
     }
     fun preferStickers(value: Boolean) {
         preferredOverride = value

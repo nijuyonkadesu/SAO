@@ -43,3 +43,10 @@ Carousel follow-up: the home checks additionally verify a focal card occupying o
 Loading/prefetch follow-up: 37 host JVM and 33 targeted Android checks pass. The delayed-media fixture verifies that cards are mounted before their bytes arrive, preview downloads are coalesced and bounded, and prefetch never asks for original files. Reviewed board-specific Moeview presets and their limitations are listed in the [tag equivalence table](moeview-category-tags.md). Host debug and source release lint report zero errors.
 
 Home Share follow-up: the real home action reuses its focal preview without another preview request or an original-image request. JPEG previews of PNG originals, animated GIFs and playback MP4 bytes are shared without re-encoding. Download and floating Media exports retain their original-file tests.
+
+
+## Full-size preview
+
+Hold a home carousel card for the configured hold duration to open an original-media viewer. It is a fullscreen DialogFragment above the existing carousel, with a short scale/translation transition and the already decoded thumbnail while the original loads. Back/Close preserves the home view, result list and focal item. The title's existing hold-to-copy-filename action is unchanged. Image/video work stops with the viewer's view lifecycle; zoom/playhead state uses SavedStateHandle, never preferences.
+
+JPEG/PNG/WebP/HEIF stills use Android's region decoder where supported: a bounded overview plus the visible full-resolution region, with pinch/pan/double-tap zoom and EXIF orientation. SVG uses the existing vector renderer. Other still formats use the existing image loader. Original videos and animations use the [shared playback pipeline](media-playback.md); the home card itself retains its smaller source-selected rendition. Media3 exposes its standard playback/seek controls in the large viewer. The software surface fallback remains muted, without a Media3 control timeline.

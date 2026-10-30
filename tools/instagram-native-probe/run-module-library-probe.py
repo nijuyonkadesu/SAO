@@ -18,25 +18,30 @@ def main():
         raise SystemExit('This fixture is emulator-only; it does not inspect a personal device.')
     owner = None
     entries = set()
-    signature = 'one.njk.sao.media.NativeDecoder$Companion.open(android.content.Context,java.io.File,long,java.util.function.BooleanSupplier)'
+    instance = None
+    signature = 'one.njk.sao.media.NativeLibrary.load(android.content.Context)'
     for line in args.mapping.read_text().splitlines():
         match = re.match(r'^\S+ -> (\S+):$', line)
         if match:
             owner = match.group(1)
+        if "one.njk.sao.media.NativeLibrary.INSTANCE -> " in line:
+            instance = (owner,line.rsplit(" -> ",1)[1])
         if signature in line:
             entries.add((owner, line.rsplit(' -> ', 1)[1]))
     if len(entries) != 1:
-        raise SystemExit('Expected one decoder entry in the matching R8 map; rebuild the module and inspect its mapping.')
+        raise SystemExit('Expected one native-library loader in the matching R8 map; rebuild the module and inspect its mapping.')
     owner, method = entries.pop()
     command = ['am', 'instrument', '--abi', 'arm64-v8a', '-w', '-e', 'entryClass', owner,
                '-e', 'entryMethod', method, 'one.njk.sao.instagramprobe/one.njk.sao.floating.nativebridge.ModuleLibraryProbe']
+    if instance:
+        command[-1:-1] = ['-e', 'instanceClass', instance[0], '-e', 'instanceField', instance[1]]
     output = subprocess.check_output(['adb', '-s', args.serial, 'shell', shlex.join(command)], text=True, timeout=60)
     line = next((line for line in output.splitlines() if line.startswith('INSTRUMENTATION_RESULT: report=')), None)
     if line is None:
         raise SystemExit(output)
     report = json.loads(line.split('=', 1)[1])
     if not all(report.get(key) is True for key in ('module_feedback_retained', 'module_shaders_retained',
-            'foreign_host_identity_preserved', 'minified_module_decoder_loaded')) or report.get('decoded_frames') != 10:
+            'foreign_host_identity_preserved', 'minified_module_decoder_loaded', 'minified_module_stream_loaded')) or report.get('decoded_frames') != 10:
         raise SystemExit('Module resource/library verification failed: ' + json.dumps(report))
     print(json.dumps(report))
 

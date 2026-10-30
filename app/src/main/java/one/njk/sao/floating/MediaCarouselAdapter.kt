@@ -22,16 +22,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import androidx.media3.common.Player
-import androidx.media3.common.C
-import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.common.MediaItem as PlayerMediaItem
 import one.njk.sao.databinding.ItemFloatingMediaBinding
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -45,12 +38,10 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         override fun areContentsTheSame(a: MediaItem, b: MediaItem) = a == b
     }) {
     private val attached = mutableSetOf<Holder>()
-    private var player: ExoPlayer? = null
     private var videoHolder: Holder? = null
     private var videoId: MediaIdentity? = null
     private var videoLoading: Job? = null
     private val videoPlayback = Mutex()
-    private var videoRelease: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     private var videoVersion = 0L
     private var closed = false
     private var furthestBound = -1
@@ -120,6 +111,8 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         // scroll callback. Continue prefetching as bindings approach the new end.
         if (furthestBound >= 0) prefetch(furthestBound)
     }
+    fun previewBounds(item: MediaItem): android.graphics.Rect? = attached.firstOrNull { it.item?.identityKey==item.identityKey }
+        ?.binding?.preview?.let { view -> android.graphics.Rect().takeIf { view.getGlobalVisibleRect(it) } }
     private fun load(holder: Holder) {
         if (closed) return
         val item = holder.item ?: return
@@ -174,12 +167,6 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         holder.loading?.cancel(); holder.loading = null
         holder.loadingItem = null
     }
-    private fun previewMemoryKey(item: MediaItem)=buildString {
-        append("sao-preview:")
-        val fields=listOf(item.identityKey.encode(),item.id,item.asset,item.mimeType,item.animated.toString(),item.remote?.edited.toString())+
-            item.remote?.cacheKeys.orEmpty().toSortedMap().flatMap { (key,value) -> listOf(key,value) }
-        fields.forEach { append(it.length); append(':'); append(it) }
-    }
     private fun samePreview(first: MediaItem?, second: MediaItem) = first != null &&
         first.identityKey == second.identityKey && first.id == second.id && first.asset == second.asset &&
         first.mimeType == second.mimeType && first.animated == second.animated &&
@@ -216,65 +203,11 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
             try {
                 // Scrolling has settled; allow any final layout/focus adjustment to finish.
                 delay(200)
-                source.withRendition(item, if (item.isVideo) Rendition.PLAYBACK else Rendition.ORIGINAL) { handle ->
-                    val file = handle.requireFile()
-                    if (version != videoVersion || !playing || scrolling || holder !in attached || !samePreview(holder.item, item)) return@withRendition
-                    if (!item.isVideo) {
-                        holder.binding.videoPreview.isVisible = true
-                        SoftwareVideoPreview.play(holder.binding.videoPreview, file) {
-                            if (version == videoVersion && videoHolder === holder) holder.binding.videoPreview.alpha = 1f
-                        }
-                        return@withRendition
-                    }
-                    val failed = kotlinx.coroutines.CompletableDeferred<Unit>()
-                    val created = ExoPlayer.Builder(holder.binding.root.context,
-                        androidx.media3.exoplayer.DefaultRenderersFactory(holder.binding.root.context).setEnableDecoderFallback(true))
-                        .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(1000, 5000, 250, 500)
-                            .setTargetBufferBytes(8 * 1024 * 1024).build()).build().apply {
-                        volume = 0f
-                        repeatMode = Player.REPEAT_MODE_ONE
-                        trackSelectionParameters = trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
-                        addListener(object : Player.Listener {
-                            override fun onRenderedFirstFrame() {
-                                if (version == videoVersion && videoHolder === holder) holder.binding.videoPreview.alpha = 1f
-                            }
-                            override fun onPlayerError(error: PlaybackException) {
-                                if (version == videoVersion) {
-                                    if (one.njk.sao.BuildConfig.DEBUG) {
-                                        val failure = error as? androidx.media3.exoplayer.ExoPlaybackException
-                                        val format = failure?.rendererFormat
-                                        android.util.Log.i("SAO.VideoPreview", "playback failed; code=${error.errorCode}; " +
-                                            "mime=${format?.sampleMimeType}; codecs=${format?.codecs}; width=${format?.width}; " +
-                                            "height=${format?.height}; support=${failure?.rendererFormatSupport}")
-                                    }
-                                    failed.complete(Unit)
-                                }
-                            }
-                        })
-                    }
-                    player = created
-                    holder.binding.videoPreview.alpha = 0f
-                    holder.binding.videoPreview.isVisible = true
-                    holder.binding.videoPreview.player = created
-                    // The source's playback rendition may use a different container from the original.
-                    created.setMediaItem(PlayerMediaItem.fromUri(Uri.fromFile(file)))
-                    created.prepare(); created.play()
-                    val released = kotlinx.coroutines.CompletableDeferred<Unit>()
-                    videoRelease = released
-                    select<Unit> {
-                        released.onAwait { }
-                        failed.onAwait {
-                            if (version == videoVersion) {
-                                holder.binding.videoPreview.player = null
-                                if (player === created) player = null
-                                created.release()
-                                SoftwareVideoPreview.play(holder.binding.videoPreview, file) {
-                                    if (version == videoVersion && videoHolder === holder) holder.binding.videoPreview.alpha = 1f
-                                    if (one.njk.sao.BuildConfig.DEBUG) android.util.Log.i("SAO.VideoPreview", "software playback started")
-                                }
-                            }
-                        }
-                    }
+                if (version != videoVersion || !playing || scrolling || holder !in attached || !samePreview(holder.item, item)) return@withLock
+                holder.binding.videoPreview.alpha = 0f
+                holder.binding.videoPreview.isVisible = true
+                MediaPlaybackRenderer.play(holder.binding.videoPreview, source, item) {
+                    if (version == videoVersion && videoHolder === holder) holder.binding.videoPreview.alpha = 1f
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
@@ -291,8 +224,6 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
         videoVersion++
         videoHolder?.binding?.videoPreview?.let { it.player = null; it.isVisible = false }
         videoHolder = null; videoId = null
-        val old = player; player = null; old?.release()
-        videoRelease?.complete(Unit); videoRelease = null
         videoLoading?.cancel(); videoLoading = null
     }
     private fun uploadCaption(view: android.view.View, item: MediaItem): String {

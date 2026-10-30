@@ -28,6 +28,8 @@ import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.CoroutineContext
 
+internal typealias DecodedVideoFrame = (Int, Int, Int, Int, ByteBuffer, Long) -> Unit
+
 /** Sequential platform decoding, with Media3 color conversion/tone mapping and one RGBA image in flight. */
 @androidx.annotation.OptIn(UnstableApi::class)
 internal class VideoFrameDecoder(private val context: Context) {
@@ -61,9 +63,18 @@ internal class VideoFrameDecoder(private val context: Context) {
 
     fun decodeSoftware(input: File, cancellation: CoroutineContext,
         maxPixels: Long = Runtime.getRuntime().maxMemory()/128,
-        frame: (index: Int,width: Int,height: Int,rowBytes: Int,rgba: ByteBuffer,ptsUs: Long)->Unit): Result {
-        one.njk.sao.media.NativeDecoder.open(context, input, maxPixels,
-            java.util.function.BooleanSupplier { !cancellation.isActive || Thread.currentThread().isInterrupted }).use { decoder ->
+        frame: DecodedVideoFrame): Result = decodeSoftware(cancellation, maxPixels, {
+            one.njk.sao.media.NativeDecoder.open(context, input, maxPixels,
+                java.util.function.BooleanSupplier { !cancellation.isActive || Thread.currentThread().isInterrupted })
+        }, frame)
+    fun decodeSoftware(input: one.njk.sao.media.DecoderInput, cancellation: CoroutineContext,
+        maxPixels: Long = Runtime.getRuntime().maxMemory()/128, frame: DecodedVideoFrame): Result = decodeSoftware(cancellation, maxPixels, {
+            one.njk.sao.media.NativeDecoder.open(context, input, maxPixels,
+                java.util.function.BooleanSupplier { !cancellation.isActive || Thread.currentThread().isInterrupted })
+        }, frame)
+    private fun decodeSoftware(cancellation: CoroutineContext, maxPixels: Long,
+        open: () -> one.njk.sao.media.NativeDecoder, frame: DecodedVideoFrame): Result {
+        open().use { decoder ->
             val info = decoder.info
             val rgba = ByteBuffer.allocateDirect(Math.multiplyExact(Math.multiplyExact(info.width, info.height), info.bytesPerPixel))
             var frames = 0

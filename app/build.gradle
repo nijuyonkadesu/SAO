@@ -112,6 +112,7 @@ androidComponents {
 }
 
 dependencies {
+    implementation libs.exif
     implementation project(':media-decoder')
     implementation project(':gif-encoder')
     implementation project(':source-api')

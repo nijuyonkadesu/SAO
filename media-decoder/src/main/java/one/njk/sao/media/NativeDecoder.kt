@@ -10,7 +10,7 @@ import java.util.zip.ZipFile
 import java.util.function.BooleanSupplier
 
 /** A local, request-owned stream. Frames are straight RGBA; display metadata stays explicit. */
-class NativeDecoder private constructor(private var handle: Long) : Closeable {
+class NativeDecoder private constructor(private var handle: Long, private val ownedInput: Closeable? = null) : Closeable {
     data class Info(val width: Int, val height: Int, val durationUs: Long, val frameCount: Long,
         val colorTransfer: Int, val colorPrimaries: Int, val bytesPerPixel: Int,
         val rotationDegrees: Float, val pixelWidthHeightRatio: Float)
@@ -33,7 +33,9 @@ class NativeDecoder private constructor(private var handle: Long) : Closeable {
         require(rgba.isDirect && rgba.capacity().toLong() >= info.width.toLong() * info.height * info.bytesPerPixel)
         return nativeNext(handle, rgba, timing)
     }
-    @Synchronized override fun close() { if (handle != 0L) { nativeClose(handle); handle = 0 } }
+    @Synchronized override fun close() { if (handle != 0L) {
+        try { nativeClose(handle) } finally { handle = 0; ownedInput?.close() }
+    } }
     private external fun nativeInfo(handle: Long): LongArray
     private external fun nativeNext(handle: Long, rgba: ByteBuffer, timing: LongArray): Boolean
     private external fun nativeClose(handle: Long)
@@ -47,6 +49,11 @@ class NativeDecoder private constructor(private var handle: Long) : Closeable {
             return NativeDecoder(nativeOpen(input.absolutePath, maxPixels, cancelled))
         }
         @JvmStatic private external fun nativeOpen(path: String, maxPixels: Long, cancelled: BooleanSupplier): Long
+        fun open(context: Context, input: DecoderInput, maxPixels: Long, cancelled: BooleanSupplier): NativeDecoder = try {
+            NativeLibrary.load(context)
+            NativeDecoder(nativeOpenStream(input, maxPixels, cancelled), input)
+        } catch (error: Throwable) { input.close(); throw error }
+        @JvmStatic private external fun nativeOpenStream(input: DecoderInput, maxPixels: Long, cancelled: BooleanSupplier): Long
     }
 }
 

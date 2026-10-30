@@ -361,7 +361,7 @@ class SourceHomeDeviceTest {
                     request.path=="/api/server/features" -> MockResponse().setBody("""{"smartSearch":true,"ocr":true}""")
                     request.path=="/api/tags" -> MockResponse().setBody("[]")
                     request.path?.contains("/thumbnail")==true -> { if(request.path!!.contains("000000000000")) thumbnailRequests.incrementAndGet(); MockResponse().setBody(Buffer().write(png)) }
-                    request.path?.contains("/original")==true -> MockResponse().setBody(Buffer().write(
+                    (request.path?.contains("/original")==true || request.path?.contains("/video/playback")==true) -> MockResponse().setBody(Buffer().write(
                         if(request.path!!.contains("000000000001")) gif else if(request.path!!.contains("000000000002")) video else png)).also { response ->
                         if(request.path!!.contains("000000000000")) originalRequests.incrementAndGet()
                         if(delayOriginal.get() && request.path!!.contains("000000000003")) {
@@ -402,6 +402,13 @@ class SourceHomeDeviceTest {
                     activity.findViewById<View>(R.id.media_title).performLongClick()
                 }
                 await(scenario,"Home filename copied") { it.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.text?.toString()=="fixture-0.png" }
+                fun home(activity: MainActivity): one.njk.sao.CarouselFragment {
+                    fun walk(manager: androidx.fragment.app.FragmentManager): one.njk.sao.CarouselFragment? =
+                        manager.fragments.firstNotNullOfOrNull { fragment ->
+                            fragment as? one.njk.sao.CarouselFragment ?: walk(fragment.childFragmentManager)
+                        }
+                    return requireNotNull(walk(activity.supportFragmentManager))
+                }
                 pauseSourceVisual("source-home")
                 val shared=java.util.concurrent.atomic.AtomicReference<android.content.Intent?>()
                 val monitor=object: android.app.Instrumentation.ActivityMonitor() {
@@ -431,6 +438,27 @@ class SourceHomeDeviceTest {
                     val holder=activity.findViewById<RecyclerView>(R.id.carousel_recycler_view).findViewHolderForAdapterPosition(1) as? MediaCarouselAdapter.Holder
                     (holder?.binding?.preview?.drawable as? Animatable)?.isRunning==true
                 }
+                var gifCallback: android.graphics.drawable.Drawable.Callback?=null
+                var gifDrawable: android.graphics.drawable.Drawable?=null
+                scenario.onActivity { activity ->
+                    val grid=activity.findViewById<RecyclerView>(R.id.carousel_recycler_view)
+                    val holder=grid.findViewHolderForAdapterPosition(1) as MediaCarouselAdapter.Holder
+                    gifDrawable=holder.binding.preview.drawable; gifCallback=gifDrawable?.callback
+                    holder.itemView.performLongClick()
+                }
+                await(scenario,"The full-size animated GIF renders") { activity ->
+                    val viewer=home(activity).childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG) as? MediaViewerFragment
+                    val root=viewer?.view
+                    root?.findViewById<View>(R.id.media_viewer_progress)?.visibility==View.GONE &&
+                        root.findViewById<View>(R.id.media_viewer_retry).visibility==View.GONE
+                }
+                scenario.onActivity { activity ->
+                    assertSame("The viewer must not steal an animated thumbnail callback",gifCallback,gifDrawable?.callback)
+                    (home(activity).childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG) as MediaViewerFragment).dismiss()
+                }
+                await(scenario,"Closing the GIF viewer resumes the original animated card") {
+                    (gifDrawable as? Animatable)?.isRunning==true && gifDrawable?.callback===gifCallback
+                }
                 scenario.onActivity { it.findViewById<RecyclerView>(R.id.carousel_recycler_view).smoothScrollToPosition(2) }
                 await(scenario,"Home video plays muted") { activity ->
                     val holder=activity.findViewById<RecyclerView>(R.id.carousel_recycler_view).findViewHolderForAdapterPosition(2) as? MediaCarouselAdapter.Holder
@@ -438,6 +466,21 @@ class SourceHomeDeviceTest {
                     player?.isPlaying==true && player.volume==0f
                 }
                 pauseSourceVisual("source-home-video")
+                scenario.onActivity { activity -> activity.findViewById<RecyclerView>(R.id.carousel_recycler_view)
+                    .findViewHolderForAdapterPosition(2)!!.itemView.performLongClick() }
+                await(scenario,"Original video streams in the full-size viewer") { activity ->
+                    val viewer=home(activity).childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG) as? MediaViewerFragment
+                    viewer?.view?.findViewById<androidx.media3.ui.PlayerView>(R.id.media_viewer_player)?.player?.isPlaying==true
+                }
+                scenario.onActivity { activity ->
+                    val viewer=home(activity).childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG) as MediaViewerFragment
+                    val player=requireNotNull(viewer.requireView().findViewById<androidx.media3.ui.PlayerView>(R.id.media_viewer_player).player)
+                    assertTrue("The full-size Media3 timeline must expose seeking",player.isCurrentMediaItemSeekable)
+                    player.seekTo(player.duration/2)
+                    assertTrue(player.currentPosition>0)
+                    viewer.dismiss()
+                }
+
                 val wanted=model.state.value.browse.items[7].identityKey
                 scenario.onActivity { it.findViewById<RecyclerView>(R.id.carousel_recycler_view).scrollToPosition(7) }
                 await(scenario,"Scroll to seventh card") { model.focusedId==wanted }
@@ -451,6 +494,30 @@ class SourceHomeDeviceTest {
                     assertEquals(grid.width/2f,focal.x+focal.width/2f,2f)
                 }
                 pauseSourceVisual("source-home-centered")
+                var homeGrid: RecyclerView?=null
+                val beforeViewerSearches=searches.get()
+                scenario.onActivity { activity ->
+                    homeGrid=activity.findViewById(R.id.carousel_recycler_view)
+                    requireNotNull(homeGrid).findViewHolderForAdapterPosition(7)!!.itemView.performLongClick()
+                }
+                await(scenario,"Full-size viewer loads the original") { activity ->
+                    val viewer=home(activity).childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG) as? MediaViewerFragment
+                    viewer?.view?.findViewById<View>(R.id.media_viewer_progress)?.visibility==View.GONE
+                }
+                delay(200)
+                instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
+                    try { java.io.File(app.getExternalFilesDir("verification"),"home-fullsize.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) } }
+                    finally { bitmap.recycle() }
+                }
+                scenario.onActivity { activity ->
+                    val viewer=home(activity).childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG) as MediaViewerFragment
+                    viewer.dismiss()
+                }
+                await(scenario,"Closing preview retains the original carousel") { activity ->
+                    activity.findViewById<RecyclerView>(R.id.carousel_recycler_view)===homeGrid && model.focusedId==wanted
+                }
+                assertEquals("Preview must not restart the home search",beforeViewerSearches,searches.get())
+
                 val count=searches.get(); scenario.recreate()
                 await(scenario,"Restore focal card") { model.focusedId==wanted && it.findViewById<TextView>(R.id.media_title).text.toString()=="Source image 7" }
                 assertEquals(count,searches.get())

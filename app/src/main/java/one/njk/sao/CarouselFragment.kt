@@ -66,10 +66,14 @@ class CarouselFragment : Fragment() {
             setOnMenuItemClickListener(::onMenuItemSelected)
         }
         val adapter = MediaCarouselAdapter(loader,viewLifecycleOwner.lifecycleScope,source,
-            prefetch=model::loadMore,home=true) { item ->
+            prefetch=model::loadMore,home=true,holdDelay={ holdMs },canHold={ !busy },held=::preview) { item ->
             val position = carousel.adapter.currentList.indexOfFirst { it.identityKey == item.identityKey }
             if(position >= 0) carousel.view.smoothScrollToPosition(position)
         }
+        childFragmentManager.setFragmentResultListener(MediaViewerFragment.TAG,viewLifecycleOwner) { _,_ ->
+            adapter.playing=true
+        }
+        adapter.playing=childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG)==null
         previews=CarouselPreviewPrefetcher(viewLifecycleOwner.lifecycleScope,source::warmPreview)
         carousel = PickerCarousel(binding.carouselRecyclerView,adapter,model::current,{ model.focusedId },
             { key, id, position ->
@@ -118,7 +122,7 @@ class CarouselFragment : Fragment() {
         } } }
         renderHome(model.state.value)
         viewLifecycleOwner.lifecycleScope.launch { viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            adapter.playing = true
+            adapter.playing = childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG)==null
             try { coroutineScope {
                 launch { source.changes.sample(1000).collect { model.refreshCurrent() } }
                 launch { preferences.options.collect { holdMs=it.longPressMs.toLong() } }
@@ -130,6 +134,12 @@ class CarouselFragment : Fragment() {
                 } }
             } } finally { previews.pause(); carousel.pause() }
         } }
+    }
+    private fun preview(item: MediaItem) {
+        if(childFragmentManager.isStateSaved || childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG)!=null) return
+        carousel.adapter.playing=false; previews.pause()
+        MediaViewerFragment.create(item,model.state.value.browse.sourceId,carousel.adapter.previewBounds(item))
+            .show(childFragmentManager,MediaViewerFragment.TAG)
     }
     private fun renderHome(state: one.njk.sao.viewmodels.HomeState) {
         if(binding.carouselRecyclerView.scrollState==androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE)

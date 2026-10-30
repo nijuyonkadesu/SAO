@@ -147,6 +147,8 @@ internal class AllMediaSource(private val profile: SourceProfile,
         child(item).withPreview(item,block)
     override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
         block: suspend (MediaHandle) -> T): T = child(item).withRendition(item, kind, block)
+    override suspend fun <T> withPlayback(item: MediaItem, original: Boolean, block: suspend (MediaPlayback) -> T): T =
+        child(item).withPlayback(item, original, block)
     override suspend fun openSequence(anchor: MediaItem) = child(anchor).openSequence(anchor)
     override fun close() {
         closed = true

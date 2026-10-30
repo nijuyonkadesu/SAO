@@ -143,4 +143,6 @@ class SwitchingMediaSource(private val profiles: SourceProfiles,
         read(item) { it.withPreview(item,block) }
     override suspend fun <T> withRendition(item: MediaItem, kind: Rendition,
         block: suspend (MediaHandle) -> T): T = read(item) { it.withRendition(item, kind, block) }
+    override suspend fun <T> withPlayback(item: MediaItem, original: Boolean, block: suspend (MediaPlayback) -> T): T =
+        read(item) { it.withPlayback(item, original, block) }
 }

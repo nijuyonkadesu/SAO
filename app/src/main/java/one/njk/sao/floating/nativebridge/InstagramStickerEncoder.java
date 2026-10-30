@@ -141,7 +141,11 @@ final class InstagramStickerEncoder {
                         ByteBuffer from = rgba.duplicate(), to = previous[0];
                         int origin = from.position();
                         to.clear();
-                        for (int row = 0; row < h; row++) {
+                        if (stride == w * 4) {
+                            // Contiguous decoder output needs one bulk copy, not h buffer/JNI calls.
+                            from.limit(origin + h * stride);
+                            to.put(from);
+                        } else for (int row = 0; row < h; row++) {
                             from.limit(origin + row * stride + w * 4).position(origin + row * stride);
                             to.put(from);
                         }

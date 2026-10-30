@@ -47,4 +47,10 @@ interface MediaSource {
     suspend fun places(scope: PlaceScope): List<String> = throw SourceUnsupportedException(SourceFeature.PLACES)
 
     suspend fun <T> withRendition(item: MediaItem, kind: Rendition, block: suspend (MediaHandle) -> T): T
+
+    /** The address and any grants must not escape this lease. Fullscreen can request the original. */
+    suspend fun <T> withPlayback(item: MediaItem, original: Boolean = false, block: suspend (MediaPlayback) -> T): T =
+        withRendition(item, if (original || !item.isVideo) Rendition.ORIGINAL else Rendition.PLAYBACK) {
+            block(MediaPlayback(android.net.Uri.fromFile(it.requireFile())))
+        }
 }

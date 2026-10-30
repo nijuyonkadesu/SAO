@@ -29,7 +29,12 @@ import kotlin.coroutines.resumeWithException
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal object SoftwareVideoPreview {
     @androidx.annotation.MainThread
-    suspend fun play(view: PlayerView, input: File, firstFrame: () -> Unit) {
+    suspend fun play(view: PlayerView, input: File, firstFrame: () -> Unit) = play(view,
+        { cancellation, frame -> VideoFrameDecoder(view.context).decodeSoftware(input, cancellation, frame = frame) }, firstFrame)
+    suspend fun play(view: PlayerView, input: () -> one.njk.sao.media.DecoderInput, firstFrame: () -> Unit) = play(view,
+        { cancellation, frame -> VideoFrameDecoder(view.context).decodeSoftware(input(), cancellation, frame = frame) }, firstFrame)
+    private suspend fun play(view: PlayerView,
+        decode: (kotlin.coroutines.CoroutineContext, DecodedVideoFrame) -> VideoFrameDecoder.Result, firstFrame: () -> Unit) {
         val child = view.videoSurfaceView
         val owned = child is TextureView
         val surface = withTimeout(3_000) { readySurface(child) }
@@ -49,7 +54,7 @@ internal object SoftwareVideoPreview {
                     var pixels = IntArray(0)
                     try {
                         var began: Long? = null
-                        val result = VideoFrameDecoder(view.context).decodeSoftware(input, cancellation) { _, width, height, stride, rgba, time ->
+                        val result = decode(cancellation) { _, width, height, stride, rgba, time ->
                             ensureActive()
                             val start = began ?: (SystemClock.elapsedRealtime() - time / 1000).also { began = it }
                             val due = start + time / 1000

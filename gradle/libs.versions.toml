@@ -35,6 +35,8 @@ coil = ["coil", "coil-gif", "coil-network"]
 retrofit = ["retrofit-moshi", "moshi"]
 
 [libraries]
+# Already supplied at runtime by Coil; also needed by the tiled viewer at compile time.
+exif = { module = "androidx.exifinterface:exifinterface", version = "1.4.2" }
 work-runtime = { module = "androidx.work:work-runtime-ktx", version = "2.11.2" }
 mlkit-labeling = { module = "com.google.mlkit:image-labeling", version = "17.0.9" }
 mlkit-ocr = { module = "com.google.mlkit:text-recognition", version = "16.0.1" }
