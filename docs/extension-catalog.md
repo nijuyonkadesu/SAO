@@ -83,3 +83,27 @@ or credentials were used. The probe is independent of SAO's obfuscated classes a
 adds no dependency to the host APK. Sixty-four host JVM tests and debug/minified
 release builds pass. The local fix was signed with the existing release key;
 the published releases/catalog were not replaced by this follow-up.
+
+## Release verification (2026-10-30)
+
+SAO **1.3.0** is published with separate arm64-v8a, armeabi-v7a, x86 and x86_64
+release APKs. All five sources use the existing release certificate: Immich
+**1.2.7**, Local Sticker **1.6.8**, Moeview **1.1.9**, FindThatMeme **1.0.4** and
+Google Photos **0.1.5**. SDK **1.2.0** AARs, sources and Ivy metadata are published
+separately. The default public catalog matches every released artifact's size,
+SHA-256, version and signer. Publishing uses the committed clean source and never
+replaces bytes under an existing version.
+
+The actual signed/minified host updated **1.2.0→1.3.0** on the account-free Android
+15 emulator, preserving its first-install timestamp. Through **Media sources**,
+the isolated UI probe then completed one fresh FindThatMeme installation,
+including the unknown-source permission screen, plus all five in-place updates:
+Immich **9→10**, Local Sticker **16→17** (x86_64), Moeview **11→12**, Google Photos
+**5→6** and FindThatMeme **4→5**. Every journey downloaded the public artifact and
+confirmed Android's installer. All updates preserved their first-install timestamp;
+no personal accounts, media or credentials were used. These checks establish the
+catalog/install/update path, not a fresh end-to-end search/send test for every
+source or phone architecture.
+
+[Machine-readable results](validation/2026-10-30-release-updates.json) ·
+[Current installed cards](screenshots/extension-release-updates.png).

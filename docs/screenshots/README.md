@@ -204,3 +204,13 @@ Installed APK icons come from Android’s package inventory; available icons use
 <img src="extension-installed-icons.png" width="220" alt="Installed Immich and Local Sticker cards display their new Android adaptive icons" />
 
 [200% text: extension actions wrap without clipping](extension-actions-large-text.png). [Catalog and validation details](../extension-catalog.md).
+
+
+## Release-signed source updates (2026-10-30)
+
+SAO 1.3.0 after installation/update through its Media sources page. The account-free
+Android 15 emulator now shows the new Local Sticker and Moeview versions, verified
+publisher status and the current chip controls. All five extension updates and a
+fresh installation passed through Android's installer; [results](../extension-catalog.md#release-verification-2026-10-30).
+
+<img src="extension-release-updates.png" width="260" alt="Updated Local Sticker 1.6.8 and Moeview 1.1.9 with verified publisher status and chip controls" />

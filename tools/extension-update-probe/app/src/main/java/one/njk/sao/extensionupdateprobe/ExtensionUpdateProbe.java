@@ -34,6 +34,10 @@ public final class ExtensionUpdateProbe extends Instrumentation {
         while(node!=null && !node.isClickable()) node=node.getParent();
         return node!=null && node.isEnabled() && node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
     }
+    private PackageInfo installed(String target) throws Exception {
+        try { return getContext().getPackageManager().getPackageInfo(target,0); }
+        catch(android.content.pm.PackageManager.NameNotFoundException missing) { return null; }
+    }
     @Override public void onStart() {
         JSONObject report=new JSONObject(); Bundle output=new Bundle();
         try {
@@ -41,8 +45,10 @@ public final class ExtensionUpdateProbe extends Instrumentation {
             String target=arguments.getString("extensionPackage","one.njk.sao.extension.moeview");
             String name=arguments.getString("extensionName","Moeview");
             long expected=Long.parseLong(arguments.getString("expectedVersion"));
-            PackageInfo before=getContext().getPackageManager().getPackageInfo(target,0);
-            if(before.getLongVersionCode()>=expected) throw new IllegalStateException("Stage the previous extension release first");
+            boolean fresh="install".equals(arguments.getString("operation","update"));
+            PackageInfo before=installed(target);
+            if(fresh ? before!=null : before==null || before.getLongVersionCode()>=expected)
+                throw new IllegalStateException(fresh ? "Fresh-install target must be absent" : "Stage the previous extension release first");
             AccessibilityServiceInfo info=getUiAutomation().getServiceInfo();
             info.flags|=AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
             getUiAutomation().setServiceInfo(info);
@@ -52,11 +58,12 @@ public final class ExtensionUpdateProbe extends Instrumentation {
             boolean entered=false,pressed=false,confirmed=false,permission=false;
             long nextScroll=0,deadline=SystemClock.elapsedRealtime()+120_000;
             while(SystemClock.elapsedRealtime()<deadline) {
-                PackageInfo installed=getContext().getPackageManager().getPackageInfo(target,0);
-                if(installed.getLongVersionCode()==expected) {
-                    if(!confirmed || before.firstInstallTime!=installed.firstInstallTime) throw new AssertionError("Update must exercise confirmation and retain the installation");
-                    report.put("success",true).put("previousVersion",before.getLongVersionCode()).put("installedVersion",expected)
-                        .put("installerConfirmed",true).put("installationRetained",true).put("permissionPrompt",permission);
+                PackageInfo installed=installed(target);
+                if(installed!=null && installed.getLongVersionCode()==expected) {
+                    if(!confirmed || !fresh && before.firstInstallTime!=installed.firstInstallTime)
+                        throw new AssertionError("Installation must exercise confirmation and updates must retain the installation");
+                    report.put("success",true).put("freshInstall",fresh).put("previousVersion",fresh ? 0 : before.getLongVersionCode()).put("installedVersion",expected)
+                        .put("installerConfirmed",true).put("installationRetained",!fresh).put("permissionPrompt",permission);
                     output.putString("report",report.toString());
                     try(FileOutputStream file=new FileOutputStream(new File(getContext().getFilesDir(),"update-report.json"))) {
                         file.write(report.toString().getBytes(StandardCharsets.UTF_8));
@@ -86,7 +93,7 @@ public final class ExtensionUpdateProbe extends Instrumentation {
                         if(edit!=null && click(edit)) entered=true;
                     } else if(!pressed) {
                         AccessibilityNodeInfo update=null;
-                        for(AccessibilityNodeInfo node:visible) if(("Update "+name).equals(String.valueOf(node.getContentDescription()))) { update=node; break; }
+                        for(AccessibilityNodeInfo node:visible) if(((fresh ? "Install " : "Update ")+name).equals(String.valueOf(node.getContentDescription()))) { update=node; break; }
                         if(update!=null && update.isEnabled()) pressed=click(update);
                         else if(SystemClock.elapsedRealtime()>=nextScroll) {
                             for(AccessibilityNodeInfo node:visible) if(node.isScrollable()) { node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); break; }

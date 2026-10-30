@@ -17,7 +17,7 @@ results only; no media, credentials or profile contents are inspected.
 adb -s "$SAO_EMULATOR" install -r tools/extension-update-probe/app/build/outputs/apk/debug/app-debug.apk
 adb -s "$SAO_EMULATOR" shell am instrument -w \
   -e allowPublicUpdate true -e extensionPackage one.njk.sao.extension.moeview \
-  -e extensionName Moeview -e expectedVersion 11 \
+  -e extensionName Moeview -e expectedVersion 12 \
   one.njk.sao.extensionupdateprobe/.ExtensionUpdateProbe
 adb -s "$SAO_EMULATOR" shell run-as one.njk.sao.extensionupdateprobe cat files/update-report.json
 ```
@@ -28,6 +28,10 @@ the same signer. A debug-signed extension cannot update to a release-signed APK;
 reset only disposable fixtures when preparing that transition. Successful reports
 require an actual confirmation and preserve the original installation timestamp.
 Parse the report: `am instrument` can return shell exit code zero on probe failure.
+
+For a fresh installation, stage no APK for the target and pass `-e operation install`.
+The same journey presses the catalog's Install action and Android's Install confirmation.
+Its report has `freshInstall=true`; in-place updates instead require `installationRetained=true`.
 
 The host's `CatalogTransportTest` separately reproduces an unreachable first DNS
 address and verifies recovery without duplicate server requests, plus no automatic
