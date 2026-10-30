@@ -101,6 +101,7 @@
     <string name="source_trust_untrusted">Unverified publisher · Access not allowed</string>
     <string name="usage_future_date">%1$s, future date</string>
     <string name="picker_as_gif_description">Paste animated media as GIF</string>
+    <string name="picker_whatsapp_animation_hint">WhatsApp will receive a compatible GIF animation.</string>
     <string name="media_viewer_close">Close preview</string>
     <string name="media_viewer_retry">Could not load media. Retry</string>
     <string name="gif_conversion_large_title">Large GIF conversion</string>

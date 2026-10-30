@@ -33,6 +33,15 @@ object DeliveryPolicy {
         MessagingTarget.INSTAGRAM -> false
         else -> true
     }
+    /** Ordinary-media compatibility, independent of the source and sticker preference. */
+    fun mediaMime(original: String, target: MessagingTarget, motion: Boolean,
+        route: MotionDelivery = MotionDelivery.ORIGINAL): String = when {
+        motion && route == MotionDelivery.GIF -> "image/gif"
+        // WhatsApp's media composer accepts GIF animation, not animated WebP/APNG/AVIF.
+        target.isWhatsapp && motion && original.startsWith("image/") && original != "image/gif" -> "image/gif"
+        target.isWhatsapp && original.startsWith("video/") && original != "video/mp4" -> "video/mp4"
+        else -> original
+    }
     fun clipboard(item: MediaItem, preferStickers: Boolean, target: MessagingTarget): DeliveryChoice {
         val rendition = when {
             !preferStickers || item.hasMotion -> ExportRendition.MEDIA

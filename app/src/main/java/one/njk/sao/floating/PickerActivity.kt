@@ -504,10 +504,10 @@ class PickerActivity : AppCompatActivity() {
             return InstagramStickerFormat.RENDITION
         return NativeMediaFormat.mime(item.mimeType,accepts={
             NativeBridgeRegistry.supports(targetPackage,nativeSession,it)
-        },route=options.motionDelivery,motion=item.hasMotion)
+        },route=options.motionDelivery,motion=item.hasMotion,target=target)
     }
-    private fun deliveryItem(item: MediaItem) = if(item.hasMotion && options.motionDelivery == MotionDelivery.GIF)
-        item.copy(mimeType="image/gif",animated=true) else item
+    private fun deliveryItem(item: MediaItem) = item.copy(mimeType=
+        DeliveryPolicy.mediaMime(item.mimeType,target,item.hasMotion,options.motionDelivery))
     private fun telegramStickerFallback(item: MediaItem) = target == MessagingTarget.TELEGRAM &&
         options.preferStickers && !item.hasMotion && !binding.pasteAction.isEnabled && canShareSticker
     private fun renderDock() {
@@ -554,6 +554,8 @@ class PickerActivity : AppCompatActivity() {
             nativePhoto -> getString(R.string.picker_instagram_native_hint)
             gifChoice && options.motionDelivery == MotionDelivery.GIF && target != MessagingTarget.INSTAGRAM &&
                 binding.pasteAction.isEnabled -> getString(R.string.picker_as_gif_description)
+            target.isWhatsapp && item?.animated == true && !item.isVideo && item.mimeType != "image/gif" ->
+                getString(R.string.picker_whatsapp_animation_hint)
             target.isWhatsapp && nativeRendition == ExportRendition.STICKER_WEBP -> getString(R.string.picker_whatsapp_native_paste_hint)
             nativePaste && target == MessagingTarget.DISCORD -> getString(R.string.picker_discord_native_hint)
             nativePaste -> getString(R.string.picker_native_image_hint)
@@ -790,17 +792,18 @@ class PickerActivity : AppCompatActivity() {
             nativeInsert(item, ExportRendition.MEDIA,UsageAction.SHARE)
             return
         }
-        var media = exports.prepare(item, rendition, DeliveryPolicy.stickerRequirements(receivingTarget))
-        if (item.mimeType == "video/webm" && receivingPackage != null && receivingTarget != MessagingTarget.OTHER) {
-            val compatibleMime = withContext(dispatchers.io) {
-                VideoCompatibility.mime(item.mimeType) { mime ->
-                    if (receivingTarget == MessagingTarget.INSTAGRAM) InstagramDelivery.receiver(packageManager, mime) != null
-                    else packageManager.resolveActivity(MediaDelivery.intent(media.copy(mimeType = mime), receivingPackage, item.title),
+        var mime=DeliveryPolicy.mediaMime(item.mimeType,receivingTarget,item.hasMotion)
+        if (rendition==ExportRendition.MEDIA && mime=="video/webm" && receivingPackage != null && receivingTarget != MessagingTarget.OTHER) {
+            mime = withContext(dispatchers.io) {
+                VideoCompatibility.mime(mime) { candidate ->
+                    if (receivingTarget == MessagingTarget.INSTAGRAM) InstagramDelivery.receiver(packageManager, candidate) != null
+                    else packageManager.resolveActivity(Intent(Intent.ACTION_SEND).setType(candidate).setPackage(receivingPackage),
                         android.content.pm.PackageManager.MATCH_DEFAULT_ONLY) != null
                 }
             }
-            if (compatibleMime == "video/mp4") media = exports.mp4(item)
         }
+        var media = if(rendition==ExportRendition.MEDIA) exports.compatible(item,mime) { GifConversionDialog.confirm(this,it) }
+            else exports.prepare(item,rendition,DeliveryPolicy.stickerRequirements(receivingTarget))
         if(rendition==ExportRendition.MEDIA) media=limitAttachment(item,media)
         if (receivingTarget == MessagingTarget.INSTAGRAM) {
             val receiver = withContext(dispatchers.io) { InstagramDelivery.receiver(packageManager, media.mimeType) }
@@ -830,8 +833,7 @@ class PickerActivity : AppCompatActivity() {
         val discord = target == MessagingTarget.DISCORD
         var media = when {
             instagram && InstagramStickerFormat.isRendition(mime) -> exports.nativeStickerInput(item)
-            item.hasMotion && mime=="image/gif" && item.mimeType!="image/gif" -> exports.asGif(item) { GifConversionDialog.confirm(this,it) }
-            item.mimeType=="video/webm" && mime=="video/mp4" -> exports.mp4(item)
+            rendition==ExportRendition.MEDIA -> exports.compatible(item,mime) { GifConversionDialog.confirm(this,it) }
             else -> exports.prepare(item,rendition,DeliveryPolicy.stickerRequirements(target))
         }
         if(rendition==ExportRendition.MEDIA) {

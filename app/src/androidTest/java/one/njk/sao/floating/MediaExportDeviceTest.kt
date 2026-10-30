@@ -248,7 +248,8 @@ class MediaExportDeviceTest {
         val input=fixture("export/sdr.webm"); val original=input.readBytes()
         try {
             val source=Files(input); val exports=MediaExports(app,source); val media=item("video/webm")
-            val converted=withTimeout(30_000) { exports.mp4(media) }
+            val mime=DeliveryPolicy.mediaMime(media.mimeType,MessagingTarget.WHATSAPP,media.hasMotion)
+            val converted=withTimeout(30_000) { exports.compatible(media,mime) }
             try {
                 val result=VideoTranscoder(app,dispatchers).inspect(converted.file)
                 assertEquals("video/avc",result.mime); assertEquals("audio/mp4a-latm",result.audioMime)

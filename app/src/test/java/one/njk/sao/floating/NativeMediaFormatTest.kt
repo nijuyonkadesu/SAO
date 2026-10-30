@@ -25,4 +25,24 @@ class NativeMediaFormatTest {
         assertEquals("video/mp4",NativeMediaFormat.mime("video/mp4",setOf("image/gif")::contains))
         assertEquals("video/mp4",NativeMediaFormat.mime("video/mp4",setOf("image/jpeg")::contains))
     }
+    @Test fun whatsappAnimatedImagesHaveAGifRouteWithoutEnablingTheGifPreference() {
+        for(target in listOf(MessagingTarget.WHATSAPP,MessagingTarget.WHATSAPP_BUSINESS)) {
+            for(mime in listOf("image/webp","image/png","image/apng","image/avif")) {
+                assertEquals("image/gif",DeliveryPolicy.mediaMime(mime,target,motion=true))
+                assertEquals("image/gif",NativeMediaFormat.mime(mime,{ it=="image/gif" },motion=true,target=target))
+                assertEquals(mime,DeliveryPolicy.mediaMime(mime,target,motion=false))
+            }
+            assertEquals("image/gif",DeliveryPolicy.mediaMime("image/gif",target,motion=true))
+        }
+        assertEquals("image/webp",DeliveryPolicy.mediaMime("image/webp",MessagingTarget.TELEGRAM,motion=true))
+    }
+    @Test fun whatsappVideoCompatibilityKeepsAudioUnlessGifWasExplicitlyChosen() {
+        for(target in listOf(MessagingTarget.WHATSAPP,MessagingTarget.WHATSAPP_BUSINESS)) {
+            for(mime in listOf("video/webm","video/x-matroska","video/mp4")) {
+                assertEquals("video/mp4",DeliveryPolicy.mediaMime(mime,target,motion=true))
+                assertEquals("image/gif",DeliveryPolicy.mediaMime(mime,target,motion=true,route=MotionDelivery.GIF))
+            }
+        }
+        assertEquals("video/webm",DeliveryPolicy.mediaMime("video/webm",MessagingTarget.TELEGRAM,motion=true))
+    }
 }

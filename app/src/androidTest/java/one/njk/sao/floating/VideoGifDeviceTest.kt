@@ -86,6 +86,39 @@ class VideoGifDeviceTest {
         } finally { input.delete() }
     }
 
+    @Test fun whatsappAnimatedWebpCompatibilityPreservesMovementTransparencyAndOriginalBytes(): Unit=runBlocking {
+        val input=fixture("gif/animated-alpha.webp"); val original=input.readBytes()
+        val source=Files(input); val exports=MediaExports(app,source)
+        val media=item().copy(mimeType="image/webp",animated=true)
+        try {
+            val mime=DeliveryPolicy.mediaMime(media.mimeType,MessagingTarget.WHATSAPP,media.hasMotion)
+            val converted=withTimeout(30_000) { exports.compatible(media,mime) }
+            try {
+                assertEquals("image/gif",converted.mimeType)
+                assertEquals("image/gif",app.contentResolver.getType(converted.uri))
+                val animation=requireNotNull(Movie.decodeFile(converted.file.path))
+                assertEquals(96,animation.width()); assertEquals(64,animation.height())
+                assertEquals(600,animation.duration())
+                val bitmap=Bitmap.createBitmap(96,64,Bitmap.Config.ARGB_8888)
+                try {
+                    // Sample inside frame intervals; Movie treats exact delay boundaries inclusively.
+                    for((time,color) in listOf(100 to Color.RED,300 to Color.BLUE,500 to Color.rgb(0,128,0))) {
+                        bitmap.eraseColor(Color.TRANSPARENT)
+                        animation.setTime(time); animation.draw(Canvas(bitmap),0f,0f)
+                        near(color,bitmap.getPixel(48,32))
+                        assertEquals(0,Color.alpha(bitmap.getPixel(0,0)))
+                    }
+                } finally { bitmap.recycle() }
+                assertEquals(converted.uri,exports.compatible(media,mime).uri)
+                assertEquals(1,source.originals)
+                val unchanged=exports.prepare(media,ExportRendition.MEDIA)
+                try { assertArrayEquals(original,unchanged.file.readBytes()) }
+                finally { unchanged.file.delete() }
+                assertArrayEquals(original,input.readBytes())
+            } finally { converted.file.delete() }
+        } finally { input.delete() }
+    }
+
     @Test fun rotationIsAppliedOnceWithoutChangingAspectOrSwappingColors(): Unit=runBlocking {
         val input=fixture("gif/rotated.mp4"); val output=File.createTempFile("rotated-",".gif",app.cacheDir)
         try {

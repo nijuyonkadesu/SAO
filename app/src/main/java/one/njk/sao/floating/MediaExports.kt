@@ -110,7 +110,7 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
     }
 
     suspend fun mp4(item: MediaItem): ExportedMedia = withContext(dispatchers.io) {
-        require(item.mimeType=="video/webm")
+        require(item.isVideo && item.mimeType!="video/mp4")
         require(item.id.matches(Regex("[a-z0-9_-]+")))
         val file=store.write(MediaExportKey(item,MediaExportPolicy.CompatibleMp4),"mp4") { staging ->
             source.withRendition(item, Rendition.ORIGINAL) { handle ->
@@ -126,6 +126,15 @@ class MediaExports @Inject constructor(@ApplicationContext private val context: 
             }
         }
         store.exported(file,"video/mp4")
+    }
+
+    /** A requested delivery MIME selects one host conversion; original exports remain byte-exact. */
+    suspend fun compatible(item: MediaItem, mime: String,
+        beforeGif: suspend (GifConversionCost?) -> Unit = {}): ExportedMedia = when {
+        mime == item.mimeType -> prepare(item,ExportRendition.MEDIA)
+        mime == "image/gif" && item.hasMotion -> asGif(item,beforeGif)
+        mime == "video/mp4" && item.isVideo -> mp4(item)
+        else -> throw IllegalArgumentException("Unsupported media conversion")
     }
 
     /** Request-owned native sticker input; ordinary copies and uploads keep the original bytes. */

@@ -146,9 +146,10 @@ class PickerViewModel @Inject constructor(private val source: MediaSource,
         val item = selection.value ?: return false
         val version = request.next(); copying?.cancel()
         val options=preferences.current()
-        val asGif=item.hasMotion && options.motionDelivery==MotionDelivery.GIF
         val choice = DeliveryPolicy.clipboard(item, preferredOverride ?: options.preferStickers, target)
-        val media = delivery(if(asGif) exports.asGif(item,gifCheck) else exports.prepare(item, choice.rendition, DeliveryPolicy.stickerRequirements(target)))
+        val mime=DeliveryPolicy.mediaMime(item.mimeType,target,item.hasMotion,options.motionDelivery)
+        val media = delivery(if(choice.rendition==ExportRendition.MEDIA) exports.compatible(item,mime,gifCheck)
+            else exports.prepare(item,choice.rendition,DeliveryPolicy.stickerRequirements(target)))
         return source.owns(item) && clipboard.publish(item, media, request, version, recordUsage=false)
     }
     override fun onCleared() { session.releaseSequence(visibilityOwner); request.next(); pickerVisible(false) }
