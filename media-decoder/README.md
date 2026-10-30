@@ -23,11 +23,30 @@ components, executables, encoders, muxers, network or external codec packages.
 Zlib is explicitly enabled for PNG/APNG. Built-in decoder/demuxer registration
 remains dynamic: there is no application MIME/filename codec allowlist. The
 small JNI shared object links these archives and uses 16-KiB ELF alignment.
+Subtitle decoder names are derived from the subtitle section of the checksum-pinned
+upstream registry. Only these 22 implementations are disabled; all other decoder
+settings, including audio, remain unchanged. Demuxers/parsers stay available and
+known subtitle streams are discarded before metadata probing. The mixed MKV
+fixture verifies unchanged decoded video plus AAC audio in the MP4 export.
+Changed compiler configurations clean the generated objects before rebuilding.
 All four Android ABIs are built, but SAO packages **one ABI per standalone APK**,
 without a universal output. Decoder libraries are about 9–11 MiB per architecture;
 the earlier universal APK duplicated approximately 39 MiB across four builds.
 R8 cannot remove native codec implementations. ABI packaging changes neither
 codec support nor encoding quality. See the [build commands](../README.md#building).
+
+SAO's release/prerelease use AGP's combined code/resource optimization. Native
+libraries are compressed in the APK and extracted by Android during installation:
+this reduces the download, but installed storage includes the extracted copies.
+The ARM64 release is approximately **11 MiB**, down from 16.52 MiB before these
+changes. Direct library loading and the module-APK fallback both remain supported.
+
+ThinLTO was tested with the same ARM64 decoder selection/toolchain: it added
+about 118 KiB to the library and 76 KiB to the compressed payload. It is not
+enabled because it increased size.
+The existing `-Oz`, hidden-symbol and section-garbage-collection policy stays;
+gifski retains its pre-existing Rust release LTO. Compiler flags do not change
+media resolution, encoder quality, frame timing or original upload bytes.
 
 FFmpeg is licensed under [LGPL 2.1 or later](https://ffmpeg.org/legal.html) with
 this configuration; the license is bundled at `assets/licenses/ffmpeg.txt`.
@@ -101,3 +120,8 @@ checks real native WebP output: **357×372, 10 frames, 400 ms**, and APNG canvas
 timing. A minified-release JNI smoke decodes the same odd-width fixture through
 the release APK and native library. None of these tests performs authenticated
 uploads or sends; physical delivery remains a separate user-triggered check.
+The standalone probe also loads the installed **minified** module in a separate
+class loader/UID, invoking its real decoder entry resolved from the matching R8
+map. It checks compressed-library loading, native JNI, synthetic pixels/timing,
+the module shader resources and all five dynamically named native feedback strings.
+See the [probe recipe](../tools/instagram-native-probe/README.md#minified-module-resources-and-compressed-libraries).

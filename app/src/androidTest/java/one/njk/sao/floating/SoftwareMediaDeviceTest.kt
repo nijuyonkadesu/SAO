@@ -152,4 +152,28 @@ class SoftwareMediaDeviceTest {
             assertEquals(1, calls)
         } finally { input.delete() }
     }
+
+    @Test fun subtitleTracksDoNotBlockVisualDecodingOrAudioExports(): Unit = runBlocking {
+        val original = fixture("software-export.mp4")
+        val subtitled = fixture("software-subtitles.mkv")
+        val output = File.createTempFile("subtitle-export-", ".mp4", app.cacheDir).apply { delete() }
+        val before = subtitled.readBytes()
+        fun hashes(file: File): List<List<Byte>> = buildList {
+            VideoFrameDecoder(app).decodeSoftware(file, EmptyCoroutineContext) { _, width, height, _, rgba, _ ->
+                assertEquals(128, width); assertEquals(96, height)
+                add(java.security.MessageDigest.getInstance("SHA-256").apply { update(rgba.duplicate()) }.digest().toList())
+            }
+        }
+        try {
+            val expected = hashes(original)
+            assertEquals(10, expected.size)
+            assertEquals("Subtitle removal must not alter the decoded video", expected, hashes(subtitled))
+            val transcoder = VideoTranscoder(app, FloatingDispatchers())
+            withTimeout(30_000) { transcoder.mp4(subtitled, output) }
+            val actual = transcoder.inspect(output)
+            assertEquals(128, actual.width); assertEquals(96, actual.height)
+            assertEquals("audio/mp4a-latm", actual.audioMime)
+            assertArrayEquals(before, subtitled.readBytes())
+        } finally { original.delete(); subtitled.delete(); output.delete() }
+    }
 }

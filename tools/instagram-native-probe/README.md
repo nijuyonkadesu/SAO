@@ -110,3 +110,26 @@ Android cannot decode: native WebP output independently verifies **357×372,
 output verifies a 64×48 canvas, three frames and 600 ms. The probe owns all
 fixtures/output and invokes no authenticated uploader or sender. Build details,
 native licensing and reuse boundaries are in [media-decoder](../../media-decoder/README.md).
+
+## Minified module resources and compressed libraries
+
+`ModuleLibraryProbe` needs no Instagram account or native uploader. Install the
+ARM64 **release** SAO APK on the disposable ARM64-capable emulator, locally signed
+with its usual development certificate. Its package must remain `one.njk.sao`.
+Build/install this probe, then run:
+
+```sh
+python3 tools/instagram-native-probe/run-module-library-probe.py --serial "$SAO_EMULATOR"
+```
+
+The runner reads the matching `app/build/outputs/mapping/release/mapping.txt`
+(`--mapping` overrides it); never reuse a map from another APK. It invokes the
+actual optimized decoder entry through a delegate-last module class loader with
+no native search path. This exercises the module's library resolution under the
+probe UID, including Android-extracted `.so` files or the public-APK cache fallback.
+Source/resource ownership stays with SAO, storage/identity with the probe. Checks
+cover five dynamically named feedback strings retained by `keep_native_feedback.xml`,
+SDR/HDR shader bytes, and the synthetic 357×372 clip's 10 RGBA frames/timestamps.
+The runner rejects physical devices; it accesses no account, source credentials,
+chat or real media, and performs no upload/send. Restore the normal debug APK
+after the check when continuing ordinary emulator instrumentation.

@@ -38,18 +38,19 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled true
+            optimization { enable = true }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         prerelease {
             // Testing configuration
             debuggable true
-            minifyEnabled true
+            optimization { enable = true }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             applicationIdSuffix ".testing" // Add a suffix to the application ID for differentiation
             matchingFallbacks = ['release']
         }
     }
+    packaging { jniLibs { useLegacyPackaging true } }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21

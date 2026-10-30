@@ -90,6 +90,10 @@ struct Decoder {
         format->probesize = 4 * 1024 * 1024;
         format->max_analyze_duration = 5 * AV_TIME_BASE;
         check(avformat_open_input(&format, nullptr, nullptr, nullptr), "software open");
+        // Keep container parsing and audio probing, but never decode subtitle tracks.
+        for (unsigned index = 0; index < format->nb_streams; ++index)
+            if (format->streams[index]->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE)
+                format->streams[index]->discard = AVDISCARD_ALL;
         std::vector<AVDictionary *> options(format->nb_streams, nullptr);
         for (auto &option : options) av_dict_set_int(&option, "max_pixels", budget, 0);
         int inspected = avformat_find_stream_info(format, options.data());

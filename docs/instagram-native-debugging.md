@@ -708,3 +708,23 @@ native completion separately. Avoid raw logcat dumps, exception messages, media
 paths, filenames, account/chat identifiers or private URLs in shared reports.
 Physical revision-15 verification is pending a reconnected device; earlier
 revision-13 static/animated delivery results are not proof of this new fallback.
+
+### Optimized APK packaging and resource verification
+
+Release/prerelease now enable combined R8 code/resource optimization and compress
+native libraries for Android to extract at install time. `keep_native_feedback.xml`
+explicitly retains the five string names used by `InstagramInsertMessages`;
+Media3 shader resources remain referenced by the decoder/Transformer paths.
+Never assume debug instrumentation verifies resource shrinking: the
+[minified module probe](../tools/instagram-native-probe/README.md#minified-module-resources-and-compressed-libraries)
+loads the installed release APK under a foreign UID/class loader using the exact
+R8 map. It verifies the actual decoder entry, JNI output, host storage identity,
+feedback strings and SDR/HDR shader resources without initializing a native chat.
+Updating the APK still requires restarting an app that holds older injected code.
+
+Only subtitle decoder implementations are omitted; media container demuxers and
+all prior audio/video decoder settings remain. A video+AAC+SRT MKV fixture verifies
+bit-identical software-decoded frames and retained audio after MP4 export. Native
+ThinLTO was evaluated but increased ARM64 code size, so it was not retained.
+These packaging/compilation changes do not establish authenticated delivery;
+that boundary remains the explicit, user-triggered physical-device check.

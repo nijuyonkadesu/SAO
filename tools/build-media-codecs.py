@@ -5,6 +5,7 @@ import hashlib
 import os
 from pathlib import Path
 import platform
+import re
 import subprocess
 import tarfile
 import urllib.request
@@ -17,6 +18,16 @@ TARGETS = {
     'x86_64': ('x86_64', 'x86_64-linux-android'),
     'x86': ('x86', 'i686-linux-android'),
 }
+
+def subtitle_decoders(source):
+    # The checksum-pinned registry is authoritative; retain every audio/video entry.
+    registry = (source / 'libavcodec/allcodecs.c').read_text()
+    _, start, remainder = registry.partition('/* subtitles */')
+    section, end, _ = remainder.partition('/* external libraries */')
+    names = re.findall(r'^extern const FFCodec ff_(\w+)_decoder;$', section, re.MULTILINE)
+    if not start or not end or not names or len(names) != section.count('_decoder;'):
+        raise RuntimeError('Pinned FFmpeg subtitle registry changed')
+    return sorted(names)
 
 def main():
     args = argparse.ArgumentParser()
@@ -52,8 +63,9 @@ def main():
     configuration = [str(source / 'configure'), f'--prefix={output}', '--target-os=android',
         '--enable-cross-compile', f'--arch={arch}', f'--cc={tools / (target + str(options.api) + "-clang")}',
         f'--cxx={tools / (target + str(options.api) + "-clang++")}', f'--ar={tools / "llvm-ar"}',
-        f'--ranlib={tools / "llvm-ranlib"}', f'--strip={tools / "llvm-strip"}',
+        f'--ranlib={tools / "llvm-ranlib"}', f'--strip={tools / "llvm-strip"}', f'--nm={tools / "llvm-nm"}',
         '--enable-static', '--disable-shared', '--enable-pic', '--enable-small',
+        '--disable-decoder=' + ','.join(subtitle_decoders(source)),
         '--disable-debug', '--disable-doc', '--disable-programs', '--disable-network',
         '--disable-autodetect', '--enable-zlib', '--disable-gpl', '--disable-nonfree', '--disable-encoders',
         '--disable-muxers', '--disable-avdevice', '--disable-avfilter', '--disable-swresample',
@@ -67,6 +79,9 @@ def main():
     stamp = build / 'sao-configuration.txt'
     desired = '\n'.join(configuration)
     if not stamp.exists() or stamp.read_text() != desired:
+        # A changed compiler/LTO policy must not reuse objects from the old configuration.
+        if (build / 'ffbuild/config.mak').exists():
+            subprocess.run(['make', 'distclean'], cwd=build, check=True)
         subprocess.run(configuration, cwd=build, check=True)
         stamp.write_text(desired)
     subprocess.run(['make', f'-j{min(8, os.cpu_count() or 1)}'], cwd=build, check=True)
