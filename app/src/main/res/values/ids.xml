@@ -1,0 +1,7 @@
+<resources>
+    <item name="media_viewer_toolbar" type="id"/>
+    <item name="media_viewer_image" type="id"/>
+    <item name="media_viewer_progress" type="id"/>
+    <item name="media_viewer_player" type="id"/>
+    <item name="media_viewer_retry" type="id"/>
+</resources>

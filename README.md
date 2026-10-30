@@ -1,6 +1,6 @@
 # Share Arts by Overlay
 Started this project to test and apply skills I obtained on learning native android development, and yes, I've faced lots of hurdles during the development. I enjoy to overcome them all lol!
-Choose a category, scroll till you find your favourite pic, share or save! Uses [waifu.pics](https://waifu.pics/docs) api. And many thanks for public free API!
+Choose an installed source, pick a category, scroll to your favourite image or video, then share or save. The home screen keeps its original carousel layout; source APKs now supply the media and category presets. Tap the Collection heading to switch profiles. [Home browser, experimental All source and filename copying](docs/home-source-browser.md).
 
 ## Previews
 <p align="center">
@@ -8,8 +8,20 @@ Choose a category, scroll till you find your favourite pic, share or save! Uses 
 <img src="previews/ss (2).png" alt="sharing on telegram" width="270px" />
 </p>
 
+## Media sources
+
+Home and the floating picker use the same separately installed source extensions. **Settings → Media sources → Get extensions** installs supported APKs; newer versions have an **Update** action beside the installed extension. Android asks for installation permission and confirmation. Add named profiles with **Add source**. Each extension owns its credentials; SAO handles browsing, media caching and chat insertion. [Setup and extension contract](docs/source-extensions.md).
+
+All four extensions now build and release independently in [SAO-extensions](https://github.com/nijuyonkadesu/SAO-extensions). [Catalog, installation and manual publishing](docs/extension-catalog.md).
+
+The [Local Sticker extension](docs/local-sticker-source.md) supports named folders with per-album progress/pause/restart, offline labels/OCR, optional FP32/8-bit CLIP Context search with reusable external model folders, and metadata corrections.
+
+The [Moeview extension](docs/moeview-source.md) adds Yande.re, Konachan, Gelbooru and Danbooru profiles, tag search/home presets, GIF/video media and optional browser verification. Install `moeview-sao.apk`; the existing SAO host works without an update.
+
+**Settings → Home categories** lets you customize each source's home chips. Supported extensions offer search suggestions in this editor and floating search; Moeview supplies board-specific tags. [Category settings](docs/home-source-browser.md#custom-home-categories).
+
 ## Stack
-- [x] Retrofit - network client
+- [x] Retrofit - network client in the Immich extension
 - [x] COIL - Image Loader
 - [x] Dagger Hilt - Dependency Injection
 - [x] flow & coroutines
@@ -19,7 +31,21 @@ Choose a category, scroll till you find your favourite pic, share or save! Uses 
 - [x] MVVM - Architecture
 - [x] Gradle Version Catalog
 - 
+## Building
+
+Building SAO requires the native GIF encoder's [Rust/NDK setup](gif-encoder/README.md)
+and the [shared software decoder's build tools](media-decoder/README.md). Android/
+Media3 handles supported media; source playback renditions and bundled software
+decoding provide fallbacks.
+
+`./gradlew :app:assembleRelease` produces separate standalone APKs for `arm64-v8a`,
+`armeabi-v7a`, `x86_64` and `x86` under `app/build/outputs/apk/release/`. Each APK
+contains one architecture; install only the matching APK. No universal APK is
+generated. Debug builds follow the same naming, for example
+`app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`.
+
 ## Download APK
+
 Go to the [Releases](https://github.com/nijuyonkadesu/SAO/releases/tag/Release) to download the latest APK
 
 ## TODO
@@ -27,3 +53,9 @@ Go to the [Releases](https://github.com/nijuyonkadesu/SAO/releases/tag/Release) 
 - Favorites List Management
 - Dunno, maybe add many more APIs into this single app? I wonder...
 - A profile system? fufu-fu (ˉ▽￣～)
+
+The optional [floating media picker](docs/floating-picker.md) supports separately installed Immich/Local Sticker/Moeview extensions and installed-app [Rays sources](docs/rays-source.md), text/emoji search, GIF/video previews and chat delivery. It shares media playback and focal-card selection with the home screen. [Instagram delivery and modern LSPosed setup](docs/instagram-dm-delivery.md) describe the optional native Paste action.
+
+Translations: [Translate SAO on Crowdin](https://crowdin.com/project/sao-share-arts-by-overlay) · [Contributor guide](docs/translations.md).
+
+[Local usage analytics](docs/usage-analytics.md) combines daily and weekly reports, monthly/yearly activity calendars and milestones in one scrolling page, with recording and clear controls.

@@ -8,7 +8,12 @@ plugins {
     alias libs.plugins.safe.args
 }
 
+apply from: rootProject.file('gradle/localization.gradle')
+
+def saoApkAbis = ['arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86']
+
 android {
+    lint { disable += 'MissingTranslation' } // Partial translations deliberately fall back to English.
     namespace 'one.njk.sao'
     compileSdk 37
 
@@ -16,29 +21,42 @@ android {
         applicationId "one.njk.sao"
         minSdk 30
         targetSdk 36
-        versionCode 1
-        versionName "1.0"
+        versionCode 4
+        versionName "1.3.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    splits {
+        abi {
+            enable true
+            reset()
+            include(*saoApkAbis)
+            universalApk false
+        }
+    }
+
     buildTypes {
         release {
-            minifyEnabled true
+            optimization { enable = true }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         prerelease {
             // Testing configuration
             debuggable true
-            minifyEnabled true
+            optimization { enable = true }
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             applicationIdSuffix ".testing" // Add a suffix to the application ID for differentiation
+            matchingFallbacks = ['release']
         }
     }
+    packaging { jniLibs { useLegacyPackaging true } }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
     buildFeatures {
+        aidl true
         viewBinding true
         dataBinding true
         buildConfig true
@@ -51,23 +69,82 @@ java {
     }
 }
 
+// Opt in per development machine, without imposing a Samba path on other contributors.
+def debugApkShareDir = providers.gradleProperty('sao.debugApkShareDir')
+androidComponents {
+    onVariants(selector().withBuildType('debug')) { variant ->
+        if (debugApkShareDir.isPresent()) {
+            def variantTaskName = variant.name.capitalize()
+            def apkDirectory = variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.APK.INSTANCE)
+            def artifactsLoader = variant.artifacts.getBuiltArtifactsLoader()
+            def sharedApks = debugApkShareDir.map { directory ->
+                saoApkAbis.collect { new File(directory, "app-${it}-debug.apk") } + new File(directory, 'app-debug.apk')
+            }
+            def publishApk = tasks.register("copy${variantTaskName}ApkToShare") {
+                inputs.dir(apkDirectory)
+                // Track only our named APKs; never snapshot the rest of the user's share.
+                outputs.files(sharedApks)
+                outputs.upToDateWhen { false }
+                doLast {
+                    def built = artifactsLoader.load(apkDirectory.get())
+                    if (built == null) throw new GradleException('Debug APK metadata is missing')
+                    def byAbi = built.elements.collectEntries { artifact ->
+                        def abi = artifact.filters.find { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI }?.identifier
+                        [(abi): new File(artifact.outputFile)]
+                    }
+                    if (byAbi.keySet() != saoApkAbis.toSet() || byAbi.values().any { !it.isFile() })
+                        throw new GradleException('Expected one standalone debug APK for each supported ABI')
+                    def directory = new File(debugApkShareDir.get())
+                    byAbi.each { abi, source ->
+                        java.nio.file.Files.copy(source.toPath(), new File(directory, "app-${abi}-debug.apk").toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    }
+                    // Preserve the phone's familiar share filename without creating a universal APK.
+                    java.nio.file.Files.copy(byAbi['arm64-v8a'].toPath(), new File(directory, 'app-debug.apk').toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                }
+            }
+            tasks.matching { it.name == "package${variantTaskName}" || it.name == "assemble${variantTaskName}" }.configureEach {
+                finalizedBy(publishApk)
+            }
+        }
+    }
+}
+
 dependencies {
+    implementation libs.exif
+    implementation project(':media-decoder')
+    implementation project(':gif-encoder')
+    implementation project(':source-api')
+    implementation project(':source-settings')
+    implementation libs.work.runtime
+    // Independent reference client used only by cross-process tests, never the host APK.
+    androidTestImplementation('one.njk.sao.extensions:immich-provider:1.0.0') {
+        exclude group: 'one.njk.sao', module: 'source-api'
+    }
+    implementation "com.caverock:androidsvg-aar:1.4"
+    // Supplied by LSPosed in the scoped process; never bundled into ordinary SAO.
+    compileOnly libs.libxposed.api
 
     // androidx libs, layouts, material design
     implementation libs.bundles.androidx
     implementation libs.android.material
+    implementation libs.media3.exoplayer
+    implementation libs.media3.transformer
+    implementation libs.media3.ui
     
     // Testing
     testImplementation libs.junit
+    testImplementation libs.mockwebserver
     androidTestImplementation libs.bundles.testing
+    androidTestImplementation libs.mockwebserver
 
     // Navigation graph support
     implementation libs.bundles.nav
 
-    // Coroutines, coil, dagger hilt, retrofit
+    // Coroutines, Coil and dependency injection
     implementation libs.coroutines
     implementation libs.bundles.coil
-    implementation libs.bundles.retrofit
     implementation libs.dagger.android
     ksp libs.dagger.compiler
 

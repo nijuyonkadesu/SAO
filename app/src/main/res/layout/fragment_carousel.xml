@@ -3,19 +3,18 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <data>
-        <variable
-            name="artsViewModel"
-            type="one.njk.sao.viewmodels.ArtsViewModel" />
-    </data>
+
 
     <androidx.coordinatorlayout.widget.CoordinatorLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
+        <include android:id="@+id/screen_app_bar" layout="@layout/view_screen_app_bar" />
+
         <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            app:layout_behavior="@string/appbar_scrolling_view_behavior"
             tools:context=".CarouselFragment">
 
             <androidx.constraintlayout.widget.ConstraintLayout
@@ -25,14 +24,14 @@
 
                 <TextView
                     android:id="@+id/type"
-                    app:drawableTint="@color/material_dynamic_primary30"
+                    android:maxLines="1" android:ellipsize="end"
+                    app:drawableTint="?attr/colorPrimary"
                     android:drawablePadding="8dp"
 
-                    android:text="@{@string/collection(artsViewModel.displayType)}"
+                    android:text="@string/sources_title"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:clickable="true"
-                    android:onClick="@{()->artsViewModel.toggleType()}"
                     style="@style/TextAppearance.Material3.TitleLarge"
                     app:layout_constraintTop_toTopOf="parent"
                     tools:text="SFW"
@@ -54,15 +53,36 @@
                     android:layout_marginTop="8dp"
 
                     tools:itemCount="3"
-                    tools:listitem="@layout/carousel_view_waifu" />
+                    tools:listitem="@layout/item_floating_media" />
 
+                <TextView android:id="@+id/media_title" android:layout_width="match_parent" android:layout_height="24dp"
+                    android:gravity="center_vertical" android:maxLines="1" android:ellipsize="end"
+                    android:textAppearance="?attr/textAppearanceLabelMedium" android:textColor="?attr/colorOnSurfaceVariant"
+                    app:layout_constraintTop_toBottomOf="@id/carousel_recycler_view" />
+                <LinearLayout android:id="@+id/home_status_panel" android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:gravity="center" android:visibility="gone"
+                    app:layout_constraintStart_toStartOf="@id/carousel_recycler_view" app:layout_constraintEnd_toEndOf="@id/carousel_recycler_view"
+                    app:layout_constraintTop_toTopOf="@id/carousel_recycler_view" app:layout_constraintBottom_toBottomOf="@id/carousel_recycler_view">
+                    <TextView android:id="@+id/home_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:minHeight="48dp" android:gravity="center" android:padding="16dp"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurface"
+                        android:clickable="true" android:focusable="true" android:visibility="gone" />
+                    <LinearLayout android:id="@+id/home_error_actions" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:orientation="horizontal" android:gravity="center" android:visibility="gone">
+                        <com.google.android.material.button.MaterialButton android:id="@+id/home_retry" style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/home_retry_action" />
+                        <com.google.android.material.button.MaterialButton android:id="@+id/home_source_settings" style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp"
+                            android:text="@string/home_source_settings" />
+                    </LinearLayout>
+                </LinearLayout>
                 <com.google.android.material.chip.ChipGroup
                     android:id="@+id/categories"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingTop="8dp"
                     app:chipSpacingVertical="4dp"
-                    app:layout_constraintTop_toBottomOf="@id/carousel_recycler_view"
+                    app:layout_constraintTop_toBottomOf="@id/media_title"
                     app:layout_constraintStart_toStartOf="parent">
 
                 </com.google.android.material.chip.ChipGroup>

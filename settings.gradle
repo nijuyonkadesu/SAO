@@ -13,7 +13,17 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        ivy {
+            name = 'SourceTestSupport'
+            url = 'https://github.com/nijuyonkadesu/SAO-extensions/releases/download/source-test-support-1.0.0'
+            patternLayout {
+                artifact '[artifact]-[revision](-[classifier]).[ext]'
+                ivy '[module]-[revision].ivy.xml'
+            }
+            metadataSources { ivyDescriptor() }
+            content { includeGroup 'one.njk.sao.extensions' }
+        }
     }
 }
-rootProject.name = "SAO"
-include ':app'
+rootProject.name = 'SAO'
+include ':app', ':source-api', ':source-settings', ':gif-encoder', ':media-decoder'

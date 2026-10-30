@@ -1,0 +1,32 @@
+<resources>
+    <string name="sources_title">Media sources</string>
+    <string name="sources_description">Add named sources. The main screen and floating picker remember their selections separately.</string>
+    <string name="source_name">Source name</string>
+    <string name="source_add">Add source</string>
+    <string name="source_edit">Edit %1$s</string>
+    <string name="source_delete">Remove this source</string>
+    <string name="source_removed">Source removed. Add a source to browse media.</string>
+    <string name="source_selected">%1$s, selected</string>
+    <string name="source_unavailable">This source needs a provider supported by this version of SAO.</string>
+    <string name="source_hold_release">Drag up or down · release to switch</string>
+    <string name="source_hold_choose">Choose media source</string>
+    <string name="source_hold_next">Next media source</string>
+    <string name="source_hold_previous">Previous media source</string>
+    <string name="source_hold_accessibility">Media source: %1$s. Tap to choose, or hold and drag vertically.</string>
+    <string name="source_empty_title">Add a media source</string>
+    <string name="source_empty_message">Install a SAO source extension, then add a source to browse your images and videos.</string>
+    <string name="source_floating_heading">Sources</string>
+    <string name="source_floating_description">Tap a source to select it for the main screen. Switches control its availability in the floating picker, including All.</string>
+    <string name="source_floating_enabled">Show %1$s in floating picker</string>
+    <string name="source_floating_empty_title">No floating sources enabled</string>
+    <string name="source_floating_empty_message">Enable a source in Media sources to browse it here. Your main screen sources are unchanged.</string>
+    <string name="source_manage">Manage sources</string>
+    <string name="source_extensions_heading">Installed extensions</string>
+    <string name="source_extensions_description">Manage source APKs, including extensions with no profiles yet.</string>
+    <string name="source_extensions_empty">No source extensions installed. Install a SAO extension APK to add a source.</string>
+    <string name="source_extension_app_info">App info</string>
+    <string name="source_extension_uninstall">Uninstall</string>
+    <string name="source_extension_app_info_name">App info for %1$s</string>
+    <string name="source_extension_uninstall_name">Uninstall %1$s</string>
+    <string name="source_extension_action_failed">Could not open Android’s app controls. Try the system Settings app.</string>
+</resources>

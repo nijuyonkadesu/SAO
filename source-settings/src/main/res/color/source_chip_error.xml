@@ -1,0 +1,4 @@
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="?attr/colorOnSurface" android:state_enabled="false" android:alpha="0.38" />
+    <item android:color="?attr/colorError" />
+</selector>

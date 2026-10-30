@@ -1,0 +1,110 @@
+[
+  {
+    "id": "happy",
+    "title": "Happy",
+    "asset": "floating/happy.png",
+    "mimeType": "image/png",
+    "tags": [
+      "happy",
+      "joy",
+      "laugh",
+      "funny"
+    ],
+    "emojis": [
+      "😂",
+      "😄"
+    ]
+  },
+  {
+    "id": "love",
+    "title": "Love",
+    "asset": "floating/love.png",
+    "mimeType": "image/png",
+    "tags": [
+      "love",
+      "heart",
+      "affection"
+    ],
+    "emojis": [
+      "❤️",
+      "🥰"
+    ]
+  },
+  {
+    "id": "sad",
+    "title": "Sad",
+    "asset": "floating/sad.png",
+    "mimeType": "image/png",
+    "tags": [
+      "sad",
+      "cry",
+      "tears"
+    ],
+    "emojis": [
+      "😭",
+      "😢"
+    ]
+  },
+  {
+    "id": "surprised",
+    "title": "Surprised",
+    "asset": "floating/surprised.png",
+    "mimeType": "image/png",
+    "tags": [
+      "surprise",
+      "wow",
+      "shock"
+    ],
+    "emojis": [
+      "😮",
+      "🤯"
+    ]
+  },
+  {
+    "id": "angry",
+    "title": "Angry",
+    "asset": "floating/angry.png",
+    "mimeType": "image/png",
+    "tags": [
+      "angry",
+      "annoyed",
+      "rage"
+    ],
+    "emojis": [
+      "😠",
+      "😤"
+    ]
+  },
+  {
+    "id": "wink",
+    "title": "Wink",
+    "asset": "floating/wink.png",
+    "mimeType": "image/png",
+    "tags": [
+      "wink",
+      "playful",
+      "yes",
+      "okay"
+    ],
+    "emojis": [
+      "😉",
+      "👍"
+    ]
+  },
+  {
+    "id": "hello",
+    "title": "Hello",
+    "asset": "floating/hello.gif",
+    "mimeType": "image/gif",
+    "tags": [
+      "hello",
+      "greeting",
+      "animated",
+      "wave"
+    ],
+    "emojis": [
+      "👋"
+    ],
+    "animated": true
+  }
+]

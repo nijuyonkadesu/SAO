@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="language_system">System default</string>
+    <string name="language_choose">App language</string>
+    <string name="language_current">App language: %1$s</string>
+    <string name="action_bookmark">Bookmark</string>
+    <string name="action_download">Download</string>
+    <string name="action_edit">Edit</string>
+    <string name="label_with_status">%1$s · %2$s</string>
+    <string name="label_with_detail">%1$s\n%2$s</string>
+    <string name="folder_destination">%1$s → %2$s</string>
+    <string name="picker_query_label">“%1$s”</string>
+    <string name="picker_dropdown_label">%1$s ▾</string>
+    <string name="source_imported_name">Imported source</string>
+    <string name="home_category_default_all">All</string>
+    <string name="source_all_name">All</string>
+</resources>

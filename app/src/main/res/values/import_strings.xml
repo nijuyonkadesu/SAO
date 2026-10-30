@@ -1,0 +1,56 @@
+<resources>
+    <string name="upload_settings_heading">Uploads</string>
+    <string name="upload_wifi_only">Upload only on Wi-Fi</string>
+    <string name="upload_wifi_only_help">Wait for Wi-Fi before uploading selected files or connected folders to any source. Local file copies work offline. Automatic folder uploads also require an unmetered connection.</string>
+    <string name="upload_settings_failed">Could not update upload settings. Try again.</string>
+    <string name="import_title">Add media to a source</string>
+    <string name="import_choose_source">Choose where to save these photos and videos. Originals stay where they are.</string>
+    <string name="import_no_sources">No writable sources are available. Configure an Immich key with upload access or a writable Local Sticker folder.</string>
+    <string name="import_destination">Save to</string>
+    <string name="import_target_summary">Save to %1$s · originals are kept</string>
+    <string name="import_add_media">Add media</string>
+    <string name="import_files">Files</string>
+    <string name="import_connected_folders">Connected folders</string>
+    <string name="import_connect_folder">Connect a folder</string>
+    <string name="import_check_folders">Check folders now</string>
+    <string name="import_folder_help">Adds existing files and future additions using an unmetered connection. Android checks about every six hours. Originals are kept.</string>
+    <string name="import_collections">Collections</string>
+    <string name="import_source_settings">Source settings</string>
+    <string name="import_setup_folder">Choose or reselect a writable collection in Source settings to receive shared media. Existing collections remain indexed in place.</string>
+    <string name="import_read_only">This source does not currently offer a writable destination. Its browsing settings are available below.</string>
+    <string name="import_preparing">Preparing %1$d of %2$d…</string>
+    <string name="import_updating">Updating source…</string>
+    <string name="import_in_progress">Adding selected media. Open to view progress.</string>
+    <string name="import_pause">Pause</string>
+    <string name="import_resume">Resume</string>
+    <string name="import_retry">Retry failed</string>
+    <string name="import_clear">Clear</string>
+    <string name="import_clear_title">Clear unfinished imports?</string>
+    <string name="import_clear_help">Finishes the current file, clears other unfinished imports and pauses folder imports. Originals and completed imports are kept. Resume whenever you want to check connected folders again.</string>
+    <plurals name="import_added_count">
+        <item quantity="one">%1$d added</item>
+        <item quantity="other">%1$d added</item>
+    </plurals>
+    <plurals name="import_pending_count">
+        <item quantity="one">%1$d pending</item>
+        <item quantity="other">%1$d pending</item>
+    </plurals>
+    <plurals name="import_attention_count">
+        <item quantity="one">%1$d need attention</item>
+        <item quantity="other">%1$d need attention</item>
+    </plurals>
+    <string name="import_counts_paused">Paused · %1$s</string>
+    <string name="import_disconnect">Disconnect folder</string>
+    <string name="import_disconnect_help">Stops future imports and cancels pending items from this folder. Original files and completed uploads are kept.</string>
+    <string name="import_folder_pending">Waiting for first check</string>
+    <string name="import_last_checked">Checked %1$s</string>
+    <string name="import_error_auth">Upload access was refused. Check the API key and destination permissions in Source settings.</string>
+    <string name="import_error_profile">The source configuration changed. Reconnect this folder to confirm its destination.</string>
+    <string name="import_error_permission">Folder access is unavailable. Check its permission in Source settings.</string>
+    <string name="import_error_changed">A file changed or is no longer available. Check the folder again to discover its current version.</string>
+    <string name="import_error_storage">Not enough space to prepare this media.</string>
+    <string name="import_error_format">The destination does not support one of these media formats.</string>
+    <string name="import_error_trashed">This file already exists in the destination’s trash. Restore it there before importing again.</string>
+    <string name="import_error_network">The transfer could not finish. Temporary failures retry with increasing delays, up to five attempts.</string>
+    <string name="import_error_generic">An item needs attention. Completed imports are kept; retry only retries unfinished items.</string>
+</resources>

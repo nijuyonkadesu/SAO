@@ -8,14 +8,21 @@
     <fragment
         android:id="@+id/homeFragment"
         android:name="one.njk.sao.CarouselFragment"
+        android:label="@string/app_name"
         tools:layout="@layout/fragment_carousel">
         <action
             android:id="@+id/action_HomeFragment_to_settingsFragment"
             app:destination="@id/settingsFragment" />
+        <action android:id="@+id/action_HomeFragment_to_usageFragment" app:destination="@id/usageFragment" />
     </fragment>
     <fragment
         android:id="@+id/settingsFragment"
         android:name="one.njk.sao.SettingsFragment"
-        android:label="Settings"
+        android:label="@string/action_settings"
         tools:layout="@layout/fragment_settings"/>
+    <fragment
+        android:id="@+id/usageFragment"
+        android:name="one.njk.sao.usage.UsageFragment"
+        android:label="@string/usage_title"
+        tools:layout="@layout/fragment_usage" />
 </navigation>

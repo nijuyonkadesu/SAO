@@ -1,0 +1,39 @@
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+
+// Advertise app translations, not the dozens of unrelated languages in UI dependencies.
+// Supports Android's language[-rREGION] and b+language+Script+REGION folder syntax.
+def qualifiers = file('src/main/res').listFiles().findAll { dir -> dir.directory && dir.listFiles().any { it.file && it.name.endsWith('strings.xml') && (it.getText('UTF-8') =~ /<(string|plurals|string-array)\s/) } }.collect { it.name }
+    .findAll { it ==~ /values-([a-z]{2,3}(-r[A-Z]{2})?|b\+[A-Za-z0-9+]+)/ }
+    .collect { it.substring('values-'.length()) }
+def languageTags = (['en'] + qualifiers.collect {
+    Locale.forLanguageTag(it.startsWith('b+') ? it.substring(2).replace('+', '-') : it.replace('-r', '-')).toLanguageTag()
+}).unique().sort()
+
+android {
+    androidResources {
+        generateLocaleConfig = true
+        localeFilters.addAll(['en'] + qualifiers + ['en-rXA', 'ar-rXB'])
+    }
+    buildTypes.debug.pseudoLocalesEnabled = true
+}
+
+abstract class GenerateLanguageList extends DefaultTask {
+    @Input abstract ListProperty<String> getLanguages()
+    @OutputDirectory abstract DirectoryProperty getOutputDirectory()
+    @TaskAction void generate() {
+        def dir = outputDirectory.dir('values').get().asFile
+        dir.mkdirs()
+        new File(dir, 'sao_language_tags.xml').text = '<resources><string-array name="sao_supported_language_tags" translatable="false">' +
+            languages.get().collect { '<item>' + it + '</item>' }.join('') + '</string-array></resources>\n'
+    }
+}
+
+androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+    def task = tasks.register("generate${variant.name.capitalize()}LanguageList", GenerateLanguageList) {
+        languages.set(languageTags + (variant.buildType == 'debug' ? ['en-XA', 'ar-XB'] : []))
+        outputDirectory.set(layout.buildDirectory.dir("generated/languages/${variant.name}"))
+    }
+    variant.sources.res.addGeneratedSourceDirectory(task) { it.outputDirectory }
+}

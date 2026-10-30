@@ -1,0 +1,23 @@
+<resources>
+    <style name="ShapeAppearance.SAO.Picker.Media" parent="ShapeAppearance.Material3.Corner.ExtraLarge">
+        <item name="cornerSize">24dp</item>
+    </style>
+    <style name="Widget.SAO.Chip.Filter" parent="Widget.Material3.Chip.Filter">
+        <item name="checkedIcon">@drawable/ic_picker_check</item>
+        <item name="checkedIconTint">@color/picker_chip_foreground</item>
+    </style>
+    <!-- The shared card supplies secondaryContainer; inherit matching foreground,
+         ripple and disabled states from the official M3 tonal button. -->
+    <style name="Widget.SAO.Picker.TonalAction" parent="Widget.Material3.Button.TonalButton">
+        <item name="backgroundTint">@android:color/transparent</item>
+    </style>
+    <style name="Widget.SAO.Picker.GifAction" parent="Widget.Material3.Button.TextButton">
+        <item name="backgroundTint">@color/picker_gif_background</item>
+        <item name="android:textColor">@color/picker_gif_foreground</item>
+        <item name="iconTint">@color/picker_gif_foreground</item>
+        <item name="cornerRadius">20dp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:layout_marginHorizontal">3dp</item>
+    </style>
+</resources>

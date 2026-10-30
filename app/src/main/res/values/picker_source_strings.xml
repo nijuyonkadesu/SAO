@@ -1,0 +1,11 @@
+<resources>
+  <string name="picker_source_none">Add source</string>
+  <string name="picker_source_title">Photo source</string>
+  <string name="picker_source_description">Choose where the picker finds photos.</string>
+  <string name="picker_retry">Could not load photos. Tap to retry.</string>
+  <string name="picker_retry_more">Could not load more. Tap to retry.</string>
+  <string name="picker_source_accessibility">Photo source: %1$s</string>
+  <string name="picker_source_scope">%1$s · %2$s</string>
+  <string name="picker_send_sticker_description">Send sticker</string>
+  <string name="picker_share_media_description">Share media</string>
+</resources>

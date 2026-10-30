@@ -1,0 +1,83 @@
+{
+  "date": "2026-10-30",
+  "device": "owned Android 15 x86_64 emulator; no accounts or personal media",
+  "host": {
+    "from": "1.2.0",
+    "to": "1.3.0",
+    "versionCode": 4,
+    "sourceCommit": "a311504b504ea078e9ad45e7d3099e5d0a19487e",
+    "installationRetained": true
+  },
+  "extensionsSourceCommit": "5bbad4048777f3958c01c4088a06ca47bd12ca10",
+  "catalogCommit": "f3db72a",
+  "publisherSha256": "fd793dd1514b2a5c1d561f27df03ed76d06a94f872627eb7ec4e522871cf4441",
+  "method": "Isolated Java UI instrumentation against minified release SAO, default public catalog, public release downloads and Android installer confirmation; no sideload shortcut for extension journeys.",
+  "results": [
+    {
+      "success": true,
+      "freshInstall": true,
+      "previousVersion": 0,
+      "installedVersion": 5,
+      "installerConfirmed": true,
+      "installationRetained": false,
+      "permissionPrompt": true,
+      "extension": "findthatmeme",
+      "operation": "install"
+    },
+    {
+      "success": true,
+      "freshInstall": false,
+      "previousVersion": 9,
+      "installedVersion": 10,
+      "installerConfirmed": true,
+      "installationRetained": true,
+      "permissionPrompt": false,
+      "extension": "immich",
+      "operation": "update"
+    },
+    {
+      "success": true,
+      "freshInstall": false,
+      "previousVersion": 16,
+      "installedVersion": 17,
+      "installerConfirmed": true,
+      "installationRetained": true,
+      "permissionPrompt": false,
+      "extension": "local",
+      "operation": "update"
+    },
+    {
+      "success": true,
+      "freshInstall": false,
+      "previousVersion": 11,
+      "installedVersion": 12,
+      "installerConfirmed": true,
+      "installationRetained": true,
+      "permissionPrompt": false,
+      "extension": "moeview",
+      "operation": "update"
+    },
+    {
+      "success": true,
+      "freshInstall": false,
+      "previousVersion": 5,
+      "installedVersion": 6,
+      "installerConfirmed": true,
+      "installationRetained": true,
+      "permissionPrompt": false,
+      "extension": "googlephotos",
+      "operation": "update"
+    },
+    {
+      "success": true,
+      "freshInstall": false,
+      "previousVersion": 4,
+      "installedVersion": 5,
+      "installerConfirmed": true,
+      "installationRetained": true,
+      "permissionPrompt": false,
+      "extension": "findthatmeme",
+      "operation": "update"
+    }
+  ]
+}

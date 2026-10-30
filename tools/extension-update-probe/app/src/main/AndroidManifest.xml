@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries><package android:name="one.njk.sao" /><intent><action android:name="one.njk.sao.source.EXTENSION" /></intent></queries>
+    <application android:label="SAO update probe" android:allowBackup="false" />
+    <instrumentation android:name=".ExtensionUpdateProbe" android:targetPackage="one.njk.sao.extensionupdateprobe" android:functionalTest="true" />
+</manifest>

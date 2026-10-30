@@ -1,0 +1,13 @@
+<resources>
+    <!-- A destination-owned theme: the host activity and other screens keep Theme.SAO. -->
+    <style name="Theme.SAO.Usage" parent="Theme.Material3Expressive.DayNight.NoActionBar" />
+
+    <style name="Widget.SAO.Usage.IconButton" parent="Widget.Material3Expressive.Button.IconButton.Tonal">
+        <item name="android:minWidth">48dp</item>
+        <item name="android:minHeight">48dp</item>
+    </style>
+    <style name="Widget.SAO.Usage.DateButton" parent="Widget.Material3Expressive.Button.TonalButton">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:textAppearance">@style/TextAppearance.Material3.LabelLarge.Emphasized</item>
+    </style>
+</resources>

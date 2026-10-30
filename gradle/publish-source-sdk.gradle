@@ -1,0 +1,23 @@
+// Public release assets form a standard Ivy repository; consumers need no GitHub credentials.
+apply plugin: 'ivy-publish'
+group = 'one.njk.sao'
+version = '1.2.0'
+
+android.publishing.singleVariant('release') { withSourcesJar() }
+afterEvaluate {
+    publishing {
+        publications {
+            sourceSdk(IvyPublication) { from components.release }
+        }
+        repositories {
+            ivy {
+                name = 'SourceSdk'
+                url = rootProject.layout.buildDirectory.dir('source-sdk')
+                patternLayout {
+                    artifact '[artifact]-[revision](-[classifier]).[ext]'
+                    ivy '[module]-[revision].ivy.xml'
+                }
+            }
+        }
+    }
+}

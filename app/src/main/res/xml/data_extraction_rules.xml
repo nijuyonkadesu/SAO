@@ -5,11 +5,23 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
+        <exclude domain="file" path="floating_exports/" />
+        <exclude domain="database" path="usage.db" />
+        <exclude domain="database" path="usage.db-wal" />
+        <exclude domain="database" path="usage.db-shm" />
+        <exclude domain="database" path="usage.db-journal" />
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
         -->
     </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="floating_exports/" />
+        <exclude domain="database" path="usage.db" />
+        <exclude domain="database" path="usage.db-wal" />
+        <exclude domain="database" path="usage.db-shm" />
+        <exclude domain="database" path="usage.db-journal" />
+    </device-transfer>
     <!--
     <device-transfer>
         <include .../>

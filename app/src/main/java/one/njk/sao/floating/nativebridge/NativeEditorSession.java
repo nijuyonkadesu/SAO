@@ -1,0 +1,220 @@
+package one.njk.sao.floating.nativebridge;
+
+import android.app.Activity;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.SystemClock;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
+import android.widget.EditText;
+import java.lang.ref.WeakReference;
+import java.util.Arrays;
+import java.util.UUID;
+import java.util.function.LongSupplier;
+
+/** A short-lived, one-use editor lease. All editor operations run on the host Main thread. */
+final class NativeEditorSession {
+    static final long MAX_AGE_MS = 120_000;
+    private final ComposerPolicy policy;
+    private final String authority;
+    private final LongSupplier clock;
+    private WeakReference<Activity> activity = new WeakReference<>(null);
+    private WeakReference<EditText> editor = new WeakReference<>(null);
+    private InputConnection input;
+    private boolean receiveContent;
+    private String identity;
+    private String session;
+    private String[] mimeTypes = new String[0];
+    private String[] baseMimeTypes = new String[0];
+    private boolean revoked;
+    private long created;
+    private long lastRequest;
+    private String status = "waiting_editor";
+    private long epoch;
+    private String rejection = "none";
+
+    NativeEditorSession(ComposerPolicy policy, String modulePackage) {
+        this(policy, modulePackage, SystemClock::elapsedRealtime);
+    }
+    NativeEditorSession(ComposerPolicy policy, String modulePackage, LongSupplier clock) {
+        this.policy = policy; this.authority = modulePackage + ".fileprovider"; this.clock = clock;
+    }
+    boolean owns(EditText view) { return editor.get() == view; }
+    void clear() {
+        epoch++;
+        input = null; receiveContent = false; session = null; identity = null; mimeTypes = new String[0]; baseMimeTypes = new String[0]; revoked = false;
+        editor.clear(); activity.clear(); status = "waiting_editor";
+    }
+    void captureView(Activity current, EditText view) {
+        String[] types = policy.viewMimeTypes(view);
+        if (types.length == 0) return;
+        capture(current, view, null, new String[0], types);
+    }
+    void capture(Activity current, EditText view, InputConnection connection, EditorInfo info) {
+        String[] types = policy.viewMimeTypes(view);
+        capture(current, view, connection, policy.mimeTypes(info), types);
+    }
+    private void capture(Activity current, EditText view, InputConnection connection, String[] types, String[] viewTypes) {
+        boolean receiver = viewTypes.length > 0;
+        String[] base = types;
+        types = combinedTypes(combinedTypes(types, viewTypes), policy.additionalMimeTypes(view));
+        String nextIdentity = policy.isComposer(view) ? policy.identity(current, view) : null;
+        if ((!receiver && connection == null) || !policy.isComposer(view) || types.length == 0) { clear(); status = "unsupported_mime"; return; }
+        // Retain the naturally created wrapper while the host finishes loading its metadata.
+        // No lease exists until that metadata is verified. A changed established identity
+        // still invalidates the token and cannot reuse an old conversation selection.
+        if (activity.get() != current || editor.get() != view || nextIdentity == null || !nextIdentity.equals(identity)) {
+            if (activity.get() != current || editor.get() != view || identity != null && nextIdentity != null && !identity.equals(nextIdentity)) epoch++;
+            session = null;
+        }
+        activity = new WeakReference<>(current); editor = new WeakReference<>(view);
+        input = connection; receiveContent = receiver; identity = nextIdentity; baseMimeTypes = base.clone(); mimeTypes = types.clone(); revoked = false;
+    }
+    private void refreshCapabilities(EditText view) {
+        if (view == null || !policy.isComposer(view)) return;
+        String[] types = policy.viewMimeTypes(view);
+        receiveContent = types.length > 0;
+        mimeTypes = combinedTypes(combinedTypes(baseMimeTypes, types), policy.additionalMimeTypes(view));
+    }
+    Bundle beginSelection(Activity current, boolean resumed) {
+        EditText view = editor.get();
+        refreshCapabilities(view);
+        // A fresh explicit icon press may re-arm this exact visible editor. Ordinary
+        // snapshots never turn a revoked picker token into a different conversation.
+        if (sameEditor(current, view) && resumed && current.hasWindowFocus() && (view.hasFocus() || receiveContent)) {
+            identity = policy.identity(current, view); session = null; revoked = false;
+        }
+        return snapshot(current, resumed);
+    }
+    private void revoke(boolean changedRecipient) {
+        if (changedRecipient) epoch++;
+        session = null; revoked = true; status = "editor_changed";
+    }
+    Bundle snapshot(Activity current, boolean resumed) {
+        Bundle state = new Bundle();
+        EditText view = editor.get();
+        refreshCapabilities(view);
+        if (input == null && !receiveContent) { state.putString("status", status); return state; }
+        if (!sameEditor(current, view)) { clear(); state.putString("status", status); return state; }
+        if (revoked) { state.putString("status", status); return state; }
+        // Capabilities change independently of the recipient-bound token.
+        String actual = policy.identity(current, view);
+        boolean ready = resumed && (view.hasFocus() || receiveContent) && current.hasWindowFocus();
+        if (identity == null) {
+            if (actual == null) { status = "pending_metadata"; state.putString("status", status); return state; }
+            identity = actual;
+        } else if (actual == null || !actual.equals(identity)) {
+            if (actual != null && ready && policy.renewFocusedDraft()) {
+                epoch++; identity = actual; session = null; // Fresh foreground selection; the old token is revoked.
+            } else {
+                revoke(actual != null); state.putString("status", status); return state;
+            }
+        }
+        status = ready ? "ready" : "unfocused";
+        state.putString("status", status);
+        if (session != null && clock.getAsLong() - created > MAX_AGE_MS) session = null;
+        if (ready && session == null) { session = UUID.randomUUID().toString(); created = clock.getAsLong(); }
+        if (session != null) {
+            state.putString("session", session); state.putLong("created", created);
+            state.putBoolean("resumed", ready); state.putStringArray("mime_types", mimeTypes.clone());
+        }
+        return state;
+    }
+    private boolean sameEditor(Activity current, EditText view) {
+        return current != null && activity.get() == current && view != null && view.isAttachedToWindow() && view.isShown() && (input != null || receiveContent) && view.isEnabled() &&
+            view.getRootView() == current.getWindow().getDecorView().getRootView() && policy.isComposer(view);
+    }
+    private boolean validEditor(Activity current, EditText view) {
+        if (revoked || !sameEditor(current, view) || identity == null) return false;
+        String actual = policy.identity(current, view);
+        return actual != null && actual.equals(identity);
+    }
+    boolean insert(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId) {
+        return insert(current, resumed, uri, mimeType, expected, requestId,
+            (view, connection) -> policy.insertContent(view, connection, uri, mimeType));
+    }
+    NativeContentPreparation captureContent(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId) {
+        if (!accepts(current, resumed, uri, mimeType, expected, requestId)) return null;
+        NativeContentPreparation preparation = policy.captureContent(current.getApplicationContext(), editor.get(), uri, mimeType);
+        if (preparation == null || !preparation.hasCapturedRecipient()) return preparation;
+        // This native request already owns an account/recipient, unlike an IME paste.
+        // Reserve its one-use authorization before IO; focus/token renewal afterward
+        // must not invalidate the accepted request or redirect it to a different chat.
+        long generation = epoch, acceptedAt = clock.getAsLong();
+        String recipient = identity;
+        WeakReference<Activity> owner = new WeakReference<>(current);
+        WeakReference<EditText> target = new WeakReference<>(editor.get());
+        lastRequest = requestId; session = null;
+        java.util.concurrent.atomic.AtomicBoolean prepared = new java.util.concurrent.atomic.AtomicBoolean();
+        return () -> {
+            if (!prepared.compareAndSet(false, true)) return null;
+            PreparedNativeContent content = preparation.prepare();
+            return content == null ? null : new CapturedContent(content,owner,target,recipient,uri,mimeType,expected,requestId,generation,acceptedAt);
+        };
+    }
+    private final class CapturedContent implements PreparedNativeContent {
+        final PreparedNativeContent content;
+        final WeakReference<Activity> owner;
+        final WeakReference<EditText> target;
+        final String recipient, mime, token;
+        final Uri uri;
+        final long request, generation, acceptedAt;
+        boolean consumed;
+        boolean belongsTo(NativeEditorSession candidate) { return candidate == NativeEditorSession.this; }
+        CapturedContent(PreparedNativeContent content, WeakReference<Activity> owner, WeakReference<EditText> target,
+                String recipient, Uri uri, String mime, String token, long request, long generation, long acceptedAt) {
+            this.content=content; this.owner=owner; this.target=target; this.recipient=recipient;
+            this.uri=uri; this.mime=mime; this.token=token; this.request=request; this.generation=generation; this.acceptedAt=acceptedAt;
+        }
+        boolean matches(Activity current, Uri inputUri, String inputMime, String expected, long id) {
+            if (consumed) { rejection="replay"; return false; }
+            consumed=true;
+            if (request!=id || !token.equals(expected) || !uri.equals(inputUri) || !mime.equals(inputMime)) { rejection="request_changed"; return false; }
+            if (generation!=epoch || owner.get()!=current || target.get()!=editor.get() || !sameEditor(current,target.get())) { rejection="editor_changed"; return false; }
+            if (clock.getAsLong()-acceptedAt>MAX_AGE_MS) { rejection="expired"; return false; }
+            if (!recipient.equals(policy.identity(current,target.get()))) { rejection="recipient_changed"; return false; }
+            refreshCapabilities(target.get());
+            if (!Arrays.asList(mimeTypes).contains(mime)) { rejection="handler_unavailable"; return false; }
+            rejection="none"; return true;
+        }
+        @Override public boolean insert(EditText view, InputConnection connection) { return content.insert(view,connection); }
+        @Override public void close() { content.close(); }
+    }
+    String rejectionReason() { return rejection; }
+    boolean accepts(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId) {
+        refreshCapabilities(editor.get());
+        if (uri == null || !"content".equals(uri.getScheme()) || !authority.equals(uri.getAuthority()) ||
+            !Arrays.asList(mimeTypes).contains(mimeType)) return false;
+        EditText view = editor.get();
+        if (!validEditor(current, view)) {
+            if (sameEditor(current, view)) {
+                String actual = policy.identity(current,view);
+                revoke(actual != null && identity != null && !actual.equals(identity));
+            } else clear();
+            return false;
+        }
+        if (!resumed || !current.hasWindowFocus() || (!view.hasFocus() && !receiveContent) || expected == null || !expected.equals(session) ||
+            requestId <= lastRequest || clock.getAsLong() - created > MAX_AGE_MS) return false;
+        return true; // Current capabilities were refreshed before validating this request.
+    }
+    boolean insert(Activity current, boolean resumed, Uri uri, String mimeType, String expected, long requestId, PreparedNativeContent content) {
+        if (content instanceof NativeEditorSession.CapturedContent captured) {
+            if (!captured.belongsTo(this)) { rejection="session_replaced"; return false; }
+            if (!captured.matches(current,uri,mimeType,expected,requestId)) return false;
+            boolean accepted = captured.insert(captured.target.get(),input);
+            if (!accepted) rejection="native_handler_rejected";
+            return accepted;
+        }
+        if (!accepts(current, resumed, uri, mimeType, expected, requestId)) return false;
+        lastRequest = requestId;
+        session = null; // Consume before dispatch; a false/unknown host result must never be replayed.
+        // SAO grants URI access explicitly. The policy chooses the host's existing IME
+        // wrapper or its verified native receive-content view; there is no fabricated token.
+        return content.insert(editor.get(), input);
+    }
+    private static String[] combinedTypes(String[] base, String[] extra) {
+        java.util.LinkedHashSet<String> result = new java.util.LinkedHashSet<>(Arrays.asList(base));
+        result.addAll(Arrays.asList(extra));
+        return result.toArray(new String[0]);
+    }
+}

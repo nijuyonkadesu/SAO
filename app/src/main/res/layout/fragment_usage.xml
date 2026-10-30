@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+    <include android:id="@+id/screen_app_bar" layout="@layout/view_screen_app_bar" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical"
+        android:layout_marginHorizontal="16dp" android:layout_marginTop="12dp" android:layout_marginBottom="8dp">
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/usage_previous" style="@style/Widget.SAO.Usage.IconButton"
+            android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="@string/usage_previous"
+            app:icon="@drawable/ic_usage_previous" app:iconGravity="textStart" app:iconPadding="0dp" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/usage_period" style="@style/Widget.SAO.Usage.DateButton"
+            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:minHeight="48dp"
+            android:layout_marginHorizontal="8dp" android:contentDescription="@string/usage_choose_date"
+            app:icon="@drawable/ic_usage_calendar" app:iconSize="18dp" app:iconGravity="textStart" app:iconPadding="8dp" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/usage_next" style="@style/Widget.SAO.Usage.IconButton"
+            android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="@string/usage_next"
+            app:icon="@drawable/ic_usage_next" app:iconGravity="textStart" app:iconPadding="0dp" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/usage_today" style="@style/Widget.Material3Expressive.Button.TextButton"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp"
+            android:text="@string/usage_jump_today" android:visibility="gone" />
+    </LinearLayout>
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/usage_loading" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp" android:indeterminate="true" />
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/usage_error" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp" android:text="@string/usage_storage_error"
+        android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorError"
+        android:visibility="gone" android:accessibilityLiveRegion="polite" />
+    <androidx.recyclerview.widget.RecyclerView android:id="@+id/usage_scroll"
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:paddingHorizontal="16dp" android:paddingTop="8dp" android:paddingBottom="32dp"
+        android:clipToPadding="false" />
+</LinearLayout>

@@ -1,0 +1,17 @@
+plugins { alias libs.plugins.android.library }
+android {
+    lint { disable += 'MissingTranslation' } // Partial translations deliberately fall back to English.
+    namespace 'one.njk.sao.source.settings'
+    compileSdk 37
+    defaultConfig { minSdk 30 }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+    buildFeatures { viewBinding true }
+}
+dependencies {
+    api project(':source-api')
+    implementation libs.androidx.appcompat
+    implementation libs.lifecycle.viewmodel
+    implementation libs.lifecycle.runtime
+    implementation libs.android.material
+}
+apply from: rootProject.file('gradle/publish-source-sdk.gradle')

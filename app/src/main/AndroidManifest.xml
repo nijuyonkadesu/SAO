@@ -1,8 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+    <permission android:name="one.njk.sao.permission.SOURCE_EXTENSION" android:protectionLevel="signature" />
+    <permission android:name="${applicationId}.permission.NATIVE_CONTROL" android:protectionLevel="signature" />
+    <uses-permission android:name="${applicationId}.permission.NATIVE_CONTROL" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
+    <queries>
+        <intent><action android:name="one.njk.sao.source.EXTENSION" /></intent>
+        <package android:name="com.skyd.rays" />
+        <package android:name="com.skyd.rays.debug" />
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+        <package android:name="org.telegram.messenger" />
+        <package android:name="org.telegram.messenger.web" />
+        <package android:name="nu.gpu.nagram" />
+        <package android:name="nu.gpu.nagramx" />
+        <package android:name="com.discord" />
+        <package android:name="com.instagram.android" />
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
+        <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="image/*" /></intent>
+        <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="application/octet-stream" /></intent>
+    </queries>
     <application
         android:name=".SaoApplication"
         android:largeHeap="true"
@@ -11,10 +39,58 @@
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:description="@string/floating_native_description"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.SAO"
         tools:targetApi="31">
+        <service android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false" android:exported="false">
+            <meta-data android:name="autoStoreLocales" android:value="true" />
+        </service>
+        <activity android:name=".floating.RaysSettingsActivity" android:exported="false" />
+        <activity android:name=".floating.SourceSettingsActivity" android:exported="false" />
+        <provider android:name=".floating.ExtensionTrustProvider" android:authorities="${applicationId}.source-trust" android:exported="true" />
+        <service android:name=".importing.ImportSettingsService" android:exported="true">
+            <meta-data android:name="one.njk.sao.source.API_VERSION" android:value="1" />
+        </service>
+        <activity android:name=".importing.ImportActionActivity" android:theme="@style/Theme.SAO.Picker" android:exported="true" />
+        <activity android:name=".importing.MediaImportActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" /><action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" /><data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
+        <service android:name=".importing.ImportTransferService" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
+        <provider android:name=".importing.ImportMediaProvider" android:authorities="${applicationId}.imports" android:exported="false" android:grantUriPermissions="true" />
+        <activity android:name=".floating.HomeCategoriesActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".floating.SourceSetupActivity" android:exported="false" />
+        <activity android:name=".floating.TelegramAppsActivity" android:exported="false" />
+        <activity android:name=".floating.FloatingSettingsActivity" android:exported="false" />
+        <activity android:name=".floating.PickerActivity" android:exported="false"
+            android:theme="@style/Theme.SAO.Picker" android:taskAffinity="${applicationId}.picker"
+            android:excludeFromRecents="true" android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize" />
+        <service android:name=".floating.FloatingService" android:exported="false" android:foregroundServiceType="specialUse" android:stopWithTask="false">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-started persistent floating media picker, visible over messaging apps, with explicit Stop controls" />
+        </service>
+        <service android:name=".floating.PasteAssistService" android:exported="true"
+            android:label="@string/floating_paste_assistance" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/paste_assistance" />
+        </service>
+        <service android:name=".floating.nativebridge.NativeBridgeService" android:exported="true" />
+        <receiver android:name=".extensions.ExtensionInstallReceiver" android:exported="false" />
+        <receiver android:name=".floating.FloatingRecoveryReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -28,7 +104,7 @@
         </activity>
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="one.njk.sao.fileprovider"
+            android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

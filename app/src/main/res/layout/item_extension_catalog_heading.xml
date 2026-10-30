@@ -1,0 +1,8 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="20dp" android:paddingBottom="12dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/extension_catalog_title" android:textAppearance="?attr/textAppearanceTitleMedium" android:accessibilityHeading="true" />
+    <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurfaceVariant" android:accessibilityLiveRegion="polite" />
+    <com.google.android.material.chip.ChipGroup style="@style/SaoSourceChipGroup">
+        <com.google.android.material.chip.Chip android:id="@+id/refresh" style="@style/Widget.SaoSource.Chip.Action" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/extension_check_updates" app:chipIcon="@drawable/source_chip_refresh" app:chipIconVisible="true" android:saveEnabled="false" />
+        <com.google.android.material.chip.Chip android:id="@+id/add_repository" style="@style/Widget.SaoSource.Chip.Action" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/extension_repository_add" app:chipIcon="@drawable/source_chip_add" app:chipIconVisible="true" android:saveEnabled="false" />
+    </com.google.android.material.chip.ChipGroup>
+</LinearLayout>
