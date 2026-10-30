@@ -73,6 +73,11 @@ class CarouselFragment : Fragment() {
         childFragmentManager.setFragmentResultListener(MediaViewerFragment.TAG,viewLifecycleOwner) { _,_ ->
             adapter.playing=true
         }
+        childFragmentManager.setFragmentResultListener(MediaViewerFragment.OPENED,viewLifecycleOwner) { _,_ ->
+            if(childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG)!=null) {
+                adapter.playing=false; previews.pause()
+            }
+        }
         adapter.playing=childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG)==null
         previews=CarouselPreviewPrefetcher(viewLifecycleOwner.lifecycleScope,source::warmPreview)
         carousel = PickerCarousel(binding.carouselRecyclerView,adapter,model::current,{ model.focusedId },
@@ -137,8 +142,9 @@ class CarouselFragment : Fragment() {
     }
     private fun preview(item: MediaItem) {
         if(childFragmentManager.isStateSaved || childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG)!=null) return
-        carousel.adapter.playing=false; previews.pause()
-        MediaViewerFragment.create(item,model.state.value.browse.sourceId,carousel.adapter.previewBounds(item))
+        val frame=if(item.hasMotion) carousel.adapter.previewFrame(item) else null
+        previews.pause()
+        MediaViewerFragment.create(item,model.state.value.browse.sourceId,frame?.bounds ?: carousel.adapter.previewBounds(item),frame)
             .show(childFragmentManager,MediaViewerFragment.TAG)
     }
     private fun renderHome(state: one.njk.sao.viewmodels.HomeState) {

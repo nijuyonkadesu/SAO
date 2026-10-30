@@ -45,7 +45,8 @@ class MediaViewerFragment : DialogFragment() {
     private var image: ZoomMediaView?=null
     private var root: View?=null
     private var exiting=false
-    private data class Views(val still: ZoomMediaView,val video: PlayerView,val poster: ImageView,val progress: View,val retry: View)
+    private var openingFrame: MediaViewerFrame?=null
+    private data class Views(val still: ZoomMediaView,val video: PlayerView,val poster: ImageView,val cover: View,val progress: View,val retry: View)
     private var views: Views?=null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); setStyle(STYLE_NO_TITLE,R.style.Theme_SAO_Viewer)
@@ -58,6 +59,7 @@ class MediaViewerFragment : DialogFragment() {
     override fun onCreateView(inflater: LayoutInflater,container: ViewGroup?,savedInstanceState: Bundle?): View {
         val context=requireContext()
         val item=SourceWire.item(JSONObject(requireArguments().getString("item")!!))
+        val frame=openingFrame.also { openingFrame=null }
         val surface=LinearLayout(context).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(com.google.android.material.color.MaterialColors.getColor(this,com.google.android.material.R.attr.colorSurface)) }
         val toolbar=MaterialToolbar(context).apply {
             id=R.id.media_viewer_toolbar
@@ -74,8 +76,11 @@ class MediaViewerFragment : DialogFragment() {
         val poster=ImageView(context).apply {
             scaleType=ImageView.ScaleType.FIT_CENTER
             // Animated drawables have a mutable callback; never steal the carousel's drawable.
-            val cached=loader.memoryCache?.get(MemoryCache.Key(previewMemoryKey(item)))?.image?.asDrawable(resources)
-            setImageDrawable(cached?.constantState?.newDrawable(resources)?.mutate())
+            if(frame!=null) setImageBitmap(frame.bitmap)
+            else {
+                val cached=loader.memoryCache?.get(MemoryCache.Key(previewMemoryKey(item)))?.image?.asDrawable(resources)
+                setImageDrawable(cached?.constantState?.newDrawable(resources)?.mutate())
+            }
         }
         val video=PlayerView(context).apply {
             id=R.id.media_viewer_player
@@ -85,7 +90,13 @@ class MediaViewerFragment : DialogFragment() {
             hideController()
         }
         body.addView(video,FrameLayout.LayoutParams(-1,-1))
-        body.addView(poster,FrameLayout.LayoutParams(-1,-1))
+        // Keep an opaque cover over the live surface until both its first frame and
+        // the image opening animation are ready. Surface allocation must never flash black.
+        val cover=FrameLayout(context).apply {
+            setBackgroundColor(com.google.android.material.color.MaterialColors.getColor(surface,com.google.android.material.R.attr.colorSurface))
+            addView(poster,FrameLayout.LayoutParams(-1,-1))
+        }
+        body.addView(cover,FrameLayout.LayoutParams(-1,-1))
         val progress=CircularProgressIndicator(context).apply { id=R.id.media_viewer_progress }
         body.addView(progress,FrameLayout.LayoutParams(-2,-2,Gravity.CENTER))
         val retry=MaterialButton(context).apply { id=R.id.media_viewer_retry; setText(R.string.media_viewer_retry); visibility=View.GONE }
@@ -94,32 +105,36 @@ class MediaViewerFragment : DialogFragment() {
             val bars=insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             view.setPadding(bars.left,bars.top,bars.right,bars.bottom); insets
         }
-        views=Views(still,video,poster,progress,retry)
+        views=Views(still,video,poster,cover,progress,retry)
         root=surface
-        return surface.also { view -> view.doOnAttach { ViewCompat.requestApplyInsets(it) }
-            // Work belongs to the view lifecycle, not the application or the underlying home screen.
-            view.doOnPreDraw {
-                if(savedInstanceState==null && android.animation.ValueAnimator.areAnimatorsEnabled()) {
-                    val start=androidx.core.os.BundleCompat.getParcelable(requireArguments(),"bounds",Rect::class.java)
-                    if(start!=null && !start.isEmpty) {
-                        view.pivotX=view.width/2f; view.pivotY=view.height/2f
-                        view.scaleX=(start.width().toFloat()/view.width).coerceIn(.25f,1f)
-                        view.scaleY=(start.height().toFloat()/view.height).coerceIn(.25f,1f)
-                        view.translationX=start.exactCenterX()-view.width/2f
-                        view.translationY=start.exactCenterY()-view.height/2f
-                        view.animate().scaleX(1f).scaleY(1f).translationX(0f).translationY(0f)
-                            .setDuration(170).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
-                    }
-                }
-            }
-        }
+        return surface.also { view -> view.doOnAttach { ViewCompat.requestApplyInsets(it) } }
     }
     override fun onViewCreated(view: View,savedInstanceState: Bundle?) {
         val item=SourceWire.item(JSONObject(requireArguments().getString("item")!!))
-        val (still,video,poster,progress,retry)=requireNotNull(views)
+        val (still,video,poster,cover,progress,retry)=requireNotNull(views)
+        var openingFinished=false
+        var firstFrame=false
+        var revealed=false
+        fun reveal() {
+            if(!openingFinished || !firstFrame || revealed) return
+            revealed=true
+            cover.animate().alpha(0f).setDuration(100).withEndAction {
+                cover.isVisible=false; poster.setImageDrawable(null)
+            }.start()
+        }
         fun ready() {
+            firstFrame=true
             progress.isVisible=false
-            poster.animate().alpha(0f).setDuration(100).withEndAction { poster.isVisible=false }.start()
+            reveal()
+        }
+        view.doOnPreDraw {
+            // Pause the carousel only after this window has submitted its first draw;
+            // hiding its TextureView earlier exposes an unrelated static thumbnail.
+            view.postOnAnimation {
+                if(this.view===view && dialog?.isShowing==true && !exiting)
+                    parentFragmentManager.setFragmentResult(OPENED,Bundle.EMPTY)
+            }
+            animateOpening(view,poster,item.hasMotion,savedInstanceState==null) { openingFinished=true; reveal() }
         }
         var attempt: Job?=null
         fun load() {
@@ -145,6 +160,29 @@ class MediaViewerFragment : DialogFragment() {
             load(); try { awaitCancellation() } finally { attempt?.cancelAndJoin() }
         } }
     }
+    private fun animateOpening(view: View,poster: ImageView,motion: Boolean,animate: Boolean,finished: () -> Unit) {
+        val start=androidx.core.os.BundleCompat.getParcelable(requireArguments(),"bounds",Rect::class.java)
+        if(!animate || !android.animation.ValueAnimator.areAnimatorsEnabled() || start==null || start.isEmpty ||
+            motion && poster.drawable==null) { finished(); return }
+        // Animate only the frozen image for motion media. The live SurfaceView keeps
+        // stable full-size geometry, HDR support and its normal efficient compositor path.
+        val target=if(motion) poster else view
+        val location=IntArray(2).also(target::getLocationOnScreen)
+        var width=target.width.toFloat(); var height=target.height.toFloat()
+        if(motion) {
+            val drawable=requireNotNull(poster.drawable)
+            val fit=minOf(width/drawable.intrinsicWidth.coerceAtLeast(1),height/drawable.intrinsicHeight.coerceAtLeast(1))
+            width=drawable.intrinsicWidth.coerceAtLeast(1)*fit; height=drawable.intrinsicHeight.coerceAtLeast(1)*fit
+        }
+        target.pivotX=target.width/2f; target.pivotY=target.height/2f
+        val scaleX=start.width()/width; val scaleY=start.height()/height
+        target.scaleX=if(motion) minOf(scaleX,scaleY) else scaleX
+        target.scaleY=if(motion) target.scaleX else scaleY
+        target.translationX=start.exactCenterX()-location[0]-target.width/2f
+        target.translationY=start.exactCenterY()-location[1]-target.height/2f
+        target.animate().scaleX(1f).scaleY(1f).translationX(0f).translationY(0f)
+            .setDuration(170).setInterpolator(android.view.animation.DecelerateInterpolator()).withEndAction { finished() }.start()
+    }
     override fun onStart() { super.onStart(); dialog?.window?.apply {
         setLayout(-1,-1); setBackgroundDrawableResource(android.R.color.transparent)
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(this,false)
@@ -164,11 +202,21 @@ class MediaViewerFragment : DialogFragment() {
         else dismiss()
     }
     override fun onStop() { image?.let { state.zoom=it.position }; super.onStop() }
-    override fun onDestroyView() { root?.animate()?.cancel(); root=null; image=null; views=null; super.onDestroyView() }
+    override fun onDestroyView() {
+        root?.animate()?.withEndAction(null)?.cancel()
+        views?.let {
+            it.poster.animate().withEndAction(null).cancel(); it.cover.animate().withEndAction(null).cancel()
+            it.poster.setImageDrawable(null)
+        }
+        root=null; image=null; views=null; openingFrame=null
+        super.onDestroyView()
+    }
     override fun onDismiss(dialog: android.content.DialogInterface) { super.onDismiss(dialog); parentFragmentManager.setFragmentResult(TAG,Bundle.EMPTY) }
     companion object {
         const val TAG="media-viewer"
-        fun create(item: MediaItem,sourceId: String,bounds: Rect?)=MediaViewerFragment().apply {
+        const val OPENED="media-viewer-opened"
+        internal fun create(item: MediaItem,sourceId: String,bounds: Rect?,frame: MediaViewerFrame?=null)=MediaViewerFragment().apply {
+            openingFrame=frame
             arguments=bundleOf("item" to SourceWire.item(item).toString(),"source" to sourceId,"bounds" to bounds)
         }
     }

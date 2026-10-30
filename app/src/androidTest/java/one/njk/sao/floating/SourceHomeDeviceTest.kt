@@ -440,6 +440,7 @@ class SourceHomeDeviceTest {
                 }
                 var gifCallback: android.graphics.drawable.Drawable.Callback?=null
                 var gifDrawable: android.graphics.drawable.Drawable?=null
+                pauseSourceVisual("source-home-gif-before-open")
                 scenario.onActivity { activity ->
                     val grid=activity.findViewById<RecyclerView>(R.id.carousel_recycler_view)
                     val holder=grid.findViewHolderForAdapterPosition(1) as MediaCarouselAdapter.Holder
@@ -454,7 +455,10 @@ class SourceHomeDeviceTest {
                 }
                 scenario.onActivity { activity ->
                     assertSame("The viewer must not steal an animated thumbnail callback",gifCallback,gifDrawable?.callback)
-                    (home(activity).childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG) as MediaViewerFragment).dismiss()
+                    val viewer=home(activity).childFragmentManager.findFragmentByTag(MediaViewerFragment.TAG) as MediaViewerFragment
+                    assertEquals("The live animation hierarchy must not be scaled",1f,viewer.requireView().scaleX,0f)
+                    assertEquals(1f,viewer.requireView().scaleY,0f)
+                    viewer.dismiss()
                 }
                 await(scenario,"Closing the GIF viewer resumes the original animated card") {
                     (gifDrawable as? Animatable)?.isRunning==true && gifDrawable?.callback===gifCallback

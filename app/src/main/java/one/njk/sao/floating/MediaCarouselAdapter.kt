@@ -113,6 +113,12 @@ class MediaCarouselAdapter(private val loader: ImageLoader, private val scope: C
     }
     fun previewBounds(item: MediaItem): android.graphics.Rect? = attached.firstOrNull { it.item?.identityKey==item.identityKey }
         ?.binding?.preview?.let { view -> android.graphics.Rect().takeIf { view.getGlobalVisibleRect(it) } }
+    internal fun previewFrame(item: MediaItem): MediaViewerFrame? {
+        val holder=attached.firstOrNull { it.item?.identityKey==item.identityKey } ?: return null
+        val video=holder.binding.videoPreview
+        val surface=video.videoSurfaceView
+        return MediaViewerFrame.capture(if(video.isVisible && video.alpha>0f && surface!=null) surface else holder.binding.preview)
+    }
     private fun load(holder: Holder) {
         if (closed) return
         val item = holder.item ?: return
